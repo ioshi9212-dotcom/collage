@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 
-const STORAGE_KEY = 'collage-creator-project-v2';
+const STORAGE_KEY = 'collage-creator-album-v3';
 const MIN_FRAME_SIZE = 80;
 
 const CANVAS_PRESETS = [
@@ -13,11 +13,7 @@ const CANVAS_PRESETS = [
   { id: 'custom', label: 'Свой размер', width: 1480, height: 2100 },
 ];
 
-const DEFAULT_CANVAS = {
-  width: 1480,
-  height: 2100,
-};
-
+const DEFAULT_CANVAS = { width: 1480, height: 2100 };
 const DEFAULT_SETTINGS = {
   presetId: 'a5-portrait',
   frameCount: 5,
@@ -25,7 +21,6 @@ const DEFAULT_SETTINGS = {
   gap: 28,
   borderWidth: 0,
   borderColor: '#ffffff',
-  backgroundColor: '#ffffff',
 };
 
 function createId() {
@@ -59,119 +54,6 @@ function loadImage(src) {
   });
 }
 
-function overlapLength(firstStart, firstEnd, secondStart, secondEnd) {
-  return Math.max(0, Math.min(firstEnd, secondEnd) - Math.max(firstStart, secondStart));
-}
-
-function hasVerticalOverlap(first, second) {
-  const overlap = overlapLength(first.y, first.y + first.height, second.y, second.y + second.height);
-  return overlap >= Math.min(first.height, second.height) * 0.45;
-}
-
-function hasHorizontalOverlap(first, second) {
-  const overlap = overlapLength(first.x, first.x + first.width, second.x, second.x + second.width);
-  return overlap >= Math.min(first.width, second.width) * 0.45;
-}
-
-function findNeighborIndex(frames, frame, side) {
-  if (side === 'right') {
-    return frames
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => item.id !== frame.id && hasVerticalOverlap(frame, item) && item.x >= frame.x + frame.width - 4)
-      .sort((a, b) => a.item.x - b.item.x)[0]?.index ?? -1;
-  }
-
-  if (side === 'left') {
-    return frames
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => item.id !== frame.id && hasVerticalOverlap(frame, item) && item.x + item.width <= frame.x + 4)
-      .sort((a, b) => b.item.x + b.item.width - (a.item.x + a.item.width))[0]?.index ?? -1;
-  }
-
-  if (side === 'bottom') {
-    return frames
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => item.id !== frame.id && hasHorizontalOverlap(frame, item) && item.y >= frame.y + frame.height - 4)
-      .sort((a, b) => a.item.y - b.item.y)[0]?.index ?? -1;
-  }
-
-  if (side === 'top') {
-    return frames
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => item.id !== frame.id && hasHorizontalOverlap(frame, item) && item.y + item.height <= frame.y + 4)
-      .sort((a, b) => b.item.y + b.item.height - (a.item.y + a.item.height))[0]?.index ?? -1;
-  }
-
-  return -1;
-}
-
-function resizeFramesBySide(frames, frameId, side, delta, canvas) {
-  if (!delta) return frames;
-
-  const next = frames.map((frame) => ({
-    ...frame,
-    photo: frame.photo ? { ...frame.photo } : null,
-  }));
-
-  const frameIndex = next.findIndex((frame) => frame.id === frameId);
-  if (frameIndex === -1) return frames;
-
-  const frame = next[frameIndex];
-  const neighborIndex = findNeighborIndex(next, frame, side);
-  const neighbor = neighborIndex >= 0 ? next[neighborIndex] : null;
-  let change = 0;
-
-  if (side === 'right') {
-    const maxShrink = frame.width - MIN_FRAME_SIZE;
-    const maxExpand = neighbor ? neighbor.width - MIN_FRAME_SIZE : canvas.width - frame.x - frame.width;
-    change = clampNumber(delta, -maxShrink, maxExpand);
-    frame.width = Math.round(frame.width + change);
-
-    if (neighbor) {
-      neighbor.x = Math.round(neighbor.x + change);
-      neighbor.width = Math.round(neighbor.width - change);
-    }
-  }
-
-  if (side === 'left') {
-    const maxShrink = frame.width - MIN_FRAME_SIZE;
-    const maxExpand = neighbor ? neighbor.width - MIN_FRAME_SIZE : frame.x;
-    change = clampNumber(delta, -maxExpand, maxShrink);
-    frame.x = Math.round(frame.x + change);
-    frame.width = Math.round(frame.width - change);
-
-    if (neighbor) {
-      neighbor.width = Math.round(neighbor.width + change);
-    }
-  }
-
-  if (side === 'bottom') {
-    const maxShrink = frame.height - MIN_FRAME_SIZE;
-    const maxExpand = neighbor ? neighbor.height - MIN_FRAME_SIZE : canvas.height - frame.y - frame.height;
-    change = clampNumber(delta, -maxShrink, maxExpand);
-    frame.height = Math.round(frame.height + change);
-
-    if (neighbor) {
-      neighbor.y = Math.round(neighbor.y + change);
-      neighbor.height = Math.round(neighbor.height - change);
-    }
-  }
-
-  if (side === 'top') {
-    const maxShrink = frame.height - MIN_FRAME_SIZE;
-    const maxExpand = neighbor ? neighbor.height - MIN_FRAME_SIZE : frame.y;
-    change = clampNumber(delta, -maxExpand, maxShrink);
-    frame.y = Math.round(frame.y + change);
-    frame.height = Math.round(frame.height - change);
-
-    if (neighbor) {
-      neighbor.height = Math.round(neighbor.height + change);
-    }
-  }
-
-  return next;
-}
-
 function getLayoutRows(frameCount) {
   const layouts = {
     1: [1],
@@ -184,7 +66,6 @@ function getLayoutRows(frameCount) {
     8: [4, 4],
     9: [3, 3, 3],
   };
-
   return layouts[frameCount] ?? layouts[5];
 }
 
@@ -215,16 +96,30 @@ function createFrames(canvas, settings, previousFrames = []) {
   return frames.slice(0, settings.frameCount);
 }
 
+function createPage(canvas, settings, index, frames) {
+  return {
+    id: createId(),
+    title: `Страница ${index}`,
+    frames: frames ?? createFrames(canvas, settings),
+  };
+}
+
+function cloneFrames(frames) {
+  return frames.map((frame, index) => ({
+    ...frame,
+    id: `frame_${index + 1}`,
+    photo: frame.photo ? { ...frame.photo } : null,
+  }));
+}
+
 function getCoverRect(image, frame, photo) {
   if (!image) return null;
-
   const zoom = photo?.zoom ?? 1;
   const coverScale = Math.max(frame.width / image.width, frame.height / image.height) * zoom;
   const width = image.width * coverScale;
   const height = image.height * coverScale;
   const baseX = (frame.width - width) / 2;
   const baseY = (frame.height - height) / 2;
-
   return {
     x: baseX + (photo?.offsetX ?? 0),
     y: baseY + (photo?.offsetY ?? 0),
@@ -235,94 +130,19 @@ function getCoverRect(image, frame, photo) {
   };
 }
 
-function ResizeHandle({ side, x, y, width, height, label, onResizeStart, onResizeMove, onResizeEnd }) {
-  const cursor = side === 'left' || side === 'right' ? 'ew-resize' : 'ns-resize';
-
-  function keepHandleInPlace(event) {
-    event.target.position({ x, y });
-  }
-
-  return (
-    <Group
-      x={x}
-      y={y}
-      draggable
-      onMouseDown={(event) => {
-        event.cancelBubble = true;
-      }}
-      onTap={(event) => {
-        event.cancelBubble = true;
-      }}
-      onMouseEnter={(event) => {
-        const container = event.target.getStage()?.container();
-        if (container) container.style.cursor = cursor;
-      }}
-      onMouseLeave={(event) => {
-        const container = event.target.getStage()?.container();
-        if (container) container.style.cursor = 'default';
-      }}
-      onDragStart={(event) => {
-        event.cancelBubble = true;
-        onResizeStart(event);
-      }}
-      onDragMove={(event) => {
-        event.cancelBubble = true;
-        onResizeMove(side, event);
-        keepHandleInPlace(event);
-      }}
-      onDragEnd={(event) => {
-        event.cancelBubble = true;
-        keepHandleInPlace(event);
-        onResizeEnd(event);
-      }}
-    >
-      <Rect
-        x={0}
-        y={0}
-        width={width}
-        height={height}
-        fill="#c27b4f"
-        stroke="#fff7ef"
-        strokeWidth={3}
-        cornerRadius={10}
-        shadowColor="rgba(70, 40, 20, 0.25)"
-        shadowBlur={12}
-        shadowOffsetY={4}
-      />
-      <Text
-        x={0}
-        y={0}
-        width={width}
-        height={height}
-        align="center"
-        verticalAlign="middle"
-        text={label}
-        fill="#ffffff"
-        fontSize={Math.min(width, height) * 0.55}
-        fontStyle="bold"
-        listening={false}
-      />
-    </Group>
-  );
-}
-
-function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onPhotoMove, onResizeStart, onResizeMove, onResizeEnd }) {
+function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onPhotoMove }) {
   const [image, setImage] = useState(null);
   const photo = frame.photo;
   const cover = photo ? getCoverRect(image, frame, photo) : null;
-  const sideHandleLong = Math.max(56, Math.min(92, Math.min(frame.width, frame.height) / 5));
-  const sideHandleShort = Math.max(24, Math.min(36, Math.min(frame.width, frame.height) / 12));
 
   useEffect(() => {
     let active = true;
-
     if (!photo?.src) {
       setImage(null);
       return () => {
         active = false;
       };
     }
-
     loadImage(photo.src)
       .then((loadedImage) => {
         if (active) setImage(loadedImage);
@@ -330,7 +150,6 @@ function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onP
       .catch(() => {
         if (active) setImage(null);
       });
-
     return () => {
       active = false;
     };
@@ -393,70 +212,30 @@ function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onP
           </>
         )}
       </Group>
-
-      {selected && (
-        <>
-          <ResizeHandle
-            side="left"
-            x={-sideHandleShort / 2}
-            y={frame.height / 2 - sideHandleLong / 2}
-            width={sideHandleShort}
-            height={sideHandleLong}
-            label="↔"
-            onResizeStart={onResizeStart}
-            onResizeMove={onResizeMove}
-            onResizeEnd={onResizeEnd}
-          />
-          <ResizeHandle
-            side="right"
-            x={frame.width - sideHandleShort / 2}
-            y={frame.height / 2 - sideHandleLong / 2}
-            width={sideHandleShort}
-            height={sideHandleLong}
-            label="↔"
-            onResizeStart={onResizeStart}
-            onResizeMove={onResizeMove}
-            onResizeEnd={onResizeEnd}
-          />
-          <ResizeHandle
-            side="top"
-            x={frame.width / 2 - sideHandleLong / 2}
-            y={-sideHandleShort / 2}
-            width={sideHandleLong}
-            height={sideHandleShort}
-            label="↕"
-            onResizeStart={onResizeStart}
-            onResizeMove={onResizeMove}
-            onResizeEnd={onResizeEnd}
-          />
-          <ResizeHandle
-            side="bottom"
-            x={frame.width / 2 - sideHandleLong / 2}
-            y={frame.height - sideHandleShort / 2}
-            width={sideHandleLong}
-            height={sideHandleShort}
-            label="↕"
-            onResizeStart={onResizeStart}
-            onResizeMove={onResizeMove}
-            onResizeEnd={onResizeEnd}
-          />
-        </>
-      )}
     </Group>
   );
+}
+
+function createInitialAlbum() {
+  const firstPage = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 1);
+  return { pages: [firstPage], currentPageId: firstPage.id };
 }
 
 export default function App() {
   const stageRef = useRef(null);
   const jsonInputRef = useRef(null);
-  const resizePointerRef = useRef(null);
+  const [album, setAlbum] = useState(createInitialAlbum);
   const [library, setLibrary] = useState([]);
   const [canvas, setCanvas] = useState(DEFAULT_CANVAS);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [frames, setFrames] = useState(() => createFrames(DEFAULT_CANVAS, DEFAULT_SETTINGS));
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
   const [notice, setNotice] = useState('');
+
+  const pages = album.pages;
+  const currentPageIndex = Math.max(0, pages.findIndex((page) => page.id === album.currentPageId));
+  const currentPage = pages[currentPageIndex] ?? pages[0];
+  const frames = currentPage?.frames ?? [];
 
   const selectedFrame = useMemo(
     () => frames.find((frame) => frame.id === selectedFrameId) ?? null,
@@ -474,8 +253,19 @@ export default function App() {
     showNotice.timer = window.setTimeout(() => setNotice(''), 2600);
   }
 
+  function updateCurrentFrames(updater) {
+    setAlbum((current) => ({
+      ...current,
+      pages: current.pages.map((page) =>
+        page.id === current.currentPageId
+          ? { ...page, frames: typeof updater === 'function' ? updater(page.frames) : updater }
+          : page
+      ),
+    }));
+  }
+
   function rebuildFrames(nextCanvas = canvas, nextSettings = settings) {
-    setFrames((current) => createFrames(nextCanvas, nextSettings, current));
+    updateCurrentFrames((currentFrames) => createFrames(nextCanvas, nextSettings, currentFrames));
     setSelectedFrameId(null);
     setSelectedPhotoId(null);
   }
@@ -494,7 +284,14 @@ export default function App() {
     const nextSettings = { ...settings, presetId };
     setCanvas(nextCanvas);
     setSettings(nextSettings);
-    rebuildFrames(nextCanvas, nextSettings);
+    setAlbum((current) => ({
+      ...current,
+      pages: current.pages.map((page) => ({
+        ...page,
+        frames: createFrames(nextCanvas, nextSettings, page.frames),
+      })),
+    }));
+    setSelectedFrameId(null);
   }
 
   function handlePresetChange(event) {
@@ -505,31 +302,21 @@ export default function App() {
   function handlePhotoUpload(event) {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
-
     files.forEach((file) => {
       if (!file.type.startsWith('image/')) return;
-
       const reader = new FileReader();
       reader.onload = () => {
-        setLibrary((current) => [
-          ...current,
-          {
-            id: createId(),
-            name: file.name,
-            src: reader.result,
-          },
-        ]);
+        setLibrary((current) => [...current, { id: createId(), name: file.name, src: reader.result }]);
       };
       reader.readAsDataURL(file);
     });
-
     event.target.value = '';
-    showNotice('Фото загружены. На телефоне: нажми фото, потом нажми рамку.');
+    showNotice('Фото загружены. Нажми фото, потом нужную рамку.');
   }
 
   function putPhotoIntoFrame(frameId, photo) {
-    setFrames((current) =>
-      current.map((frame) =>
+    updateCurrentFrames((currentFrames) =>
+      currentFrames.map((frame) =>
         frame.id === frameId
           ? {
               ...frame,
@@ -550,7 +337,7 @@ export default function App() {
 
   function pickPhoto(photo) {
     setSelectedPhotoId(photo.id);
-    showNotice('Фото выбрано. Теперь нажми нужную рамку на холсте.');
+    showNotice('Фото выбрано. Теперь нажми рамку на странице.');
   }
 
   function handleFrameSelect(frameId) {
@@ -560,7 +347,6 @@ export default function App() {
       showNotice('Фото вставлено в рамку');
       return;
     }
-
     setSelectedFrameId(frameId);
   }
 
@@ -568,76 +354,34 @@ export default function App() {
     event.preventDefault();
     const photoId = event.dataTransfer.getData('photo-id');
     const photo = library.find((item) => item.id === photoId);
-
     if (!photo || !stageRef.current) return;
-
     stageRef.current.setPointersPositions(event);
     const point = stageRef.current.getPointerPosition();
-
     if (!point) return;
-
     const targetFrame = frames.find(
       (frame) => point.x >= frame.x && point.x <= frame.x + frame.width && point.y >= frame.y && point.y <= frame.y + frame.height
     );
-
     if (!targetFrame) {
       showNotice('Перетащи фото прямо в нужную рамку');
       return;
     }
-
     putPhotoIntoFrame(targetFrame.id, photo);
     setSelectedPhotoId(null);
   }
 
   function updateFramePhoto(frameId, patch) {
-    setFrames((current) =>
-      current.map((frame) =>
-        frame.id === frameId && frame.photo
-          ? {
-              ...frame,
-              photo: {
-                ...frame.photo,
-                ...patch,
-              },
-            }
-          : frame
+    updateCurrentFrames((currentFrames) =>
+      currentFrames.map((frame) =>
+        frame.id === frameId && frame.photo ? { ...frame, photo: { ...frame.photo, ...patch } } : frame
       )
     );
   }
 
-  function handleResizeStart(event) {
-    event.cancelBubble = true;
-    const point = stageRef.current?.getPointerPosition();
-    resizePointerRef.current = point ? { ...point } : null;
-  }
-
-  function handleResizeMove(side, event) {
-    event.cancelBubble = true;
-    if (!selectedFrameId) return;
-
-    const point = stageRef.current?.getPointerPosition();
-    const previousPoint = resizePointerRef.current;
-    if (!point || !previousPoint) return;
-
-    const delta = side === 'left' || side === 'right' ? point.x - previousPoint.x : point.y - previousPoint.y;
-    if (Math.abs(delta) < 1) return;
-
-    setFrames((current) => resizeFramesBySide(current, selectedFrameId, side, delta, canvas));
-    resizePointerRef.current = { ...point };
-  }
-
-  function handleResizeEnd(event) {
-    event.cancelBubble = true;
-    resizePointerRef.current = null;
-  }
-
   function updateSelectedFrameGeometry(key, value) {
     if (!selectedFrame) return;
-
-    setFrames((current) =>
-      current.map((frame) => {
+    updateCurrentFrames((currentFrames) =>
+      currentFrames.map((frame) => {
         if (frame.id !== selectedFrame.id) return frame;
-
         const maxForKey = key === 'x' || key === 'width' ? canvas.width : canvas.height;
         return {
           ...frame,
@@ -649,7 +393,7 @@ export default function App() {
 
   function removeSelectedPhoto() {
     if (!selectedFrame) return;
-    setFrames((current) => current.map((frame) => (frame.id === selectedFrame.id ? { ...frame, photo: null } : frame)));
+    updateCurrentFrames((currentFrames) => currentFrames.map((frame) => (frame.id === selectedFrame.id ? { ...frame, photo: null } : frame)));
   }
 
   function resetSelectedPhoto() {
@@ -658,26 +402,94 @@ export default function App() {
   }
 
   function clearCanvas() {
-    setFrames((current) => current.map((frame) => ({ ...frame, photo: null })));
+    updateCurrentFrames((currentFrames) => currentFrames.map((frame) => ({ ...frame, photo: null })));
     setSelectedFrameId(null);
     setSelectedPhotoId(null);
-    showNotice('Фото убраны из рамок');
+    showNotice('Фото убраны с текущей страницы');
+  }
+
+  function selectPage(pageId) {
+    setAlbum((current) => ({ ...current, currentPageId: pageId }));
+    setSelectedFrameId(null);
+    setSelectedPhotoId(null);
+  }
+
+  function addPage() {
+    const page = createPage(canvas, settings, pages.length + 1);
+    setAlbum((current) => ({ ...current, pages: [...current.pages, page], currentPageId: page.id }));
+    setSelectedFrameId(null);
+    setSelectedPhotoId(null);
+    showNotice('Добавлена новая страница');
+  }
+
+  function duplicatePage() {
+    if (!currentPage) return;
+    const page = createPage(canvas, settings, pages.length + 1, cloneFrames(currentPage.frames));
+    setAlbum((current) => {
+      const index = current.pages.findIndex((item) => item.id === current.currentPageId);
+      const nextPages = [...current.pages];
+      nextPages.splice(index + 1, 0, page);
+      return { ...current, pages: nextPages, currentPageId: page.id };
+    });
+    setSelectedFrameId(null);
+    showNotice('Страница скопирована');
+  }
+
+  function deletePage() {
+    if (pages.length <= 1) {
+      showNotice('Нельзя удалить единственную страницу');
+      return;
+    }
+    setAlbum((current) => {
+      const index = current.pages.findIndex((page) => page.id === current.currentPageId);
+      const nextPages = current.pages.filter((page) => page.id !== current.currentPageId);
+      const nextCurrent = nextPages[Math.min(index, nextPages.length - 1)] ?? nextPages[0];
+      return { pages: nextPages, currentPageId: nextCurrent.id };
+    });
+    setSelectedFrameId(null);
+    showNotice('Страница удалена');
+  }
+
+  function movePage(direction) {
+    setAlbum((current) => {
+      const index = current.pages.findIndex((page) => page.id === current.currentPageId);
+      const targetIndex = direction === 'left' ? index - 1 : index + 1;
+      if (index < 0 || targetIndex < 0 || targetIndex >= current.pages.length) return current;
+      const nextPages = [...current.pages];
+      [nextPages[index], nextPages[targetIndex]] = [nextPages[targetIndex], nextPages[index]];
+      return { ...current, pages: nextPages };
+    });
   }
 
   function createProject() {
     return {
-      version: 2,
+      version: 3,
       canvas,
       settings,
       library,
-      frames,
+      pages,
+      currentPageId: album.currentPageId,
       savedAt: new Date().toISOString(),
     };
   }
 
   function saveProject() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(createProject()));
-    showNotice('Проект сохранён в браузере');
+    showNotice('Альбом сохранён в браузере');
+  }
+
+  function normalizeLoadedPages(project, nextCanvas, nextSettings) {
+    if (Array.isArray(project.pages) && project.pages.length) {
+      return project.pages.map((page, index) => ({
+        id: page.id ?? createId(),
+        title: page.title ?? `Страница ${index + 1}`,
+        frames: Array.isArray(page.frames) ? page.frames : createFrames(nextCanvas, nextSettings),
+      }));
+    }
+    if (Array.isArray(project.frames)) {
+      return [createPage(nextCanvas, nextSettings, 1, project.frames)];
+    }
+    return [createPage(nextCanvas, nextSettings, 1)];
   }
 
   function loadProject() {
@@ -686,42 +498,47 @@ export default function App() {
       showNotice('Сохранённого проекта пока нет');
       return;
     }
-
     try {
       const project = JSON.parse(raw);
-      setCanvas(project.canvas ?? DEFAULT_CANVAS);
-      setSettings(project.settings ?? DEFAULT_SETTINGS);
+      const nextCanvas = project.canvas ?? DEFAULT_CANVAS;
+      const nextSettings = project.settings ?? DEFAULT_SETTINGS;
+      const nextPages = normalizeLoadedPages(project, nextCanvas, nextSettings);
+      setCanvas(nextCanvas);
+      setSettings(nextSettings);
       setLibrary(Array.isArray(project.library) ? project.library : []);
-      setFrames(Array.isArray(project.frames) ? project.frames : createFrames(project.canvas ?? DEFAULT_CANVAS, project.settings ?? DEFAULT_SETTINGS));
+      setAlbum({
+        pages: nextPages,
+        currentPageId: nextPages.some((page) => page.id === project.currentPageId) ? project.currentPageId : nextPages[0].id,
+      });
       setSelectedFrameId(null);
       setSelectedPhotoId(null);
-      showNotice('Проект загружен');
+      showNotice('Альбом загружен');
     } catch {
       showNotice('Не получилось открыть сохранение');
     }
   }
 
   function exportJson() {
-    downloadFile('collage-project.json', JSON.stringify(createProject(), null, 2), 'application/json;charset=utf-8');
+    downloadFile('collage-album-project.json', JSON.stringify(createProject(), null, 2), 'application/json;charset=utf-8');
   }
 
   function importJson(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const project = JSON.parse(reader.result);
         const nextCanvas = project.canvas ?? DEFAULT_CANVAS;
         const nextSettings = project.settings ?? DEFAULT_SETTINGS;
+        const nextPages = normalizeLoadedPages(project, nextCanvas, nextSettings);
         setCanvas(nextCanvas);
         setSettings(nextSettings);
         setLibrary(Array.isArray(project.library) ? project.library : []);
-        setFrames(Array.isArray(project.frames) ? project.frames : createFrames(nextCanvas, nextSettings));
+        setAlbum({ pages: nextPages, currentPageId: nextPages[0].id });
         setSelectedFrameId(null);
         setSelectedPhotoId(null);
-        showNotice('JSON-проект открыт');
+        showNotice('JSON-альбом открыт');
       } catch {
         showNotice('Файл не похож на проект коллажа');
       }
@@ -736,10 +553,9 @@ export default function App() {
     window.requestAnimationFrame(() => {
       const uri = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
       if (!uri) return;
-
       const link = document.createElement('a');
       link.href = uri;
-      link.download = 'collage.png';
+      link.download = `collage-page-${currentPageIndex + 1}.png`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -753,7 +569,6 @@ export default function App() {
       if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return;
       removeSelectedPhoto();
     }
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedFrame]);
@@ -762,10 +577,9 @@ export default function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Редактор коллажа</p>
+          <p className="eyebrow">Редактор альбома</p>
           <h1>Collage Creator</h1>
         </div>
-
         <div className="topbar-actions">
           <button className="button" onClick={saveProject}>Сохранить</button>
           <button className="button" onClick={loadProject}>Открыть</button>
@@ -782,64 +596,58 @@ export default function App() {
         <label className="field wide-field">
           <span>Размер холста</span>
           <select value={settings.presetId} onChange={handlePresetChange}>
-            {CANVAS_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>{preset.label}</option>
-            ))}
+            {CANVAS_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
           </select>
         </label>
-
         <label className="field small-field">
           <span>Ширина px</span>
-          <input
-            type="number"
-            min="300"
-            max="5000"
-            value={canvas.width}
-            onChange={(event) => updateCanvasSize(event.target.value, canvas.height, 'custom')}
-          />
+          <input type="number" min="300" max="5000" value={canvas.width} onChange={(event) => updateCanvasSize(event.target.value, canvas.height, 'custom')} />
         </label>
-
         <label className="field small-field">
           <span>Высота px</span>
-          <input
-            type="number"
-            min="300"
-            max="5000"
-            value={canvas.height}
-            onChange={(event) => updateCanvasSize(canvas.width, event.target.value, 'custom')}
-          />
+          <input type="number" min="300" max="5000" value={canvas.height} onChange={(event) => updateCanvasSize(canvas.width, event.target.value, 'custom')} />
         </label>
-
         <label className="field small-field">
           <span>Окон</span>
           <select value={settings.frameCount} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => (
-              <option key={count} value={count}>{count}</option>
-            ))}
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}
           </select>
         </label>
-
         <label className="field small-field">
           <span>Рамка/зазор</span>
-          <input
-            type="number"
-            min="0"
-            max="200"
-            value={settings.gap}
-            onChange={(event) => updateSetting('gap', clampNumber(event.target.value, 0, 200))}
-          />
+          <input type="number" min="0" max="200" value={settings.gap} onChange={(event) => updateSetting('gap', clampNumber(event.target.value, 0, 200))} />
         </label>
-
         <label className="field small-field">
           <span>Поля</span>
-          <input
-            type="number"
-            min="0"
-            max="300"
-            value={settings.padding}
-            onChange={(event) => updateSetting('padding', clampNumber(event.target.value, 0, 300))}
-          />
+          <input type="number" min="0" max="300" value={settings.padding} onChange={(event) => updateSetting('padding', clampNumber(event.target.value, 0, 300))} />
         </label>
+      </section>
+
+      <section className="album-bar">
+        <div className="album-head">
+          <strong>Страницы альбома</strong>
+          <span>{currentPageIndex + 1} из {pages.length}</span>
+        </div>
+        <div className="album-actions">
+          <button className="small-button" onClick={addPage}>+ Страница</button>
+          <button className="small-button" onClick={duplicatePage}>Копия</button>
+          <button className="small-button" onClick={() => movePage('left')} disabled={currentPageIndex === 0}>←</button>
+          <button className="small-button" onClick={() => movePage('right')} disabled={currentPageIndex === pages.length - 1}>→</button>
+          <button className="small-button danger" onClick={deletePage}>Удалить</button>
+        </div>
+        <div className="page-strip">
+          {pages.map((page, index) => (
+            <button
+              key={page.id}
+              type="button"
+              className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`}
+              onClick={() => selectPage(page.id)}
+            >
+              <b>{index + 1}</b>
+              <span>{page.frames.filter((frame) => frame.photo).length}/{page.frames.length}</span>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="workspace three-columns">
@@ -851,23 +659,14 @@ export default function App() {
             </div>
             <span>{library.length}</span>
           </div>
-
           <label className="upload-box">
             <strong>Загрузить фото</strong>
             <small>Можно сразу несколько</small>
             <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} />
           </label>
-
-          {selectedPhoto && (
-            <div className="mobile-pick-hint">
-              Выбрано фото. Теперь нажми рамку на холсте.
-            </div>
-          )}
-
+          {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
           {library.length === 0 ? (
-            <div className="empty-state">
-              <p>Пока фото нет. Нажми “Загрузить фото” и добавь изображения для коллажа.</p>
-            </div>
+            <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото” и добавь изображения для коллажа.</p></div>
           ) : (
             <div className="photo-grid">
               {library.map((photo) => (
@@ -894,8 +693,8 @@ export default function App() {
         <section className="canvas-area">
           <div className="canvas-toolbar">
             <div>
-              <strong>{canvas.width}×{canvas.height}px</strong>
-              <span>{selectedPhoto ? ' Нажми рамку, чтобы вставить выбранное фото' : ' Выбери окно и тяни оранжевые ручки по краям'}</span>
+              <strong>Страница {currentPageIndex + 1} · {canvas.width}×{canvas.height}px</strong>
+              <span>{selectedPhoto ? ' Нажми рамку, чтобы вставить выбранное фото' : ' Выбери окно и настрой его справа'}</span>
             </div>
             <button className="small-button" onClick={() => rebuildFrames()}>Перестроить рамки</button>
             <button className="small-button" onClick={clearCanvas}>Очистить фото</button>
@@ -907,26 +706,14 @@ export default function App() {
               width={canvas.width}
               height={canvas.height}
               onMouseDown={(event) => {
-                if (event.target === event.target.getStage() || event.target.name() === 'background') {
-                  setSelectedFrameId(null);
-                }
+                if (event.target === event.target.getStage() || event.target.name() === 'background') setSelectedFrameId(null);
               }}
               onTouchStart={(event) => {
-                if (event.target === event.target.getStage() || event.target.name() === 'background') {
-                  setSelectedFrameId(null);
-                }
+                if (event.target === event.target.getStage() || event.target.name() === 'background') setSelectedFrameId(null);
               }}
             >
               <Layer>
-                <Rect
-                  name="background"
-                  x={0}
-                  y={0}
-                  width={canvas.width}
-                  height={canvas.height}
-                  fill={settings.borderColor}
-                />
-
+                <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
                 <Rect
                   x={settings.padding}
                   y={settings.padding}
@@ -934,7 +721,6 @@ export default function App() {
                   height={Math.max(0, canvas.height - settings.padding * 2)}
                   fill={settings.borderColor}
                 />
-
                 {frames.map((frame) => (
                   <CollageFrame
                     key={frame.id}
@@ -944,12 +730,8 @@ export default function App() {
                     borderColor={settings.borderColor}
                     onSelect={() => handleFrameSelect(frame.id)}
                     onPhotoMove={updateFramePhoto}
-                    onResizeStart={handleResizeStart}
-                    onResizeMove={handleResizeMove}
-                    onResizeEnd={handleResizeEnd}
                   />
                 ))}
-
                 {library.length === 0 && (
                   <Text
                     x={0}
@@ -970,29 +752,18 @@ export default function App() {
           <div className="panel-title compact">
             <div>
               <h2>Настройки окна</h2>
-              <p>{selectedFrame ? 'Тяни оранжевые ручки на рамке или правь цифрами' : 'Выбери рамку на холсте'}</p>
+              <p>{selectedFrame ? 'Правь рамку цифрами или настрой фото внутри' : 'Выбери рамку на холсте'}</p>
             </div>
           </div>
-
           <div className="inspector-block">
             <h3>Цвет и рамка</h3>
             <label className="field color-field">
               <span>Цвет рамки</span>
-              <input
-                type="color"
-                value={settings.borderColor}
-                onChange={(event) => updateSetting('borderColor', event.target.value)}
-              />
+              <input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} />
             </label>
             <label className="field">
               <span>Обводка внутри окна</span>
-              <input
-                type="number"
-                min="0"
-                max="80"
-                value={settings.borderWidth}
-                onChange={(event) => updateSetting('borderWidth', clampNumber(event.target.value, 0, 80))}
-              />
+              <input type="number" min="0" max="80" value={settings.borderWidth} onChange={(event) => updateSetting('borderWidth', clampNumber(event.target.value, 0, 80))} />
             </label>
           </div>
 
@@ -1001,26 +772,13 @@ export default function App() {
               <div className="inspector-block">
                 <h3>Положение рамки</h3>
                 <div className="geometry-grid">
-                  <label className="field">
-                    <span>X</span>
-                    <input type="number" value={selectedFrame.x} onChange={(event) => updateSelectedFrameGeometry('x', event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>Y</span>
-                    <input type="number" value={selectedFrame.y} onChange={(event) => updateSelectedFrameGeometry('y', event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>Ширина</span>
-                    <input type="number" value={selectedFrame.width} onChange={(event) => updateSelectedFrameGeometry('width', event.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>Высота</span>
-                    <input type="number" value={selectedFrame.height} onChange={(event) => updateSelectedFrameGeometry('height', event.target.value)} />
-                  </label>
+                  <label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => updateSelectedFrameGeometry('x', event.target.value)} /></label>
+                  <label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => updateSelectedFrameGeometry('y', event.target.value)} /></label>
+                  <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => updateSelectedFrameGeometry('width', event.target.value)} /></label>
+                  <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => updateSelectedFrameGeometry('height', event.target.value)} /></label>
                 </div>
-                <p className="hint">Ручки на рамке двигают соседнее окно, чтобы коллаж оставался цельным. Цифры оставила для точной правки.</p>
+                <p className="hint">Каждая страница хранит свои рамки и фото отдельно.</p>
               </div>
-
               <div className="inspector-block">
                 <h3>Фото внутри окна</h3>
                 {selectedFrame.photo ? (
@@ -1028,28 +786,19 @@ export default function App() {
                     <p className="photo-name">{selectedFrame.photo.name}</p>
                     <label className="range-row">
                       <span>Масштаб</span>
-                      <input
-                        type="range"
-                        min="1"
-                        max="3"
-                        step="0.01"
-                        value={selectedFrame.photo.zoom}
-                        onChange={(event) => updateFramePhoto(selectedFrame.id, { zoom: Number(event.target.value) })}
-                      />
+                      <input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updateFramePhoto(selectedFrame.id, { zoom: Number(event.target.value) })} />
                       <b>{selectedFrame.photo.zoom.toFixed(2)}</b>
                     </label>
                     <button className="button full" onClick={resetSelectedPhoto}>Центрировать фото</button>
                     <button className="button full danger-button" onClick={removeSelectedPhoto}>Убрать фото из окна</button>
                   </>
                 ) : (
-                  <p className="hint">На телефоне нажми фото слева, потом нажми эту рамку. На компьютере можно перетащить.</p>
+                  <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>
                 )}
               </div>
             </>
           ) : (
-            <div className="empty-state small-empty">
-              <p>Нажми на любое окно коллажа, чтобы настроить фото, масштаб и форму рамки.</p>
-            </div>
+            <div className="empty-state small-empty"><p>Нажми на любое окно коллажа, чтобы настроить фото, масштаб и форму рамки.</p></div>
           )}
         </aside>
       </section>
