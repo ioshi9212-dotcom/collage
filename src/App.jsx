@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 
 const STORAGE_KEY = 'collage-creator-project-v2';
+const MIN_FRAME_SIZE = 80;
 
 const CANVAS_PRESETS = [
   { id: 'a5-portrait', label: 'A5 вертикальный', width: 1480, height: 2100 },
@@ -56,6 +57,119 @@ function loadImage(src) {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function overlapLength(firstStart, firstEnd, secondStart, secondEnd) {
+  return Math.max(0, Math.min(firstEnd, secondEnd) - Math.max(firstStart, secondStart));
+}
+
+function hasVerticalOverlap(first, second) {
+  const overlap = overlapLength(first.y, first.y + first.height, second.y, second.y + second.height);
+  return overlap >= Math.min(first.height, second.height) * 0.45;
+}
+
+function hasHorizontalOverlap(first, second) {
+  const overlap = overlapLength(first.x, first.x + first.width, second.x, second.x + second.width);
+  return overlap >= Math.min(first.width, second.width) * 0.45;
+}
+
+function findNeighborIndex(frames, frame, side) {
+  if (side === 'right') {
+    return frames
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.id !== frame.id && hasVerticalOverlap(frame, item) && item.x >= frame.x + frame.width - 4)
+      .sort((a, b) => a.item.x - b.item.x)[0]?.index ?? -1;
+  }
+
+  if (side === 'left') {
+    return frames
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.id !== frame.id && hasVerticalOverlap(frame, item) && item.x + item.width <= frame.x + 4)
+      .sort((a, b) => b.item.x + b.item.width - (a.item.x + a.item.width))[0]?.index ?? -1;
+  }
+
+  if (side === 'bottom') {
+    return frames
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.id !== frame.id && hasHorizontalOverlap(frame, item) && item.y >= frame.y + frame.height - 4)
+      .sort((a, b) => a.item.y - b.item.y)[0]?.index ?? -1;
+  }
+
+  if (side === 'top') {
+    return frames
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.id !== frame.id && hasHorizontalOverlap(frame, item) && item.y + item.height <= frame.y + 4)
+      .sort((a, b) => b.item.y + b.item.height - (a.item.y + a.item.height))[0]?.index ?? -1;
+  }
+
+  return -1;
+}
+
+function resizeFramesBySide(frames, frameId, side, delta, canvas) {
+  if (!delta) return frames;
+
+  const next = frames.map((frame) => ({
+    ...frame,
+    photo: frame.photo ? { ...frame.photo } : null,
+  }));
+
+  const frameIndex = next.findIndex((frame) => frame.id === frameId);
+  if (frameIndex === -1) return frames;
+
+  const frame = next[frameIndex];
+  const neighborIndex = findNeighborIndex(next, frame, side);
+  const neighbor = neighborIndex >= 0 ? next[neighborIndex] : null;
+  let change = 0;
+
+  if (side === 'right') {
+    const maxShrink = frame.width - MIN_FRAME_SIZE;
+    const maxExpand = neighbor ? neighbor.width - MIN_FRAME_SIZE : canvas.width - frame.x - frame.width;
+    change = clampNumber(delta, -maxShrink, maxExpand);
+    frame.width = Math.round(frame.width + change);
+
+    if (neighbor) {
+      neighbor.x = Math.round(neighbor.x + change);
+      neighbor.width = Math.round(neighbor.width - change);
+    }
+  }
+
+  if (side === 'left') {
+    const maxShrink = frame.width - MIN_FRAME_SIZE;
+    const maxExpand = neighbor ? neighbor.width - MIN_FRAME_SIZE : frame.x;
+    change = clampNumber(delta, -maxExpand, maxShrink);
+    frame.x = Math.round(frame.x + change);
+    frame.width = Math.round(frame.width - change);
+
+    if (neighbor) {
+      neighbor.width = Math.round(neighbor.width + change);
+    }
+  }
+
+  if (side === 'bottom') {
+    const maxShrink = frame.height - MIN_FRAME_SIZE;
+    const maxExpand = neighbor ? neighbor.height - MIN_FRAME_SIZE : canvas.height - frame.y - frame.height;
+    change = clampNumber(delta, -maxShrink, maxExpand);
+    frame.height = Math.round(frame.height + change);
+
+    if (neighbor) {
+      neighbor.y = Math.round(neighbor.y + change);
+      neighbor.height = Math.round(neighbor.height - change);
+    }
+  }
+
+  if (side === 'top') {
+    const maxShrink = frame.height - MIN_FRAME_SIZE;
+    const maxExpand = neighbor ? neighbor.height - MIN_FRAME_SIZE : frame.y;
+    change = clampNumber(delta, -maxExpand, maxShrink);
+    frame.y = Math.round(frame.y + change);
+    frame.height = Math.round(frame.height - change);
+
+    if (neighbor) {
+      neighbor.height = Math.round(neighbor.height + change);
+    }
+  }
+
+  return next;
 }
 
 function getLayoutRows(frameCount) {
@@ -121,10 +235,83 @@ function getCoverRect(image, frame, photo) {
   };
 }
 
-function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onPhotoMove }) {
+function ResizeHandle({ side, x, y, width, height, label, onResizeStart, onResizeMove, onResizeEnd }) {
+  const cursor = side === 'left' || side === 'right' ? 'ew-resize' : 'ns-resize';
+
+  function keepHandleInPlace(event) {
+    event.target.position({ x, y });
+  }
+
+  return (
+    <Group
+      x={x}
+      y={y}
+      draggable
+      onMouseDown={(event) => {
+        event.cancelBubble = true;
+      }}
+      onTap={(event) => {
+        event.cancelBubble = true;
+      }}
+      onMouseEnter={(event) => {
+        const container = event.target.getStage()?.container();
+        if (container) container.style.cursor = cursor;
+      }}
+      onMouseLeave={(event) => {
+        const container = event.target.getStage()?.container();
+        if (container) container.style.cursor = 'default';
+      }}
+      onDragStart={(event) => {
+        event.cancelBubble = true;
+        onResizeStart(event);
+      }}
+      onDragMove={(event) => {
+        event.cancelBubble = true;
+        onResizeMove(side, event);
+        keepHandleInPlace(event);
+      }}
+      onDragEnd={(event) => {
+        event.cancelBubble = true;
+        keepHandleInPlace(event);
+        onResizeEnd(event);
+      }}
+    >
+      <Rect
+        x={0}
+        y={0}
+        width={width}
+        height={height}
+        fill="#c27b4f"
+        stroke="#fff7ef"
+        strokeWidth={3}
+        cornerRadius={10}
+        shadowColor="rgba(70, 40, 20, 0.25)"
+        shadowBlur={12}
+        shadowOffsetY={4}
+      />
+      <Text
+        x={0}
+        y={0}
+        width={width}
+        height={height}
+        align="center"
+        verticalAlign="middle"
+        text={label}
+        fill="#ffffff"
+        fontSize={Math.min(width, height) * 0.55}
+        fontStyle="bold"
+        listening={false}
+      />
+    </Group>
+  );
+}
+
+function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onPhotoMove, onResizeStart, onResizeMove, onResizeEnd }) {
   const [image, setImage] = useState(null);
   const photo = frame.photo;
   const cover = photo ? getCoverRect(image, frame, photo) : null;
+  const sideHandleLong = Math.max(56, Math.min(92, Math.min(frame.width, frame.height) / 5));
+  const sideHandleShort = Math.max(24, Math.min(36, Math.min(frame.width, frame.height) / 12));
 
   useEffect(() => {
     let active = true;
@@ -150,66 +337,108 @@ function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onP
   }, [photo?.src]);
 
   return (
-    <Group
-      x={frame.x}
-      y={frame.y}
-      clipX={0}
-      clipY={0}
-      clipWidth={frame.width}
-      clipHeight={frame.height}
-      onMouseDown={onSelect}
-      onTap={onSelect}
-    >
-      <Rect
-        x={0}
-        y={0}
-        width={frame.width}
-        height={frame.height}
-        fill="#fbf7f2"
-        stroke={selected ? '#c27b4f' : borderColor}
-        strokeWidth={selected ? Math.max(5, borderWidth) : borderWidth}
-      />
-
-      {photo && cover && (
-        <KonvaImage
-          image={image}
-          x={cover.x}
-          y={cover.y}
-          width={cover.width}
-          height={cover.height}
-          draggable={selected}
-          onMouseDown={onSelect}
-          onTap={onSelect}
-          onDragEnd={(event) => {
-            onPhotoMove(frame.id, {
-              offsetX: Math.round(event.target.x() - cover.baseX),
-              offsetY: Math.round(event.target.y() - cover.baseY),
-            });
-          }}
+    <Group x={frame.x} y={frame.y} onMouseDown={onSelect} onTap={onSelect}>
+      <Group clipX={0} clipY={0} clipWidth={frame.width} clipHeight={frame.height}>
+        <Rect
+          x={0}
+          y={0}
+          width={frame.width}
+          height={frame.height}
+          fill="#fbf7f2"
+          stroke={selected ? '#c27b4f' : borderColor}
+          strokeWidth={selected ? Math.max(5, borderWidth) : borderWidth}
         />
-      )}
 
-      {!photo && (
-        <>
-          <Rect
-            x={14}
-            y={14}
-            width={Math.max(0, frame.width - 28)}
-            height={Math.max(0, frame.height - 28)}
-            stroke="#d8c7b9"
-            strokeWidth={2}
-            dash={[14, 10]}
-            cornerRadius={12}
+        {photo && cover && (
+          <KonvaImage
+            image={image}
+            x={cover.x}
+            y={cover.y}
+            width={cover.width}
+            height={cover.height}
+            draggable={selected}
+            onMouseDown={onSelect}
+            onTap={onSelect}
+            onDragEnd={(event) => {
+              onPhotoMove(frame.id, {
+                offsetX: Math.round(event.target.x() - cover.baseX),
+                offsetY: Math.round(event.target.y() - cover.baseY),
+              });
+            }}
           />
-          <Text
-            x={20}
-            y={frame.height / 2 - 22}
-            width={Math.max(0, frame.width - 40)}
-            align="center"
-            text="Перетащи фото сюда"
-            fontSize={Math.max(18, Math.min(34, frame.width / 18))}
-            fill="#b49a87"
-            fontStyle="700"
+        )}
+
+        {!photo && (
+          <>
+            <Rect
+              x={14}
+              y={14}
+              width={Math.max(0, frame.width - 28)}
+              height={Math.max(0, frame.height - 28)}
+              stroke="#d8c7b9"
+              strokeWidth={2}
+              dash={[14, 10]}
+              cornerRadius={12}
+            />
+            <Text
+              x={20}
+              y={frame.height / 2 - 22}
+              width={Math.max(0, frame.width - 40)}
+              align="center"
+              text="Перетащи фото сюда"
+              fontSize={Math.max(18, Math.min(34, frame.width / 18))}
+              fill="#b49a87"
+              fontStyle="700"
+            />
+          </>
+        )}
+      </Group>
+
+      {selected && (
+        <>
+          <ResizeHandle
+            side="left"
+            x={-sideHandleShort / 2}
+            y={frame.height / 2 - sideHandleLong / 2}
+            width={sideHandleShort}
+            height={sideHandleLong}
+            label="↔"
+            onResizeStart={onResizeStart}
+            onResizeMove={onResizeMove}
+            onResizeEnd={onResizeEnd}
+          />
+          <ResizeHandle
+            side="right"
+            x={frame.width - sideHandleShort / 2}
+            y={frame.height / 2 - sideHandleLong / 2}
+            width={sideHandleShort}
+            height={sideHandleLong}
+            label="↔"
+            onResizeStart={onResizeStart}
+            onResizeMove={onResizeMove}
+            onResizeEnd={onResizeEnd}
+          />
+          <ResizeHandle
+            side="top"
+            x={frame.width / 2 - sideHandleLong / 2}
+            y={-sideHandleShort / 2}
+            width={sideHandleLong}
+            height={sideHandleShort}
+            label="↕"
+            onResizeStart={onResizeStart}
+            onResizeMove={onResizeMove}
+            onResizeEnd={onResizeEnd}
+          />
+          <ResizeHandle
+            side="bottom"
+            x={frame.width / 2 - sideHandleLong / 2}
+            y={frame.height - sideHandleShort / 2}
+            width={sideHandleLong}
+            height={sideHandleShort}
+            label="↕"
+            onResizeStart={onResizeStart}
+            onResizeMove={onResizeMove}
+            onResizeEnd={onResizeEnd}
           />
         </>
       )}
@@ -220,6 +449,7 @@ function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onP
 export default function App() {
   const stageRef = useRef(null);
   const jsonInputRef = useRef(null);
+  const resizePointerRef = useRef(null);
   const [library, setLibrary] = useState([]);
   const [canvas, setCanvas] = useState(DEFAULT_CANVAS);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -351,6 +581,32 @@ export default function App() {
     );
   }
 
+  function handleResizeStart(event) {
+    event.cancelBubble = true;
+    const point = stageRef.current?.getPointerPosition();
+    resizePointerRef.current = point ? { ...point } : null;
+  }
+
+  function handleResizeMove(side, event) {
+    event.cancelBubble = true;
+    if (!selectedFrameId) return;
+
+    const point = stageRef.current?.getPointerPosition();
+    const previousPoint = resizePointerRef.current;
+    if (!point || !previousPoint) return;
+
+    const delta = side === 'left' || side === 'right' ? point.x - previousPoint.x : point.y - previousPoint.y;
+    if (Math.abs(delta) < 1) return;
+
+    setFrames((current) => resizeFramesBySide(current, selectedFrameId, side, delta, canvas));
+    resizePointerRef.current = { ...point };
+  }
+
+  function handleResizeEnd(event) {
+    event.cancelBubble = true;
+    resizePointerRef.current = null;
+  }
+
   function updateSelectedFrameGeometry(key, value) {
     if (!selectedFrame) return;
 
@@ -361,7 +617,7 @@ export default function App() {
         const maxForKey = key === 'x' || key === 'width' ? canvas.width : canvas.height;
         return {
           ...frame,
-          [key]: clampNumber(value, key === 'width' || key === 'height' ? 30 : 0, maxForKey),
+          [key]: clampNumber(value, key === 'width' || key === 'height' ? MIN_FRAME_SIZE : 0, maxForKey),
         };
       })
     );
@@ -605,7 +861,7 @@ export default function App() {
           <div className="canvas-toolbar">
             <div>
               <strong>{canvas.width}×{canvas.height}px</strong>
-              <span> Перетащи фото слева в нужное окно коллажа</span>
+              <span> Выбери окно и тяни оранжевые ручки по краям</span>
             </div>
             <button className="small-button" onClick={() => rebuildFrames()}>Перестроить рамки</button>
             <button className="small-button" onClick={clearCanvas}>Очистить фото</button>
@@ -645,7 +901,7 @@ export default function App() {
                   fill={settings.borderColor}
                 />
 
-                {frames.map((frame, index) => (
+                {frames.map((frame) => (
                   <CollageFrame
                     key={frame.id}
                     frame={frame}
@@ -654,6 +910,9 @@ export default function App() {
                     borderColor={settings.borderColor}
                     onSelect={() => setSelectedFrameId(frame.id)}
                     onPhotoMove={updateFramePhoto}
+                    onResizeStart={handleResizeStart}
+                    onResizeMove={handleResizeMove}
+                    onResizeEnd={handleResizeEnd}
                   />
                 ))}
 
@@ -677,7 +936,7 @@ export default function App() {
           <div className="panel-title compact">
             <div>
               <h2>Настройки окна</h2>
-              <p>{selectedFrame ? 'Выбрана рамка коллажа' : 'Выбери рамку на холсте'}</p>
+              <p>{selectedFrame ? 'Тяни оранжевые ручки на рамке или правь цифрами' : 'Выбери рамку на холсте'}</p>
             </div>
           </div>
 
@@ -725,7 +984,7 @@ export default function App() {
                     <input type="number" value={selectedFrame.height} onChange={(event) => updateSelectedFrameGeometry('height', event.target.value)} />
                   </label>
                 </div>
-                <p className="hint">Сейчас точная правка рамки через цифры. Следующим шагом сделаем перетягивание разделителей.</p>
+                <p className="hint">Ручки на рамке двигают соседнее окно, чтобы коллаж оставался цельным. Цифры оставила для точной правки.</p>
               </div>
 
               <div className="inspector-block">
@@ -755,7 +1014,7 @@ export default function App() {
             </>
           ) : (
             <div className="empty-state small-empty">
-              <p>Нажми на любое окно коллажа, чтобы настроить фото, масштаб и положение рамки.</p>
+              <p>Нажми на любое окно коллажа, чтобы настроить фото, масштаб и форму рамки.</p>
             </div>
           )}
         </aside>
