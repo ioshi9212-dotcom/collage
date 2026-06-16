@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 
-const STORAGE_KEY = 'collage-creator-album-v3';
+const STORAGE_KEY = 'collage-creator-album-v4';
 const MIN_FRAME_SIZE = 80;
+const SPREAD_GAP = 90;
 
 const CANVAS_PRESETS = [
   { id: 'a5-portrait', label: 'A5 вертикальный', width: 1480, height: 2100 },
@@ -120,6 +121,7 @@ function getCoverRect(image, frame, photo) {
   const height = image.height * coverScale;
   const baseX = (frame.width - width) / 2;
   const baseY = (frame.height - height) / 2;
+
   return {
     x: baseX + (photo?.offsetX ?? 0),
     y: baseY + (photo?.offsetY ?? 0),
@@ -143,6 +145,7 @@ function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onP
         active = false;
       };
     }
+
     loadImage(photo.src)
       .then((loadedImage) => {
         if (active) setImage(loadedImage);
@@ -150,6 +153,7 @@ function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onP
       .catch(() => {
         if (active) setImage(null);
       });
+
     return () => {
       active = false;
     };
@@ -216,9 +220,76 @@ function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onP
   );
 }
 
+function PageLayer({ page, pageIndex, x, canvas, settings, isActive, selectedFrameId, libraryIsEmpty, onFrameSelect, onPhotoMove }) {
+  if (!page) {
+    return (
+      <Group x={x} y={0}>
+        <Rect width={canvas.width} height={canvas.height} fill="#f7eee7" stroke="#ddc8b8" strokeWidth={4} dash={[28, 18]} />
+        <Text
+          x={0}
+          y={canvas.height / 2 - 30}
+          width={canvas.width}
+          align="center"
+          text="Нет страницы\nДобавь лист в панели порядка"
+          fontSize={46}
+          fill="#b49a87"
+          lineHeight={1.3}
+        />
+      </Group>
+    );
+  }
+
+  return (
+    <Group x={x} y={0}>
+      <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
+      <Rect
+        x={settings.padding}
+        y={settings.padding}
+        width={Math.max(0, canvas.width - settings.padding * 2)}
+        height={Math.max(0, canvas.height - settings.padding * 2)}
+        fill={settings.borderColor}
+      />
+
+      <Text
+        x={28}
+        y={24}
+        text={`Лист ${pageIndex + 1}`}
+        fontSize={34}
+        fill={isActive ? '#c27b4f' : '#b49a87'}
+        fontStyle="bold"
+      />
+
+      {page.frames.map((frame) => (
+        <CollageFrame
+          key={frame.id}
+          frame={frame}
+          selected={isActive && frame.id === selectedFrameId}
+          borderWidth={settings.borderWidth}
+          borderColor={settings.borderColor}
+          onSelect={() => onFrameSelect(page.id, frame.id)}
+          onPhotoMove={(frameId, patch) => onPhotoMove(page.id, frameId, patch)}
+        />
+      ))}
+
+      {libraryIsEmpty && (
+        <Text
+          x={0}
+          y={canvas.height / 2 - 28}
+          width={canvas.width}
+          align="center"
+          text="Загрузи фото слева, затем нажми фото и рамку"
+          fontSize={Math.max(26, Math.min(56, canvas.width / 24))}
+          fill="#b7a99d"
+        />
+      )}
+    </Group>
+  );
+}
+
 function createInitialAlbum() {
   const firstPage = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 1);
-  return { pages: [firstPage], currentPageId: firstPage.id };
+  const secondPage = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 2);
+  return { pages: [firstPage, secondPage], currentPageId: firstPage.id };
 }
 
 export default function App() {
@@ -230,12 +301,23 @@ export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
+  const [viewMode, setViewMode] = useState('spread');
   const [notice, setNotice] = useState('');
 
   const pages = album.pages;
   const currentPageIndex = Math.max(0, pages.findIndex((page) => page.id === album.currentPageId));
   const currentPage = pages[currentPageIndex] ?? pages[0];
   const frames = currentPage?.frames ?? [];
+  const spreadStartIndex = currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1;
+  const isSpreadMode = viewMode === 'spread';
+  const visibleEntries = isSpreadMode
+    ? [
+        { page: pages[spreadStartIndex], pageIndex: spreadStartIndex, x: 0 },
+        { page: pages[spreadStartIndex + 1], pageIndex: spreadStartIndex + 1, x: canvas.width + SPREAD_GAP },
+      ]
+    : [{ page: currentPage, pageIndex: currentPageIndex, x: 0 }];
+  const stageWidth = isSpreadMode ? canvas.width * 2 + SPREAD_GAP : canvas.width;
+  const stageHeight = canvas.height;
 
   const selectedFrame = useMemo(
     () => frames.find((frame) => frame.id === selectedFrameId) ?? null,
@@ -253,15 +335,21 @@ export default function App() {
     showNotice.timer = window.setTimeout(() => setNotice(''), 2600);
   }
 
-  function updateCurrentFrames(updater) {
+  function setCurrentPage(pageId) {
+    setAlbum((current) => ({ ...current, currentPageId: pageId }));
+  }
+
+  function updatePageFrames(pageId, updater) {
     setAlbum((current) => ({
       ...current,
       pages: current.pages.map((page) =>
-        page.id === current.currentPageId
-          ? { ...page, frames: typeof updater === 'function' ? updater(page.frames) : updater }
-          : page
+        page.id === pageId ? { ...page, frames: typeof updater === 'function' ? updater(page.frames) : updater } : page
       ),
     }));
+  }
+
+  function updateCurrentFrames(updater) {
+    updatePageFrames(album.currentPageId, updater);
   }
 
   function rebuildFrames(nextCanvas = canvas, nextSettings = settings) {
@@ -270,10 +358,21 @@ export default function App() {
     setSelectedPhotoId(null);
   }
 
+  function rebuildAllPages(nextCanvas = canvas, nextSettings = settings) {
+    setAlbum((current) => ({
+      ...current,
+      pages: current.pages.map((page) => ({
+        ...page,
+        frames: createFrames(nextCanvas, nextSettings, page.frames),
+      })),
+    }));
+    setSelectedFrameId(null);
+  }
+
   function updateSetting(key, value) {
     const nextSettings = { ...settings, [key]: value };
     setSettings(nextSettings);
-    rebuildFrames(canvas, nextSettings);
+    rebuildAllPages(canvas, nextSettings);
   }
 
   function updateCanvasSize(width, height, presetId = settings.presetId) {
@@ -284,14 +383,7 @@ export default function App() {
     const nextSettings = { ...settings, presetId };
     setCanvas(nextCanvas);
     setSettings(nextSettings);
-    setAlbum((current) => ({
-      ...current,
-      pages: current.pages.map((page) => ({
-        ...page,
-        frames: createFrames(nextCanvas, nextSettings, page.frames),
-      })),
-    }));
-    setSelectedFrameId(null);
+    rebuildAllPages(nextCanvas, nextSettings);
   }
 
   function handlePresetChange(event) {
@@ -314,8 +406,8 @@ export default function App() {
     showNotice('Фото загружены. Нажми фото, потом нужную рамку.');
   }
 
-  function putPhotoIntoFrame(frameId, photo) {
-    updateCurrentFrames((currentFrames) =>
+  function putPhotoIntoFrame(pageId, frameId, photo) {
+    updatePageFrames(pageId, (currentFrames) =>
       currentFrames.map((frame) =>
         frame.id === frameId
           ? {
@@ -332,6 +424,7 @@ export default function App() {
           : frame
       )
     );
+    setCurrentPage(pageId);
     setSelectedFrameId(frameId);
   }
 
@@ -340,14 +433,29 @@ export default function App() {
     showNotice('Фото выбрано. Теперь нажми рамку на странице.');
   }
 
-  function handleFrameSelect(frameId) {
+  function handleFrameSelect(pageId, frameId) {
     if (selectedPhoto) {
-      putPhotoIntoFrame(frameId, selectedPhoto);
+      putPhotoIntoFrame(pageId, frameId, selectedPhoto);
       setSelectedPhotoId(null);
       showNotice('Фото вставлено в рамку');
       return;
     }
+    setCurrentPage(pageId);
     setSelectedFrameId(frameId);
+  }
+
+  function findDropTarget(point) {
+    for (const entry of visibleEntries) {
+      if (!entry.page) continue;
+      const localX = point.x - entry.x;
+      const localY = point.y;
+      if (localX < 0 || localX > canvas.width || localY < 0 || localY > canvas.height) continue;
+      const frame = entry.page.frames.find(
+        (item) => localX >= item.x && localX <= item.x + item.width && localY >= item.y && localY <= item.y + item.height
+      );
+      if (frame) return { pageId: entry.page.id, frameId: frame.id };
+    }
+    return null;
   }
 
   function handleCanvasDrop(event) {
@@ -358,19 +466,17 @@ export default function App() {
     stageRef.current.setPointersPositions(event);
     const point = stageRef.current.getPointerPosition();
     if (!point) return;
-    const targetFrame = frames.find(
-      (frame) => point.x >= frame.x && point.x <= frame.x + frame.width && point.y >= frame.y && point.y <= frame.y + frame.height
-    );
-    if (!targetFrame) {
+    const target = findDropTarget(point);
+    if (!target) {
       showNotice('Перетащи фото прямо в нужную рамку');
       return;
     }
-    putPhotoIntoFrame(targetFrame.id, photo);
+    putPhotoIntoFrame(target.pageId, target.frameId, photo);
     setSelectedPhotoId(null);
   }
 
-  function updateFramePhoto(frameId, patch) {
-    updateCurrentFrames((currentFrames) =>
+  function updateFramePhoto(pageId, frameId, patch) {
+    updatePageFrames(pageId, (currentFrames) =>
       currentFrames.map((frame) =>
         frame.id === frameId && frame.photo ? { ...frame, photo: { ...frame.photo, ...patch } } : frame
       )
@@ -398,7 +504,7 @@ export default function App() {
 
   function resetSelectedPhoto() {
     if (!selectedFrame?.photo) return;
-    updateFramePhoto(selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 });
+    updateFramePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 });
   }
 
   function clearCanvas() {
@@ -416,7 +522,13 @@ export default function App() {
 
   function addPage() {
     const page = createPage(canvas, settings, pages.length + 1);
-    setAlbum((current) => ({ ...current, pages: [...current.pages, page], currentPageId: page.id }));
+    setAlbum((current) => {
+      const index = current.pages.findIndex((item) => item.id === current.currentPageId);
+      const nextPages = [...current.pages];
+      nextPages.splice(index + 1, 0, page);
+      return { ...current, pages: nextPages, currentPageId: page.id };
+    });
+    setViewMode('spread');
     setSelectedFrameId(null);
     setSelectedPhotoId(null);
     showNotice('Добавлена новая страница');
@@ -431,6 +543,7 @@ export default function App() {
       nextPages.splice(index + 1, 0, page);
       return { ...current, pages: nextPages, currentPageId: page.id };
     });
+    setViewMode('spread');
     setSelectedFrameId(null);
     showNotice('Страница скопирована');
   }
@@ -461,14 +574,23 @@ export default function App() {
     });
   }
 
+  function goToSpread(direction) {
+    const nextIndex = direction === 'next'
+      ? Math.min(pages.length - 1, spreadStartIndex + 2)
+      : Math.max(0, spreadStartIndex - 2);
+    selectPage(pages[nextIndex]?.id ?? pages[0].id);
+    setViewMode('spread');
+  }
+
   function createProject() {
     return {
-      version: 3,
+      version: 4,
       canvas,
       settings,
       library,
       pages,
       currentPageId: album.currentPageId,
+      viewMode,
       savedAt: new Date().toISOString(),
     };
   }
@@ -486,10 +608,8 @@ export default function App() {
         frames: Array.isArray(page.frames) ? page.frames : createFrames(nextCanvas, nextSettings),
       }));
     }
-    if (Array.isArray(project.frames)) {
-      return [createPage(nextCanvas, nextSettings, 1, project.frames)];
-    }
-    return [createPage(nextCanvas, nextSettings, 1)];
+    if (Array.isArray(project.frames)) return [createPage(nextCanvas, nextSettings, 1, project.frames)];
+    return [createPage(nextCanvas, nextSettings, 1), createPage(nextCanvas, nextSettings, 2)];
   }
 
   function loadProject() {
@@ -510,6 +630,7 @@ export default function App() {
         pages: nextPages,
         currentPageId: nextPages.some((page) => page.id === project.currentPageId) ? project.currentPageId : nextPages[0].id,
       });
+      setViewMode(project.viewMode === 'single' ? 'single' : 'spread');
       setSelectedFrameId(null);
       setSelectedPhotoId(null);
       showNotice('Альбом загружен');
@@ -536,6 +657,7 @@ export default function App() {
         setSettings(nextSettings);
         setLibrary(Array.isArray(project.library) ? project.library : []);
         setAlbum({ pages: nextPages, currentPageId: nextPages[0].id });
+        setViewMode(project.viewMode === 'single' ? 'single' : 'spread');
         setSelectedFrameId(null);
         setSelectedPhotoId(null);
         showNotice('JSON-альбом открыт');
@@ -555,7 +677,9 @@ export default function App() {
       if (!uri) return;
       const link = document.createElement('a');
       link.href = uri;
-      link.download = `collage-page-${currentPageIndex + 1}.png`;
+      link.download = isSpreadMode
+        ? `collage-spread-${spreadStartIndex + 1}-${Math.min(spreadStartIndex + 2, pages.length)}.png`
+        : `collage-page-${currentPageIndex + 1}.png`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -626,7 +750,11 @@ export default function App() {
       <section className="album-bar">
         <div className="album-head">
           <strong>Страницы альбома</strong>
-          <span>{currentPageIndex + 1} из {pages.length}</span>
+          <span>{isSpreadMode ? `Разворот ${spreadStartIndex + 1}–${Math.min(spreadStartIndex + 2, pages.length)}` : `Лист ${currentPageIndex + 1} из ${pages.length}`}</span>
+        </div>
+        <div className="view-switch">
+          <button className={`small-button ${!isSpreadMode ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Лист</button>
+          <button className={`small-button ${isSpreadMode ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Альбом / 2 листа</button>
         </div>
         <div className="album-actions">
           <button className="small-button" onClick={addPage}>+ Страница</button>
@@ -634,6 +762,10 @@ export default function App() {
           <button className="small-button" onClick={() => movePage('left')} disabled={currentPageIndex === 0}>←</button>
           <button className="small-button" onClick={() => movePage('right')} disabled={currentPageIndex === pages.length - 1}>→</button>
           <button className="small-button danger" onClick={deletePage}>Удалить</button>
+        </div>
+        <div className="spread-actions">
+          <button className="small-button" onClick={() => goToSpread('prev')} disabled={spreadStartIndex === 0}>← разворот</button>
+          <button className="small-button" onClick={() => goToSpread('next')} disabled={spreadStartIndex + 2 >= pages.length}>разворот →</button>
         </div>
         <div className="page-strip">
           {pages.map((page, index) => (
@@ -645,6 +777,7 @@ export default function App() {
             >
               <b>{index + 1}</b>
               <span>{page.frames.filter((frame) => frame.photo).length}/{page.frames.length}</span>
+              <small>{index % 2 === 0 ? 'левая' : 'правая'}</small>
             </button>
           ))}
         </div>
@@ -690,21 +823,21 @@ export default function App() {
           )}
         </aside>
 
-        <section className="canvas-area">
+        <section className={`canvas-area ${isSpreadMode ? 'album-mode' : ''}`}>
           <div className="canvas-toolbar">
             <div>
-              <strong>Страница {currentPageIndex + 1} · {canvas.width}×{canvas.height}px</strong>
+              <strong>{isSpreadMode ? `Разворот · листы ${spreadStartIndex + 1}–${Math.min(spreadStartIndex + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong>
               <span>{selectedPhoto ? ' Нажми рамку, чтобы вставить выбранное фото' : ' Выбери окно и настрой его справа'}</span>
             </div>
             <button className="small-button" onClick={() => rebuildFrames()}>Перестроить рамки</button>
             <button className="small-button" onClick={clearCanvas}>Очистить фото</button>
           </div>
 
-          <div className="stage-frame" onDragOver={(event) => event.preventDefault()} onDrop={handleCanvasDrop}>
+          <div className={`stage-frame ${isSpreadMode ? 'album-preview' : ''}`} onDragOver={(event) => event.preventDefault()} onDrop={handleCanvasDrop}>
             <Stage
               ref={stageRef}
-              width={canvas.width}
-              height={canvas.height}
+              width={stageWidth}
+              height={stageHeight}
               onMouseDown={(event) => {
                 if (event.target === event.target.getStage() || event.target.name() === 'background') setSelectedFrameId(null);
               }}
@@ -713,36 +846,21 @@ export default function App() {
               }}
             >
               <Layer>
-                <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
-                <Rect
-                  x={settings.padding}
-                  y={settings.padding}
-                  width={Math.max(0, canvas.width - settings.padding * 2)}
-                  height={Math.max(0, canvas.height - settings.padding * 2)}
-                  fill={settings.borderColor}
-                />
-                {frames.map((frame) => (
-                  <CollageFrame
-                    key={frame.id}
-                    frame={frame}
-                    selected={frame.id === selectedFrameId}
-                    borderWidth={settings.borderWidth}
-                    borderColor={settings.borderColor}
-                    onSelect={() => handleFrameSelect(frame.id)}
+                {visibleEntries.map((entry) => (
+                  <PageLayer
+                    key={`${entry.page?.id ?? 'empty'}-${entry.pageIndex}`}
+                    page={entry.page}
+                    pageIndex={entry.pageIndex}
+                    x={entry.x}
+                    canvas={canvas}
+                    settings={settings}
+                    isActive={entry.page?.id === album.currentPageId}
+                    selectedFrameId={selectedFrameId}
+                    libraryIsEmpty={library.length === 0}
+                    onFrameSelect={handleFrameSelect}
                     onPhotoMove={updateFramePhoto}
                   />
                 ))}
-                {library.length === 0 && (
-                  <Text
-                    x={0}
-                    y={canvas.height / 2 - 28}
-                    width={canvas.width}
-                    align="center"
-                    text="Загрузи фото слева, затем нажми фото и рамку"
-                    fontSize={Math.max(26, Math.min(56, canvas.width / 24))}
-                    fill="#b7a99d"
-                  />
-                )}
               </Layer>
             </Stage>
           </div>
@@ -786,7 +904,7 @@ export default function App() {
                     <p className="photo-name">{selectedFrame.photo.name}</p>
                     <label className="range-row">
                       <span>Масштаб</span>
-                      <input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updateFramePhoto(selectedFrame.id, { zoom: Number(event.target.value) })} />
+                      <input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updateFramePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} />
                       <b>{selectedFrame.photo.zoom.toFixed(2)}</b>
                     </label>
                     <button className="button full" onClick={resetSelectedPhoto}>Центрировать фото</button>
