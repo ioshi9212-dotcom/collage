@@ -385,7 +385,7 @@ function CollageFrame({ frame, selected, borderWidth, borderColor, onSelect, onP
               y={frame.height / 2 - 22}
               width={Math.max(0, frame.width - 40)}
               align="center"
-              text="Перетащи фото сюда"
+              text="Нажми фото, затем эту рамку"
               fontSize={Math.max(18, Math.min(34, frame.width / 18))}
               fill="#b49a87"
               fontStyle="700"
@@ -455,11 +455,17 @@ export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [frames, setFrames] = useState(() => createFrames(DEFAULT_CANVAS, DEFAULT_SETTINGS));
   const [selectedFrameId, setSelectedFrameId] = useState(null);
+  const [selectedPhotoId, setSelectedPhotoId] = useState(null);
   const [notice, setNotice] = useState('');
 
   const selectedFrame = useMemo(
     () => frames.find((frame) => frame.id === selectedFrameId) ?? null,
     [frames, selectedFrameId]
+  );
+
+  const selectedPhoto = useMemo(
+    () => library.find((photo) => photo.id === selectedPhotoId) ?? null,
+    [library, selectedPhotoId]
   );
 
   function showNotice(text) {
@@ -471,6 +477,7 @@ export default function App() {
   function rebuildFrames(nextCanvas = canvas, nextSettings = settings) {
     setFrames((current) => createFrames(nextCanvas, nextSettings, current));
     setSelectedFrameId(null);
+    setSelectedPhotoId(null);
   }
 
   function updateSetting(key, value) {
@@ -517,7 +524,7 @@ export default function App() {
     });
 
     event.target.value = '';
-    showNotice('Фото загружены. Теперь перетащи их в рамки.');
+    showNotice('Фото загружены. На телефоне: нажми фото, потом нажми рамку.');
   }
 
   function putPhotoIntoFrame(frameId, photo) {
@@ -538,6 +545,22 @@ export default function App() {
           : frame
       )
     );
+    setSelectedFrameId(frameId);
+  }
+
+  function pickPhoto(photo) {
+    setSelectedPhotoId(photo.id);
+    showNotice('Фото выбрано. Теперь нажми нужную рамку на холсте.');
+  }
+
+  function handleFrameSelect(frameId) {
+    if (selectedPhoto) {
+      putPhotoIntoFrame(frameId, selectedPhoto);
+      setSelectedPhotoId(null);
+      showNotice('Фото вставлено в рамку');
+      return;
+    }
+
     setSelectedFrameId(frameId);
   }
 
@@ -563,6 +586,7 @@ export default function App() {
     }
 
     putPhotoIntoFrame(targetFrame.id, photo);
+    setSelectedPhotoId(null);
   }
 
   function updateFramePhoto(frameId, patch) {
@@ -625,9 +649,7 @@ export default function App() {
 
   function removeSelectedPhoto() {
     if (!selectedFrame) return;
-    setFrames((current) =>
-      current.map((frame) => (frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))
-    );
+    setFrames((current) => current.map((frame) => (frame.id === selectedFrame.id ? { ...frame, photo: null } : frame)));
   }
 
   function resetSelectedPhoto() {
@@ -638,6 +660,7 @@ export default function App() {
   function clearCanvas() {
     setFrames((current) => current.map((frame) => ({ ...frame, photo: null })));
     setSelectedFrameId(null);
+    setSelectedPhotoId(null);
     showNotice('Фото убраны из рамок');
   }
 
@@ -671,6 +694,7 @@ export default function App() {
       setLibrary(Array.isArray(project.library) ? project.library : []);
       setFrames(Array.isArray(project.frames) ? project.frames : createFrames(project.canvas ?? DEFAULT_CANVAS, project.settings ?? DEFAULT_SETTINGS));
       setSelectedFrameId(null);
+      setSelectedPhotoId(null);
       showNotice('Проект загружен');
     } catch {
       showNotice('Не получилось открыть сохранение');
@@ -696,6 +720,7 @@ export default function App() {
         setLibrary(Array.isArray(project.library) ? project.library : []);
         setFrames(Array.isArray(project.frames) ? project.frames : createFrames(nextCanvas, nextSettings));
         setSelectedFrameId(null);
+        setSelectedPhotoId(null);
         showNotice('JSON-проект открыт');
       } catch {
         showNotice('Файл не похож на проект коллажа');
@@ -707,6 +732,7 @@ export default function App() {
 
   function exportPng() {
     setSelectedFrameId(null);
+    setSelectedPhotoId(null);
     window.requestAnimationFrame(() => {
       const uri = stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: 'image/png' });
       if (!uri) return;
@@ -821,7 +847,7 @@ export default function App() {
           <div className="panel-title">
             <div>
               <h2>Фото</h2>
-              <p>Загрузи сначала фото сюда, потом перетащи в нужную рамку.</p>
+              <p>На компьютере можно перетаскивать. На телефоне: нажми фото, потом нажми рамку.</p>
             </div>
             <span>{library.length}</span>
           </div>
@@ -832,6 +858,12 @@ export default function App() {
             <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} />
           </label>
 
+          {selectedPhoto && (
+            <div className="mobile-pick-hint">
+              Выбрано фото. Теперь нажми рамку на холсте.
+            </div>
+          )}
+
           {library.length === 0 ? (
             <div className="empty-state">
               <p>Пока фото нет. Нажми “Загрузить фото” и добавь изображения для коллажа.</p>
@@ -839,19 +871,21 @@ export default function App() {
           ) : (
             <div className="photo-grid">
               {library.map((photo) => (
-                <div
+                <button
                   key={photo.id}
-                  className="photo-card"
+                  type="button"
+                  className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''}`}
                   draggable
+                  onClick={() => pickPhoto(photo)}
                   onDragStart={(event) => {
                     event.dataTransfer.effectAllowed = 'copy';
                     event.dataTransfer.setData('photo-id', photo.id);
                   }}
-                  title="Перетащи фото в рамку"
+                  title="Нажми фото, потом нажми рамку"
                 >
                   <img src={photo.src} alt={photo.name} draggable="false" />
                   <span>{photo.name}</span>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -861,7 +895,7 @@ export default function App() {
           <div className="canvas-toolbar">
             <div>
               <strong>{canvas.width}×{canvas.height}px</strong>
-              <span> Выбери окно и тяни оранжевые ручки по краям</span>
+              <span>{selectedPhoto ? ' Нажми рамку, чтобы вставить выбранное фото' : ' Выбери окно и тяни оранжевые ручки по краям'}</span>
             </div>
             <button className="small-button" onClick={() => rebuildFrames()}>Перестроить рамки</button>
             <button className="small-button" onClick={clearCanvas}>Очистить фото</button>
@@ -908,7 +942,7 @@ export default function App() {
                     selected={frame.id === selectedFrameId}
                     borderWidth={settings.borderWidth}
                     borderColor={settings.borderColor}
-                    onSelect={() => setSelectedFrameId(frame.id)}
+                    onSelect={() => handleFrameSelect(frame.id)}
                     onPhotoMove={updateFramePhoto}
                     onResizeStart={handleResizeStart}
                     onResizeMove={handleResizeMove}
@@ -922,7 +956,7 @@ export default function App() {
                     y={canvas.height / 2 - 28}
                     width={canvas.width}
                     align="center"
-                    text="Загрузи фото слева, затем перетащи их в рамки"
+                    text="Загрузи фото слева, затем нажми фото и рамку"
                     fontSize={Math.max(26, Math.min(56, canvas.width / 24))}
                     fill="#b7a99d"
                   />
@@ -1008,7 +1042,7 @@ export default function App() {
                     <button className="button full danger-button" onClick={removeSelectedPhoto}>Убрать фото из окна</button>
                   </>
                 ) : (
-                  <p className="hint">Перетащи фото из левой панели в выбранную рамку.</p>
+                  <p className="hint">На телефоне нажми фото слева, потом нажми эту рамку. На компьютере можно перетащить.</p>
                 )}
               </div>
             </>
