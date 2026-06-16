@@ -117,6 +117,18 @@ h1 {
   padding: 14px;
 }
 
+.mobile-pick-hint {
+  margin-bottom: 10px;
+  border: 1px solid rgba(194, 123, 79, 0.35);
+  border-radius: 14px;
+  background: #fff2e8;
+  color: #7a4428;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
 .photo-grid {
   gap: 8px;
   max-height: calc(100vh - 350px);
@@ -124,6 +136,12 @@ h1 {
 
 .photo-card {
   border-radius: 14px;
+  cursor: pointer;
+}
+
+.photo-card.selected-photo-card {
+  outline: 4px solid rgba(194, 123, 79, 0.65);
+  box-shadow: 0 0 0 2px #fff7ef, 0 14px 26px rgba(120, 70, 40, 0.22);
 }
 
 .canvas-area {
