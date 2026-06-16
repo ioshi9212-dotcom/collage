@@ -4,6 +4,13 @@
   --editor-preview-zoom: 0.34;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  overflow-x: hidden;
+}
+
 .app-shell {
   width: min(1360px, 100%);
   padding: 14px 18px;
@@ -67,7 +74,8 @@ h1 {
 
 .three-columns {
   align-items: start;
-  grid-template-columns: 250px minmax(0, 1fr) 270px;
+  grid-template-columns: 250px max-content 270px;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -119,6 +127,8 @@ h1 {
 }
 
 .canvas-area {
+  width: fit-content;
+  max-width: 100%;
   overflow: hidden;
   padding: 12px;
 }
@@ -136,6 +146,8 @@ h1 {
 
 .stage-frame {
   display: block;
+  width: fit-content;
+  max-width: 100%;
   height: calc(100vh - 225px);
   min-height: 520px;
   max-height: none;
@@ -180,35 +192,111 @@ h1 {
 
 @media (max-width: 1280px) {
   :root {
-    --editor-preview-zoom: 0.32;
+    --editor-preview-zoom: 0.31;
   }
 
   .three-columns {
-    grid-template-columns: 230px minmax(0, 1fr);
+    grid-template-columns: 230px max-content;
   }
 
   .inspector {
+    grid-column: 1 / -1;
     max-height: unset;
   }
 }
 
 @media (max-width: 980px) {
   :root {
-    --editor-preview-zoom: 0.3;
+    --editor-preview-zoom: 0.26;
   }
 
   .app-shell {
-    padding: 12px;
+    padding: 10px;
+  }
+
+  .topbar {
+    align-items: stretch;
+  }
+
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .settings-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .three-columns {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .sidebar,
   .canvas-area,
   .inspector {
+    width: 100%;
     max-height: unset;
   }
 
+  .sidebar {
+    order: 1;
+  }
+
+  .canvas-area {
+    order: 2;
+    overflow-x: hidden;
+  }
+
+  .inspector {
+    order: 3;
+  }
+
+  .photo-grid {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    max-height: none;
+    padding: 2px 2px 8px;
+  }
+
+  .photo-card {
+    flex: 0 0 88px;
+  }
+
   .stage-frame {
-    height: 68vh;
-    min-height: 420px;
+    width: 100%;
+    height: 60vh;
+    min-height: 360px;
+    padding: 10px;
+  }
+}
+
+@media (max-width: 620px) {
+  :root {
+    --editor-preview-zoom: 0.2;
+  }
+
+  .app-shell {
+    padding: 8px;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+
+  .topbar-actions,
+  .settings-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .button {
+    width: 100%;
+  }
+
+  .stage-frame {
+    height: 56vh;
+    min-height: 330px;
   }
 }
