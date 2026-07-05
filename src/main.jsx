@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './AppFixed.jsx';
+import App from './AppLive.jsx';
 import './styles.css';
 import './compact.css';
 import './export.css';
