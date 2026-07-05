@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva';
+import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 
-const STORAGE_KEY = 'collage-creator-album-v5';
-const LEGACY_STORAGE_KEYS = ['collage-creator-album-v4'];
+const STORAGE_KEY = 'collage-creator-album-v6';
+const LEGACY_STORAGE_KEYS = ['collage-creator-album-v5', 'collage-creator-album-v4'];
 const MIN_FRAME_SIZE = 80;
 const SPREAD_GAP = 90;
 const EXPORT_PIXEL_RATIO = 2;
@@ -26,6 +26,8 @@ const DEFAULT_SETTINGS = {
   borderColor: '#ffffff',
   showGuides: true,
 };
+
+const imageCache = new Map();
 
 function createId() {
   return globalThis.crypto?.randomUUID?.() ?? `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -63,9 +65,13 @@ function downloadDataUrl(filename, dataUrl) {
 }
 
 function loadImage(src) {
+  if (imageCache.has(src)) return Promise.resolve(imageCache.get(src));
   return new Promise((resolve, reject) => {
     const image = new window.Image();
-    image.onload = () => resolve(image);
+    image.onload = () => {
+      imageCache.set(src, image);
+      resolve(image);
+    };
     image.onerror = reject;
     image.src = src;
   });
@@ -154,10 +160,15 @@ function CollageFrame({
   borderWidth,
   borderColor,
   showEmptyHint,
+  printMode,
+  canvas,
   onSelect,
   onPhotoMove,
+  onFrameChange,
 }) {
   const [image, setImage] = useState(null);
+  const groupRef = useRef(null);
+  const transformerRef = useRef(null);
   const photo = frame.photo;
   const cover = photo ? getCoverRect(image, frame, photo) : null;
 
@@ -183,64 +194,148 @@ function CollageFrame({
     };
   }, [photo?.src]);
 
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    const group = groupRef.current;
+    if (!transformer || !group) return;
+
+    if (selected && !printMode) {
+      transformer.nodes([group]);
+      transformer.getLayer()?.batchDraw();
+    } else {
+      transformer.nodes([]);
+      transformer.getLayer()?.batchDraw();
+    }
+  }, [selected, printMode, frame.x, frame.y, frame.width, frame.height]);
+
+  function commitFrameDrag(event) {
+    if (printMode || !selected) return;
+    onFrameChange(frame.id, {
+      x: Math.round(clampNumber(event.target.x(), 0, Math.max(0, canvas.width - MIN_FRAME_SIZE))),
+      y: Math.round(clampNumber(event.target.y(), 0, Math.max(0, canvas.height - MIN_FRAME_SIZE))),
+    });
+  }
+
+  function commitFrameTransform() {
+    if (printMode || !selected || !groupRef.current) return;
+    const node = groupRef.current;
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+    const nextWidth = clampNumber(Math.round(frame.width * scaleX), MIN_FRAME_SIZE, canvas.width);
+    const nextHeight = clampNumber(Math.round(frame.height * scaleY), MIN_FRAME_SIZE, canvas.height);
+    const nextX = clampNumber(Math.round(node.x()), 0, Math.max(0, canvas.width - MIN_FRAME_SIZE));
+    const nextY = clampNumber(Math.round(node.y()), 0, Math.max(0, canvas.height - MIN_FRAME_SIZE));
+
+    node.scaleX(1);
+    node.scaleY(1);
+
+    onFrameChange(frame.id, {
+      x: nextX,
+      y: nextY,
+      width: nextWidth,
+      height: nextHeight,
+    });
+  }
+
   return (
-    <Group x={frame.x} y={frame.y} onMouseDown={onSelect} onTap={onSelect}>
-      <Group clipX={0} clipY={0} clipWidth={frame.width} clipHeight={frame.height}>
-        <Rect
-          x={0}
-          y={0}
-          width={frame.width}
-          height={frame.height}
-          fill="#fbf7f2"
-          stroke={selected ? '#c27b4f' : borderColor}
-          strokeWidth={selected ? Math.max(5, borderWidth) : borderWidth}
-        />
-
-        {photo && cover && (
-          <KonvaImage
-            image={image}
-            x={cover.x}
-            y={cover.y}
-            width={cover.width}
-            height={cover.height}
-            draggable={selected}
-            onMouseDown={onSelect}
-            onTap={onSelect}
-            onDragEnd={(event) => {
-              onPhotoMove(frame.id, {
-                offsetX: Math.round(event.target.x() - cover.baseX),
-                offsetY: Math.round(event.target.y() - cover.baseY),
-              });
-            }}
+    <>
+      <Group
+        ref={groupRef}
+        x={frame.x}
+        y={frame.y}
+        draggable={!printMode && selected}
+        onMouseDown={onSelect}
+        onTap={onSelect}
+        onDragEnd={commitFrameDrag}
+        onTransformEnd={commitFrameTransform}
+      >
+        <Group clipX={0} clipY={0} clipWidth={frame.width} clipHeight={frame.height}>
+          <Rect
+            x={0}
+            y={0}
+            width={frame.width}
+            height={frame.height}
+            fill="#fbf7f2"
+            stroke={selected && !printMode ? '#c27b4f' : borderColor}
+            strokeWidth={selected && !printMode ? Math.max(5, borderWidth) : borderWidth}
           />
-        )}
 
-        {!photo && showEmptyHint && (
-          <>
-            <Rect
-              x={14}
-              y={14}
-              width={Math.max(0, frame.width - 28)}
-              height={Math.max(0, frame.height - 28)}
-              stroke="#d8c7b9"
-              strokeWidth={2}
-              dash={[14, 10]}
-              cornerRadius={12}
+          {photo && cover && (
+            <KonvaImage
+              image={image}
+              x={cover.x}
+              y={cover.y}
+              width={cover.width}
+              height={cover.height}
+              draggable={!printMode && selected}
+              onMouseDown={onSelect}
+              onTap={onSelect}
+              onDragEnd={(event) => {
+                if (printMode) return;
+                onPhotoMove(frame.id, {
+                  offsetX: Math.round(event.target.x() - cover.baseX),
+                  offsetY: Math.round(event.target.y() - cover.baseY),
+                });
+              }}
             />
-            <Text
-              x={20}
-              y={frame.height / 2 - 22}
-              width={Math.max(0, frame.width - 40)}
-              align="center"
-              text="Нажми фото, затем эту рамку"
-              fontSize={Math.max(18, Math.min(34, frame.width / 18))}
-              fill="#b49a87"
-              fontStyle="700"
-            />
-          </>
-        )}
+          )}
+
+          {!photo && showEmptyHint && (
+            <>
+              <Rect
+                x={14}
+                y={14}
+                width={Math.max(0, frame.width - 28)}
+                height={Math.max(0, frame.height - 28)}
+                stroke="#d8c7b9"
+                strokeWidth={2}
+                dash={[14, 10]}
+                cornerRadius={12}
+              />
+              <Text
+                x={20}
+                y={frame.height / 2 - 22}
+                width={Math.max(0, frame.width - 40)}
+                align="center"
+                text="Нажми фото, затем эту рамку"
+                fontSize={Math.max(18, Math.min(34, frame.width / 18))}
+                fill="#b49a87"
+                fontStyle="700"
+              />
+            </>
+          )}
+        </Group>
       </Group>
-    </Group>
+
+      {selected && !printMode && (
+        <Transformer
+          ref={transformerRef}
+          rotateEnabled={false}
+          keepRatio={false}
+          flipEnabled={false}
+          enabledAnchors={[
+            'top-left',
+            'top-center',
+            'top-right',
+            'middle-left',
+            'middle-right',
+            'bottom-left',
+            'bottom-center',
+            'bottom-right',
+          ]}
+          anchorSize={24}
+          anchorCornerRadius={6}
+          borderStroke="#c27b4f"
+          borderStrokeWidth={3}
+          anchorStroke="#c27b4f"
+          anchorFill="#fff7ef"
+          boundBoxFunc={(oldBox, newBox) => {
+            if (newBox.width < MIN_FRAME_SIZE || newBox.height < MIN_FRAME_SIZE) return oldBox;
+            return newBox;
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -256,6 +351,7 @@ function PageLayer({
   printMode = false,
   onFrameSelect,
   onPhotoMove,
+  onFrameChange,
 }) {
   if (!page) {
     return (
@@ -331,11 +427,16 @@ function PageLayer({
           borderWidth={settings.borderWidth}
           borderColor={settings.borderColor}
           showEmptyHint={!printMode && !frame.photo}
+          printMode={printMode}
+          canvas={canvas}
           onSelect={() => {
             if (!printMode) onFrameSelect(page.id, frame.id);
           }}
           onPhotoMove={(frameId, patch) => {
             if (!printMode) onPhotoMove(page.id, frameId, patch);
+          }}
+          onFrameChange={(frameId, patch) => {
+            if (!printMode) onFrameChange(page.id, frameId, patch);
           }}
         />
       ))}
@@ -381,6 +482,7 @@ export default function App() {
   const currentPage = pages[currentPageIndex] ?? pages[0];
   const frames = currentPage?.frames ?? [];
   const spreadStartIndex = currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1;
+  const spreadEndIndex = Math.min(spreadStartIndex + 1, pages.length - 1);
   const isSpreadMode = viewMode === 'spread';
   const visibleEntries = isSpreadMode
     ? [
@@ -390,7 +492,6 @@ export default function App() {
     : [{ page: currentPage, pageIndex: currentPageIndex, x: 0 }];
   const stageWidth = isSpreadMode ? canvas.width * 2 + SPREAD_GAP : canvas.width;
   const stageHeight = canvas.height;
-  const spreadEndIndex = Math.min(spreadStartIndex + 1, pages.length - 1);
 
   const selectedFrame = useMemo(
     () => frames.find((frame) => frame.id === selectedFrameId) ?? null,
@@ -408,10 +509,6 @@ export default function App() {
     showNotice.timer = window.setTimeout(() => setNotice(''), 2600);
   }
 
-  function setCurrentPage(pageId) {
-    setAlbum((current) => ({ ...current, currentPageId: pageId }));
-  }
-
   function updatePageFrames(pageId, updater) {
     setAlbum((current) => ({
       ...current,
@@ -423,6 +520,12 @@ export default function App() {
 
   function updateCurrentFrames(updater) {
     updatePageFrames(album.currentPageId, updater);
+  }
+
+  function updateFrameShape(pageId, frameId, patch) {
+    updatePageFrames(pageId, (currentFrames) =>
+      currentFrames.map((frame) => (frame.id === frameId ? { ...frame, ...patch } : frame))
+    );
   }
 
   function rebuildFrames(nextCanvas = canvas, nextSettings = settings) {
@@ -498,7 +601,7 @@ export default function App() {
           : frame
       )
     );
-    setCurrentPage(pageId);
+    setAlbum((current) => ({ ...current, currentPageId: pageId }));
     setSelectedFrameId(frameId);
   }
 
@@ -514,7 +617,7 @@ export default function App() {
       showNotice('Фото вставлено в рамку');
       return;
     }
-    setCurrentPage(pageId);
+    setAlbum((current) => ({ ...current, currentPageId: pageId }));
     setSelectedFrameId(frameId);
   }
 
@@ -658,7 +761,7 @@ export default function App() {
 
   function createProject() {
     return {
-      version: 5,
+      version: 6,
       canvas,
       settings,
       library,
@@ -933,7 +1036,7 @@ export default function App() {
           <div className="canvas-toolbar">
             <div>
               <strong>{isSpreadMode ? `Разворот · страницы ${spreadStartIndex + 1}–${Math.min(spreadStartIndex + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong>
-              <span>{selectedPhoto ? ' Нажми рамку, чтобы вставить выбранное фото' : ' Выбери окно и настрой его справа'}</span>
+              <span>{selectedPhoto ? ' Нажми рамку, чтобы вставить выбранное фото' : ' Выбери окно: углы меняют размер, фото внутри можно двигать.'}</span>
               <em>Экспорт: “PNG страницы” сохраняет одну страницу, “PNG разворота” склеивает две страницы в один файл без зазора.</em>
             </div>
             <button className="small-button" onClick={() => rebuildFrames()}>Перестроить рамки</button>
@@ -966,6 +1069,7 @@ export default function App() {
                     libraryIsEmpty={library.length === 0}
                     onFrameSelect={handleFrameSelect}
                     onPhotoMove={updateFramePhoto}
+                    onFrameChange={updateFrameShape}
                   />
                 ))}
                 {isSpreadMode && settings.showGuides && (
@@ -987,7 +1091,7 @@ export default function App() {
           <div className="panel-title compact">
             <div>
               <h2>Настройки окна</h2>
-              <p>{selectedFrame ? 'Правь рамку цифрами или настрой фото внутри' : 'Выбери рамку на холсте'}</p>
+              <p>{selectedFrame ? 'Двигай и растягивай рамку на холсте или правь цифрами' : 'Выбери рамку на холсте'}</p>
             </div>
           </div>
           <div className="inspector-block">
@@ -1012,7 +1116,7 @@ export default function App() {
                   <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => updateSelectedFrameGeometry('width', event.target.value)} /></label>
                   <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => updateSelectedFrameGeometry('height', event.target.value)} /></label>
                 </div>
-                <p className="hint">Каждая страница хранит свои рамки и фото отдельно.</p>
+                <p className="hint">Выбранная рамка теперь имеет ручки по углам и сторонам. Эти ручки не попадают в PNG.</p>
               </div>
               <div className="inspector-block">
                 <h3>Фото внутри окна</h3>
@@ -1053,6 +1157,7 @@ export default function App() {
               printMode
               onFrameSelect={() => {}}
               onPhotoMove={() => {}}
+              onFrameChange={() => {}}
             />
           </Layer>
         </Stage>
@@ -1070,6 +1175,7 @@ export default function App() {
               printMode
               onFrameSelect={() => {}}
               onPhotoMove={() => {}}
+              onFrameChange={() => {}}
             />
             <PageLayer
               page={pages[spreadStartIndex + 1]}
@@ -1083,6 +1189,7 @@ export default function App() {
               printMode
               onFrameSelect={() => {}}
               onPhotoMove={() => {}}
+              onFrameChange={() => {}}
             />
           </Layer>
         </Stage>
