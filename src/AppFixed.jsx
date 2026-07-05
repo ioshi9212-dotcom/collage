@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 
-const STORAGE_KEY = 'collage-creator-album-v10';
+const STORAGE_KEY = 'collage-creator-album-v11';
 const LEGACY_STORAGE_KEYS = [
+  'collage-creator-album-v10',
   'collage-creator-album-v9',
   'collage-creator-album-v8',
   'collage-creator-album-v7',
@@ -43,7 +44,7 @@ function createId() {
 
 function clampNumber(value, min, max) {
   const number = Number(value);
-  if (Number.isNaN(number)) return min;
+  if (!Number.isFinite(number)) return min;
   return Math.min(max, Math.max(min, number));
 }
 
@@ -51,8 +52,21 @@ function padNumber(value) {
   return String(value).padStart(2, '0');
 }
 
-function downloadFile(filename, content, type) {
-  const blob = new Blob([content], { type });
+function loadImage(src) {
+  if (imageCache.has(src)) return Promise.resolve(imageCache.get(src));
+  return new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => {
+      imageCache.set(src, image);
+      resolve(image);
+    };
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+function downloadText(filename, content) {
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -70,19 +84,6 @@ function downloadDataUrl(filename, dataUrl) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-}
-
-function loadImage(src) {
-  if (imageCache.has(src)) return Promise.resolve(imageCache.get(src));
-  return new Promise((resolve, reject) => {
-    const image = new window.Image();
-    image.onload = () => {
-      imageCache.set(src, image);
-      resolve(image);
-    };
-    image.onerror = reject;
-    image.src = src;
-  });
 }
 
 function getLayoutRows(frameCount) {
@@ -143,6 +144,18 @@ function cloneFrames(frames) {
   }));
 }
 
+function clampFrame(frame, canvas) {
+  const width = clampNumber(Math.round(Number(frame.width)), MIN_FRAME_SIZE, canvas.width);
+  const height = clampNumber(Math.round(Number(frame.height)), MIN_FRAME_SIZE, canvas.height);
+  return {
+    ...frame,
+    width,
+    height,
+    x: clampNumber(Math.round(Number(frame.x)), 0, Math.max(0, canvas.width - width)),
+    y: clampNumber(Math.round(Number(frame.y)), 0, Math.max(0, canvas.height - height)),
+  };
+}
+
 function getCoverRect(image, frame, photo) {
   if (!image) return null;
   const zoom = photo?.zoom ?? 1;
@@ -151,7 +164,6 @@ function getCoverRect(image, frame, photo) {
   const height = image.height * coverScale;
   const baseX = (frame.width - width) / 2;
   const baseY = (frame.height - height) / 2;
-
   return {
     x: baseX + (photo?.offsetX ?? 0),
     y: baseY + (photo?.offsetY ?? 0),
@@ -165,149 +177,114 @@ function getCoverRect(image, frame, photo) {
 function clampPhotoPosition(cover, frame, x, y) {
   if (!cover) return { x, y };
   const minX = Math.min(0, frame.width - cover.width);
-  const maxX = 0;
   const minY = Math.min(0, frame.height - cover.height);
-  const maxY = 0;
   return {
-    x: clampNumber(x, minX, maxX),
-    y: clampNumber(y, minY, maxY),
+    x: clampNumber(x, minX, 0),
+    y: clampNumber(y, minY, 0),
   };
 }
 
-function normalizeFrameCandidate(frame, canvas) {
-  const rawWidth = Number(frame.width);
-  const rawHeight = Number(frame.height);
-  if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight)) return null;
-  if (rawWidth < MIN_FRAME_SIZE || rawHeight < MIN_FRAME_SIZE) return null;
-
-  const width = clampNumber(Math.round(rawWidth), MIN_FRAME_SIZE, canvas.width);
-  const height = clampNumber(Math.round(rawHeight), MIN_FRAME_SIZE, canvas.height);
-  return {
-    ...frame,
-    width,
-    height,
-    x: clampNumber(Math.round(frame.x), 0, Math.max(0, canvas.width - width)),
-    y: clampNumber(Math.round(frame.y), 0, Math.max(0, canvas.height - height)),
-  };
+function overlap1d(startA, endA, startB, endB) {
+  return Math.max(0, Math.min(endA, endB) - Math.max(startA, startB));
 }
 
-function clampFrameToCanvas(frame, canvas) {
-  return normalizeFrameCandidate(frame, canvas) ?? {
-    ...frame,
-    width: MIN_FRAME_SIZE,
-    height: MIN_FRAME_SIZE,
-    x: clampNumber(frame.x, 0, Math.max(0, canvas.width - MIN_FRAME_SIZE)),
-    y: clampNumber(frame.y, 0, Math.max(0, canvas.height - MIN_FRAME_SIZE)),
-  };
-}
+function linkedGridChange(frames, changedId, patch, canvas, gap) {
+  const tolerance = Math.max(8, gap / 2 + 6);
+  const source = frames.map((frame) => clampFrame(frame, canvas));
+  const oldFrame = source.find((frame) => frame.id === changedId);
+  if (!oldFrame) return source;
 
-function frameOverlaps(a, b, gap = 0) {
-  return (
-    a.x < b.x + b.width + gap &&
-    a.x + a.width + gap > b.x &&
-    a.y < b.y + b.height + gap &&
-    a.y + a.height + gap > b.y
-  );
-}
+  let next = clampFrame({ ...oldFrame, ...patch }, canvas);
+  let nextLeft = next.x;
+  let nextRight = next.x + next.width;
+  let nextTop = next.y;
+  let nextBottom = next.y + next.height;
 
-function hasCollision(frame, placed, gap) {
-  return placed.some((item) => frameOverlaps(frame, item, gap));
-}
+  const oldLeft = oldFrame.x;
+  const oldRight = oldFrame.x + oldFrame.width;
+  const oldTop = oldFrame.y;
+  const oldBottom = oldFrame.y + oldFrame.height;
 
-function candidateScore(candidate, original) {
-  return (
-    Math.abs(candidate.x - original.x) * 2 +
-    Math.abs(candidate.y - original.y) * 2 +
-    Math.abs(candidate.width - original.width) +
-    Math.abs(candidate.height - original.height)
-  );
-}
+  const movedLeft = Math.abs(nextLeft - oldLeft) > 0.5;
+  const movedRight = Math.abs(nextRight - oldRight) > 0.5;
+  const movedTop = Math.abs(nextTop - oldTop) > 0.5;
+  const movedBottom = Math.abs(nextBottom - oldBottom) > 0.5;
 
-function findFreePosition(frame, placed, canvas, gap) {
-  const original = clampFrameToCanvas(frame, canvas);
-  const originalRight = original.x + original.width;
-  const originalBottom = original.y + original.height;
-  const maxX = Math.max(0, canvas.width - original.width);
-  const maxY = Math.max(0, canvas.height - original.height);
-  const step = Math.max(18, Math.round(Math.min(canvas.width, canvas.height) / 64));
-  const candidates = [original];
+  const neighbors = source.filter((frame) => frame.id !== changedId);
+  const verticalTouch = (frame) => overlap1d(frame.y, frame.y + frame.height, oldTop, oldBottom) > 4;
+  const horizontalTouch = (frame) => overlap1d(frame.x, frame.x + frame.width, oldLeft, oldRight) > 4;
 
-  placed.forEach((blocker) => {
-    const blockerRight = blocker.x + blocker.width;
-    const blockerBottom = blocker.y + blocker.height;
-    const rightX = blockerRight + gap;
-    const leftX = blocker.x - original.width - gap;
-    const belowY = blockerBottom + gap;
-    const aboveY = blocker.y - original.height - gap;
+  const leftNeighbors = neighbors.filter((frame) => verticalTouch(frame) && Math.abs(frame.x + frame.width + gap - oldLeft) <= tolerance);
+  const rightNeighbors = neighbors.filter((frame) => verticalTouch(frame) && Math.abs(frame.x - (oldRight + gap)) <= tolerance);
+  const topNeighbors = neighbors.filter((frame) => horizontalTouch(frame) && Math.abs(frame.y + frame.height + gap - oldTop) <= tolerance);
+  const bottomNeighbors = neighbors.filter((frame) => horizontalTouch(frame) && Math.abs(frame.y - (oldBottom + gap)) <= tolerance);
 
-    candidates.push(
-      { ...original, x: rightX },
-      { ...original, x: leftX },
-      { ...original, y: belowY },
-      { ...original, y: aboveY },
-      { ...original, width: blocker.x - gap - original.x },
-      { ...original, x: rightX, width: originalRight - rightX },
-      { ...original, height: blocker.y - gap - original.y },
-      { ...original, y: belowY, height: originalBottom - belowY },
-      { ...original, x: rightX, width: Math.min(original.width, canvas.width - rightX) },
-      { ...original, y: belowY, height: Math.min(original.height, canvas.height - belowY) },
-      { ...original, x: Math.max(0, blocker.x - original.width - gap), width: Math.min(original.width, blocker.x - gap) },
-      { ...original, y: Math.max(0, blocker.y - original.height - gap), height: Math.min(original.height, blocker.y - gap) }
-    );
-  });
-
-  for (let y = 0; y <= maxY; y += step) {
-    for (let x = 0; x <= maxX; x += step) candidates.push({ ...original, x, y });
+  if (movedLeft && leftNeighbors.length) {
+    const minLeft = Math.max(...leftNeighbors.map((frame) => frame.x + MIN_FRAME_SIZE + gap));
+    nextLeft = Math.max(nextLeft, minLeft);
+  }
+  if (movedRight && rightNeighbors.length) {
+    const maxRight = Math.min(...rightNeighbors.map((frame) => frame.x + frame.width - MIN_FRAME_SIZE - gap));
+    nextRight = Math.min(nextRight, maxRight);
+  }
+  if (movedTop && topNeighbors.length) {
+    const minTop = Math.max(...topNeighbors.map((frame) => frame.y + MIN_FRAME_SIZE + gap));
+    nextTop = Math.max(nextTop, minTop);
+  }
+  if (movedBottom && bottomNeighbors.length) {
+    const maxBottom = Math.min(...bottomNeighbors.map((frame) => frame.y + frame.height - MIN_FRAME_SIZE - gap));
+    nextBottom = Math.min(nextBottom, maxBottom);
   }
 
-  const scaleSteps = [0.85, 0.7, 0.55, 0.4];
-  scaleSteps.forEach((scale) => {
-    const width = Math.max(MIN_FRAME_SIZE, Math.round(original.width * scale));
-    const height = Math.max(MIN_FRAME_SIZE, Math.round(original.height * scale));
-    for (let y = 0; y <= Math.max(0, canvas.height - height); y += step) {
-      for (let x = 0; x <= Math.max(0, canvas.width - width); x += step) candidates.push({ ...original, x, y, width, height });
+  if (nextRight - nextLeft < MIN_FRAME_SIZE) {
+    if (movedLeft && !movedRight) nextLeft = nextRight - MIN_FRAME_SIZE;
+    else nextRight = nextLeft + MIN_FRAME_SIZE;
+  }
+  if (nextBottom - nextTop < MIN_FRAME_SIZE) {
+    if (movedTop && !movedBottom) nextTop = nextBottom - MIN_FRAME_SIZE;
+    else nextBottom = nextTop + MIN_FRAME_SIZE;
+  }
+
+  next = clampFrame({ ...next, x: nextLeft, y: nextTop, width: nextRight - nextLeft, height: nextBottom - nextTop }, canvas);
+  nextLeft = next.x;
+  nextRight = next.x + next.width;
+  nextTop = next.y;
+  nextBottom = next.y + next.height;
+
+  const updated = new Map([[changedId, next]]);
+
+  neighbors.forEach((frame) => {
+    let item = { ...frame };
+    if (movedLeft && leftNeighbors.some((neighbor) => neighbor.id === frame.id)) {
+      const right = nextLeft - gap;
+      item.width = Math.max(MIN_FRAME_SIZE, right - item.x);
     }
+    if (movedRight && rightNeighbors.some((neighbor) => neighbor.id === frame.id)) {
+      const right = item.x + item.width;
+      item.x = nextRight + gap;
+      item.width = Math.max(MIN_FRAME_SIZE, right - item.x);
+    }
+    if (movedTop && topNeighbors.some((neighbor) => neighbor.id === frame.id)) {
+      const bottom = nextTop - gap;
+      item.height = Math.max(MIN_FRAME_SIZE, bottom - item.y);
+    }
+    if (movedBottom && bottomNeighbors.some((neighbor) => neighbor.id === frame.id)) {
+      const bottom = item.y + item.height;
+      item.y = nextBottom + gap;
+      item.height = Math.max(MIN_FRAME_SIZE, bottom - item.y);
+    }
+    updated.set(frame.id, clampFrame(item, canvas));
   });
 
-  candidates.push(
-    { ...original, x: maxX, y: maxY },
-    { ...original, x: 0, y: maxY },
-    { ...original, x: maxX, y: 0 }
-  );
-
-  const free = candidates
-    .map((candidate) => normalizeFrameCandidate(candidate, canvas))
-    .filter(Boolean)
-    .filter((candidate, index, list) => list.findIndex((item) => item.x === candidate.x && item.y === candidate.y && item.width === candidate.width && item.height === candidate.height) === index)
-    .filter((candidate) => !hasCollision(candidate, placed, gap))
-    .sort((a, b) => candidateScore(a, original) - candidateScore(b, original))[0];
-
-  return free ?? original;
+  return source.map((frame) => updated.get(frame.id) ?? frame);
 }
 
-function reflowLockedFrames(frames, changedId, patch, canvas, gap) {
-  const source = frames.map((frame) => clampFrameToCanvas(frame, canvas));
-  const sourceChanged = source.find((frame) => frame.id === changedId) ?? source[0];
-  if (!sourceChanged) return source;
-
-  const changed = clampFrameToCanvas({ ...sourceChanged, ...patch }, canvas);
-  const map = new Map([[changed.id, changed]]);
-  const placed = [changed];
-  const rest = source
-    .filter((frame) => frame.id !== changed.id)
-    .sort((a, b) => {
-      const aOverlap = frameOverlaps(changed, a, gap) ? 0 : 1;
-      const bOverlap = frameOverlaps(changed, b, gap) ? 0 : 1;
-      return aOverlap - bOverlap || a.y - b.y || a.x - b.x;
-    });
-
-  rest.forEach((frame) => {
-    const placedFrame = findFreePosition(frame, placed, canvas, gap);
-    placed.push(placedFrame);
-    map.set(frame.id, placedFrame);
+function normalizeLinkedGrid(frames, canvas, gap) {
+  let normalized = frames.map((frame) => clampFrame(frame, canvas));
+  normalized.forEach((frame) => {
+    normalized = linkedGridChange(normalized, frame.id, {}, canvas, gap);
   });
-
-  return source.map((frame) => map.get(frame.id) ?? frame);
+  return normalized;
 }
 
 function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showEmptyHint, printMode, canvas, onSelect, onPhotoMove, onFrameChange }) {
@@ -346,17 +323,9 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
     transformerRef.current.getLayer()?.batchDraw();
   }, [selected, printMode, frame.x, frame.y, frame.width, frame.height]);
 
-  function commitDrag(event) {
-    if (printMode || !selected || photo) return;
-    onFrameChange(frame.id, {
-      x: event.target.x(),
-      y: event.target.y(),
-    });
-  }
-
-  function commitTransform() {
-    if (printMode || !selected || !groupRef.current) return;
+  function readNodeTransform() {
     const node = groupRef.current;
+    if (!node) return null;
     const next = {
       x: node.x(),
       y: node.y(),
@@ -365,7 +334,29 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
     };
     node.scaleX(1);
     node.scaleY(1);
-    onFrameChange(frame.id, next);
+    return next;
+  }
+
+  function commitTransform() {
+    if (printMode || !selected) return;
+    const next = readNodeTransform();
+    if (next) onFrameChange(frame.id, next);
+  }
+
+  function commitLiveTransform() {
+    if (!locked || printMode || !selected) return;
+    const next = readNodeTransform();
+    if (next) onFrameChange(frame.id, next);
+  }
+
+  function commitFrameDrag(event) {
+    if (printMode || !selected || photo) return;
+    onFrameChange(frame.id, { x: event.target.x(), y: event.target.y() });
+  }
+
+  function commitLiveFrameDrag(event) {
+    if (!locked || printMode || !selected || photo) return;
+    onFrameChange(frame.id, { x: event.target.x(), y: event.target.y() });
   }
 
   function selectFromPhoto(event) {
@@ -375,6 +366,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
 
   function clampDraggedPhoto(event) {
     if (!cover) return;
+    event.cancelBubble = true;
     const next = clampPhotoPosition(cover, frame, event.target.x(), event.target.y());
     event.target.x(next.x);
     event.target.y(next.y);
@@ -401,7 +393,9 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
         draggable={canDragFrame}
         onMouseDown={onSelect}
         onTap={onSelect}
-        onDragEnd={commitDrag}
+        onDragMove={commitLiveFrameDrag}
+        onDragEnd={commitFrameDrag}
+        onTransform={commitLiveTransform}
         onTransformEnd={commitTransform}
       >
         <Group clipX={0} clipY={0} clipWidth={frame.width} clipHeight={frame.height}>
@@ -411,11 +405,10 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
             width={frame.width}
             height={frame.height}
             fill="#fbf7f2"
-            stroke={selected && !printMode ? '#c27b4f' : borderColor}
+            stroke={selected && !printMode ? (locked ? '#2f7d52' : '#c27b4f') : borderColor}
             strokeWidth={selected && !printMode ? Math.max(5, borderWidth) : borderWidth}
             strokeScaleEnabled={false}
           />
-
           {photo && cover && (
             <KonvaImage
               image={image}
@@ -433,7 +426,6 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
               onDragEnd={commitPhotoDrag}
             />
           )}
-
           {!photo && showEmptyHint && (
             <Rect
               x={14}
@@ -449,7 +441,6 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
           )}
         </Group>
       </Group>
-
       {selected && !printMode && (
         <Transformer
           ref={transformerRef}
@@ -457,7 +448,16 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
           keepRatio={false}
           flipEnabled={false}
           ignoreStroke
-          enabledAnchors={['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']}
+          enabledAnchors={[
+            'top-left',
+            'top-center',
+            'top-right',
+            'middle-left',
+            'middle-right',
+            'bottom-left',
+            'bottom-center',
+            'bottom-right',
+          ]}
           anchorSize={locked ? 30 : 24}
           anchorCornerRadius={6}
           borderStroke={locked ? '#2f7d52' : '#c27b4f'}
@@ -479,14 +479,13 @@ function PageLayer({ page, pageIndex, x, canvas, settings, isActive, selectedFra
     return (
       <Group x={x} y={0}>
         <Rect width={canvas.width} height={canvas.height} fill={settings.borderColor} />
-        {!printMode && <Rect width={canvas.width} height={canvas.height} fill="#f7eee7" stroke="#ddc8b8" strokeWidth={4} dash={[28, 18]} strokeScaleEnabled={false} />}
       </Group>
     );
   }
 
+  const locked = settings.frameMode === 'locked';
   const showGuides = !printMode && settings.showGuides;
   const safePadding = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
-  const locked = settings.frameMode === 'locked';
 
   return (
     <Group x={x} y={0}>
@@ -507,7 +506,7 @@ function PageLayer({ page, pageIndex, x, canvas, settings, isActive, selectedFra
           <Text
             x={safePadding + 16}
             y={safePadding + 16}
-            text={locked ? 'фиксация сетки' : 'поля / безопасная зона'}
+            text={locked ? 'связанные окна / постоянный зазор' : 'поля / безопасная зона'}
             fontSize={28}
             fill={locked ? '#2f7d52' : '#c27b4f'}
             opacity={0.62}
@@ -595,7 +594,7 @@ export default function App() {
   function showNotice(text) {
     setNotice(text);
     window.clearTimeout(showNotice.timer);
-    showNotice.timer = window.setTimeout(() => setNotice(''), 2600);
+    showNotice.timer = window.setTimeout(() => setNotice(''), 2400);
   }
 
   function updatePageFrames(pageId, updater) {
@@ -611,8 +610,8 @@ export default function App() {
 
   function updateFrameShape(pageId, frameId, patch) {
     updatePageFrames(pageId, (currentFrames) => {
-      if (settings.frameMode === 'locked') return reflowLockedFrames(currentFrames, frameId, patch, canvas, Math.max(0, settings.gap));
-      return currentFrames.map((frame) => (frame.id === frameId ? clampFrameToCanvas({ ...frame, ...patch }, canvas) : frame));
+      if (settings.frameMode === 'locked') return linkedGridChange(currentFrames, frameId, patch, canvas, Math.max(0, settings.gap));
+      return currentFrames.map((frame) => (frame.id === frameId ? clampFrame({ ...frame, ...patch }, canvas) : frame));
     });
   }
 
@@ -633,9 +632,11 @@ export default function App() {
   function updateSetting(key, value) {
     const nextSettings = { ...settings, [key]: value };
     setSettings(nextSettings);
-    if (key === 'showGuides' || key === 'frameMode') {
-      if (key === 'frameMode' && value === 'locked') {
-        updateCurrentFrames((currentFrames) => reflowLockedFrames(currentFrames, selectedFrameId ?? currentFrames[0]?.id, {}, canvas, Math.max(0, settings.gap)));
+    if (key === 'showGuides') return;
+    if (key === 'frameMode') {
+      if (value === 'locked') {
+        updateCurrentFrames((currentFrames) => normalizeLinkedGrid(currentFrames, canvas, Math.max(0, settings.gap)));
+        showNotice('Фиксация включена: тяни границу — соседнее окно меняется сразу.');
       }
       return;
     }
@@ -657,7 +658,6 @@ export default function App() {
 
   function handlePhotoUpload(event) {
     const files = Array.from(event.target.files ?? []);
-    if (!files.length) return;
     files.forEach((file) => {
       if (!file.type.startsWith('image/')) return;
       const reader = new FileReader();
@@ -665,7 +665,6 @@ export default function App() {
       reader.readAsDataURL(file);
     });
     event.target.value = '';
-    showNotice('Фото загружены. Нажми фото, потом нужную рамку.');
   }
 
   function clearPhotoLibrary() {
@@ -695,7 +694,6 @@ export default function App() {
     if (selectedPhoto) {
       putPhotoIntoFrame(pageId, frameId, selectedPhoto);
       setSelectedPhotoId(null);
-      showNotice('Фото вставлено в рамку');
       return;
     }
     setAlbum((current) => ({ ...current, currentPageId: pageId }));
@@ -722,12 +720,7 @@ export default function App() {
     stageRef.current.setPointersPositions(event);
     const point = stageRef.current.getPointerPosition();
     const target = point ? findDropTarget(point) : null;
-    if (!target) {
-      showNotice('Перетащи фото прямо в нужную рамку');
-      return;
-    }
-    putPhotoIntoFrame(target.pageId, target.frameId, photo);
-    setSelectedPhotoId(null);
+    if (target) putPhotoIntoFrame(target.pageId, target.frameId, photo);
   }
 
   function updateFramePhoto(pageId, frameId, patch) {
@@ -753,7 +746,6 @@ export default function App() {
     updateCurrentFrames((currentFrames) => currentFrames.map((frame) => ({ ...frame, photo: null })));
     setSelectedFrameId(null);
     setSelectedPhotoId(null);
-    showNotice('Фото убраны с текущей страницы');
   }
 
   function selectPage(pageId) {
@@ -772,8 +764,6 @@ export default function App() {
     });
     setViewMode('spread');
     setSelectedFrameId(null);
-    setSelectedPhotoId(null);
-    showNotice('Добавлена новая страница');
   }
 
   function duplicatePage() {
@@ -786,15 +776,10 @@ export default function App() {
       return { ...current, pages: nextPages, currentPageId: page.id };
     });
     setViewMode('spread');
-    setSelectedFrameId(null);
-    showNotice('Страница скопирована');
   }
 
   function deletePage() {
-    if (pages.length <= 1) {
-      showNotice('Нельзя удалить единственную страницу');
-      return;
-    }
+    if (pages.length <= 1) return;
     setAlbum((current) => {
       const index = current.pages.findIndex((page) => page.id === current.currentPageId);
       const nextPages = current.pages.filter((page) => page.id !== current.currentPageId);
@@ -802,7 +787,6 @@ export default function App() {
       return { pages: nextPages, currentPageId: nextCurrent.id };
     });
     setSelectedFrameId(null);
-    showNotice('Страница удалена');
   }
 
   function movePage(direction) {
@@ -823,7 +807,7 @@ export default function App() {
   }
 
   function createProject() {
-    return { version: 10, canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 11, canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function saveProject() {
@@ -855,10 +839,7 @@ export default function App() {
 
   function loadProject() {
     const raw = readSavedProject();
-    if (!raw) {
-      showNotice('Сохранённого проекта пока нет');
-      return;
-    }
+    if (!raw) return showNotice('Сохранённого проекта пока нет');
     try {
       const project = JSON.parse(raw);
       const nextCanvas = project.canvas ?? DEFAULT_CANVAS;
@@ -871,14 +852,13 @@ export default function App() {
       setViewMode(project.viewMode === 'single' ? 'single' : 'spread');
       setSelectedFrameId(null);
       setSelectedPhotoId(null);
-      showNotice('Альбом загружен');
     } catch {
       showNotice('Не получилось открыть сохранение');
     }
   }
 
   function exportJson() {
-    downloadFile('collage-album-project.json', JSON.stringify(createProject(), null, 2), 'application/json;charset=utf-8');
+    downloadText('collage-album-project.json', JSON.stringify(createProject(), null, 2));
   }
 
   function importJson(event) {
@@ -898,7 +878,6 @@ export default function App() {
         setViewMode(project.viewMode === 'single' ? 'single' : 'spread');
         setSelectedFrameId(null);
         setSelectedPhotoId(null);
-        showNotice('JSON-альбом открыт');
       } catch {
         showNotice('Файл не похож на проект коллажа');
       }
@@ -913,10 +892,7 @@ export default function App() {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         const uri = stageRefToExport.current?.toDataURL({ pixelRatio: EXPORT_PIXEL_RATIO, mimeType: 'image/png' });
-        if (!uri) {
-          showNotice('Не получилось собрать PNG');
-          return;
-        }
+        if (!uri) return showNotice('Не получилось собрать PNG');
         downloadDataUrl(filename, uri);
         showNotice(successText);
       });
@@ -925,13 +901,13 @@ export default function App() {
 
   function exportCurrentPagePng() {
     const pageNumber = currentPageIndex + 1;
-    exportFromStage(printPageStageRef, `collage-page-${padNumber(pageNumber)}.png`, `Скачана страница ${pageNumber} без служебных надписей`);
+    exportFromStage(printPageStageRef, `collage-page-${padNumber(pageNumber)}.png`, `Скачана страница ${pageNumber}`);
   }
 
   function exportSpreadPng() {
     const first = spreadStartIndex + 1;
     const second = spreadEndIndex + 1;
-    exportFromStage(printSpreadStageRef, `collage-spread-${padNumber(first)}-${padNumber(second)}.png`, `Скачан склеенный разворот ${first}–${second} без зазора`);
+    exportFromStage(printSpreadStageRef, `collage-spread-${padNumber(first)}-${padNumber(second)}.png`, `Скачан разворот ${first}–${second}`);
   }
 
   useEffect(() => {
@@ -1028,7 +1004,7 @@ export default function App() {
           ) : (
             <div className="photo-grid">
               {library.map((photo) => (
-                <button key={photo.id} type="button" className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''}`} draggable onClick={() => pickPhoto(photo)} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }} title="Нажми фото, потом нажми рамку">
+                <button key={photo.id} type="button" className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''}`} draggable onClick={() => pickPhoto(photo)} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }}>
                   <img src={photo.src} alt={photo.name} draggable="false" />
                   <span>{photo.name}</span>
                 </button>
@@ -1041,7 +1017,7 @@ export default function App() {
           <div className="canvas-toolbar">
             <div>
               <strong>{isSpreadMode ? `Разворот · страницы ${spreadStartIndex + 1}–${Math.min(spreadStartIndex + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong>
-              <span>{locked ? 'Фиксация: соседние окна после отпускания не только двигаются, но и сжимаются, чтобы убрать наложения.' : 'Свободные рамки: пустые окна можно двигать, заполненные окна кадрируются перетаскиванием фото.'}</span>
+              <span>{locked ? 'Фиксация: тяни границу окна — соседнее окно сразу сжимается/расширяется, зазор остаётся постоянным.' : 'Свободные рамки: пустые окна можно двигать, заполненные окна кадрируются перетаскиванием фото.'}</span>
               <em>Экспорт: “PNG страницы” сохраняет одну страницу, “PNG разворота” склеивает две страницы в один файл без зазора.</em>
             </div>
             <button className="small-button" onClick={() => rebuildFrames()}>Перестроить рамки</button>
@@ -1061,7 +1037,7 @@ export default function App() {
         </section>
 
         <aside className="inspector">
-          <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? 'Растягивай рамку за углы. Фото внутри двигай мышкой в пределах окна.' : 'Выбери рамку на холсте'}</p></div></div>
+          <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? 'Тяни рамку за углы или стороны. Фото внутри двигай мышкой.' : 'Выбери рамку на холсте'}</p></div></div>
           <div className="inspector-block">
             <h3>Цвет и рамка</h3>
             <label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label>
@@ -1078,7 +1054,7 @@ export default function App() {
                   <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => updateSelectedFrameGeometry('width', event.target.value)} /></label>
                   <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => updateSelectedFrameGeometry('height', event.target.value)} /></label>
                 </div>
-                <p className="hint">Режим сейчас: {locked ? 'фиксация — соседние окна могут сжиматься и переставляться после отпускания' : selectedFrame.photo ? 'фото внутри окна двигается, рамка с фото двигается цифрами' : 'пустую рамку можно двигать мышкой'}.</p>
+                <p className="hint">Режим: {locked ? 'фиксация — общие границы меняются сразу, зазор постоянный' : selectedFrame.photo ? 'кадрирование фото внутри окна' : 'свободное окно можно двигать мышкой'}.</p>
               </div>
               <div className="inspector-block">
                 <h3>Фото внутри окна</h3>
