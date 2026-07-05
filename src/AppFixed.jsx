@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 
-const STORAGE_KEY = 'collage-creator-album-v9';
+const STORAGE_KEY = 'collage-creator-album-v10';
 const LEGACY_STORAGE_KEYS = [
+  'collage-creator-album-v9',
   'collage-creator-album-v8',
   'collage-creator-album-v7',
   'collage-creator-album-v6',
@@ -173,15 +174,30 @@ function clampPhotoPosition(cover, frame, x, y) {
   };
 }
 
-function clampFrameToCanvas(frame, canvas) {
-  const width = clampNumber(Math.round(frame.width), MIN_FRAME_SIZE, canvas.width);
-  const height = clampNumber(Math.round(frame.height), MIN_FRAME_SIZE, canvas.height);
+function normalizeFrameCandidate(frame, canvas) {
+  const rawWidth = Number(frame.width);
+  const rawHeight = Number(frame.height);
+  if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight)) return null;
+  if (rawWidth < MIN_FRAME_SIZE || rawHeight < MIN_FRAME_SIZE) return null;
+
+  const width = clampNumber(Math.round(rawWidth), MIN_FRAME_SIZE, canvas.width);
+  const height = clampNumber(Math.round(rawHeight), MIN_FRAME_SIZE, canvas.height);
   return {
     ...frame,
     width,
     height,
     x: clampNumber(Math.round(frame.x), 0, Math.max(0, canvas.width - width)),
     y: clampNumber(Math.round(frame.y), 0, Math.max(0, canvas.height - height)),
+  };
+}
+
+function clampFrameToCanvas(frame, canvas) {
+  return normalizeFrameCandidate(frame, canvas) ?? {
+    ...frame,
+    width: MIN_FRAME_SIZE,
+    height: MIN_FRAME_SIZE,
+    x: clampNumber(frame.x, 0, Math.max(0, canvas.width - MIN_FRAME_SIZE)),
+    y: clampNumber(frame.y, 0, Math.max(0, canvas.height - MIN_FRAME_SIZE)),
   };
 }
 
@@ -198,34 +214,74 @@ function hasCollision(frame, placed, gap) {
   return placed.some((item) => frameOverlaps(frame, item, gap));
 }
 
+function candidateScore(candidate, original) {
+  return (
+    Math.abs(candidate.x - original.x) * 2 +
+    Math.abs(candidate.y - original.y) * 2 +
+    Math.abs(candidate.width - original.width) +
+    Math.abs(candidate.height - original.height)
+  );
+}
+
 function findFreePosition(frame, placed, canvas, gap) {
   const original = clampFrameToCanvas(frame, canvas);
+  const originalRight = original.x + original.width;
+  const originalBottom = original.y + original.height;
   const maxX = Math.max(0, canvas.width - original.width);
   const maxY = Math.max(0, canvas.height - original.height);
-  const step = Math.max(16, Math.round(Math.min(canvas.width, canvas.height) / 70));
+  const step = Math.max(18, Math.round(Math.min(canvas.width, canvas.height) / 64));
   const candidates = [original];
 
   placed.forEach((blocker) => {
+    const blockerRight = blocker.x + blocker.width;
+    const blockerBottom = blocker.y + blocker.height;
+    const rightX = blockerRight + gap;
+    const leftX = blocker.x - original.width - gap;
+    const belowY = blockerBottom + gap;
+    const aboveY = blocker.y - original.height - gap;
+
     candidates.push(
-      { ...original, x: blocker.x + blocker.width + gap, y: original.y },
-      { ...original, x: blocker.x - original.width - gap, y: original.y },
-      { ...original, x: original.x, y: blocker.y + blocker.height + gap },
-      { ...original, x: original.x, y: blocker.y - original.height - gap },
-      { ...original, x: blocker.x, y: blocker.y + blocker.height + gap },
-      { ...original, x: blocker.x + blocker.width + gap, y: blocker.y }
+      { ...original, x: rightX },
+      { ...original, x: leftX },
+      { ...original, y: belowY },
+      { ...original, y: aboveY },
+      { ...original, width: blocker.x - gap - original.x },
+      { ...original, x: rightX, width: originalRight - rightX },
+      { ...original, height: blocker.y - gap - original.y },
+      { ...original, y: belowY, height: originalBottom - belowY },
+      { ...original, x: rightX, width: Math.min(original.width, canvas.width - rightX) },
+      { ...original, y: belowY, height: Math.min(original.height, canvas.height - belowY) },
+      { ...original, x: Math.max(0, blocker.x - original.width - gap), width: Math.min(original.width, blocker.x - gap) },
+      { ...original, y: Math.max(0, blocker.y - original.height - gap), height: Math.min(original.height, blocker.y - gap) }
     );
   });
 
   for (let y = 0; y <= maxY; y += step) {
     for (let x = 0; x <= maxX; x += step) candidates.push({ ...original, x, y });
   }
-  candidates.push({ ...original, x: maxX, y: maxY }, { ...original, x: 0, y: maxY }, { ...original, x: maxX, y: 0 });
 
-  const sorted = candidates
-    .map((candidate) => clampFrameToCanvas(candidate, canvas))
-    .sort((a, b) => Math.abs(a.x - original.x) + Math.abs(a.y - original.y) - (Math.abs(b.x - original.x) + Math.abs(b.y - original.y)));
+  const scaleSteps = [0.85, 0.7, 0.55, 0.4];
+  scaleSteps.forEach((scale) => {
+    const width = Math.max(MIN_FRAME_SIZE, Math.round(original.width * scale));
+    const height = Math.max(MIN_FRAME_SIZE, Math.round(original.height * scale));
+    for (let y = 0; y <= Math.max(0, canvas.height - height); y += step) {
+      for (let x = 0; x <= Math.max(0, canvas.width - width); x += step) candidates.push({ ...original, x, y, width, height });
+    }
+  });
 
-  const free = sorted.find((candidate) => !hasCollision(candidate, placed, gap));
+  candidates.push(
+    { ...original, x: maxX, y: maxY },
+    { ...original, x: 0, y: maxY },
+    { ...original, x: maxX, y: 0 }
+  );
+
+  const free = candidates
+    .map((candidate) => normalizeFrameCandidate(candidate, canvas))
+    .filter(Boolean)
+    .filter((candidate, index, list) => list.findIndex((item) => item.x === candidate.x && item.y === candidate.y && item.width === candidate.width && item.height === candidate.height) === index)
+    .filter((candidate) => !hasCollision(candidate, placed, gap))
+    .sort((a, b) => candidateScore(a, original) - candidateScore(b, original))[0];
+
   return free ?? original;
 }
 
@@ -233,12 +289,17 @@ function reflowLockedFrames(frames, changedId, patch, canvas, gap) {
   const source = frames.map((frame) => clampFrameToCanvas(frame, canvas));
   const sourceChanged = source.find((frame) => frame.id === changedId) ?? source[0];
   if (!sourceChanged) return source;
+
   const changed = clampFrameToCanvas({ ...sourceChanged, ...patch }, canvas);
   const map = new Map([[changed.id, changed]]);
   const placed = [changed];
   const rest = source
     .filter((frame) => frame.id !== changed.id)
-    .sort((a, b) => a.y - b.y || a.x - b.x);
+    .sort((a, b) => {
+      const aOverlap = frameOverlaps(changed, a, gap) ? 0 : 1;
+      const bOverlap = frameOverlaps(changed, b, gap) ? 0 : 1;
+      return aOverlap - bOverlap || a.y - b.y || a.x - b.x;
+    });
 
   rest.forEach((frame) => {
     const placedFrame = findFreePosition(frame, placed, canvas, gap);
@@ -762,7 +823,7 @@ export default function App() {
   }
 
   function createProject() {
-    return { version: 9, canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 10, canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function saveProject() {
@@ -943,7 +1004,7 @@ export default function App() {
           <button className="small-button" onClick={() => goToSpread('prev')} disabled={spreadStartIndex === 0}>← разворот</button>
           <button className="small-button" onClick={() => goToSpread('next')} disabled={spreadStartIndex + 2 >= pages.length}>разворот →</button>
           <button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button>
-          <button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Фиксация сетки: вкл' : 'Свободные рамки'}</button>
+          <button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Фиксация: включена' : 'Включить фиксацию'}</button>
         </div>
         <div className="page-strip">
           {pages.map((page, index) => (
@@ -980,7 +1041,7 @@ export default function App() {
           <div className="canvas-toolbar">
             <div>
               <strong>{isSpreadMode ? `Разворот · страницы ${spreadStartIndex + 1}–${Math.min(spreadStartIndex + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong>
-              <span>{locked ? 'Фиксация сетки: после отпускания рамки соседние окна переставляются в свободные места.' : 'Свободные рамки: пустые окна можно двигать, заполненные окна кадрируются перетаскиванием фото.'}</span>
+              <span>{locked ? 'Фиксация: соседние окна после отпускания не только двигаются, но и сжимаются, чтобы убрать наложения.' : 'Свободные рамки: пустые окна можно двигать, заполненные окна кадрируются перетаскиванием фото.'}</span>
               <em>Экспорт: “PNG страницы” сохраняет одну страницу, “PNG разворота” склеивает две страницы в один файл без зазора.</em>
             </div>
             <button className="small-button" onClick={() => rebuildFrames()}>Перестроить рамки</button>
@@ -1017,7 +1078,7 @@ export default function App() {
                   <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => updateSelectedFrameGeometry('width', event.target.value)} /></label>
                   <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => updateSelectedFrameGeometry('height', event.target.value)} /></label>
                 </div>
-                <p className="hint">Режим сейчас: {locked ? 'фиксация сетки — соседние окна переставляются после отпускания' : selectedFrame.photo ? 'фото внутри окна двигается, рамка с фото двигается цифрами' : 'пустую рамку можно двигать мышкой'}.</p>
+                <p className="hint">Режим сейчас: {locked ? 'фиксация — соседние окна могут сжиматься и переставляться после отпускания' : selectedFrame.photo ? 'фото внутри окна двигается, рамка с фото двигается цифрами' : 'пустую рамку можно двигать мышкой'}.</p>
               </div>
               <div className="inspector-block">
                 <h3>Фото внутри окна</h3>
