@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 
-const STORAGE_KEY = 'collage-creator-album-v6';
-const LEGACY_STORAGE_KEYS = ['collage-creator-album-v5', 'collage-creator-album-v4'];
+const STORAGE_KEY = 'collage-creator-album-v7';
+const LEGACY_STORAGE_KEYS = ['collage-creator-album-v6', 'collage-creator-album-v5', 'collage-creator-album-v4'];
 const MIN_FRAME_SIZE = 80;
 const SPREAD_GAP = 90;
 const EXPORT_PIXEL_RATIO = 2;
@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS = {
   borderWidth: 0,
   borderColor: '#ffffff',
   showGuides: true,
+  frameMode: 'free',
 };
 
 const imageCache = new Map();
@@ -154,6 +155,76 @@ function getCoverRect(image, frame, photo) {
   };
 }
 
+function frameOverlaps(a, b, gap = 0) {
+  return (
+    a.x < b.x + b.width + gap &&
+    a.x + a.width + gap > b.x &&
+    a.y < b.y + b.height + gap &&
+    a.y + a.height + gap > b.y
+  );
+}
+
+function clampFrameToCanvas(frame, canvas) {
+  const width = clampNumber(frame.width, MIN_FRAME_SIZE, canvas.width);
+  const height = clampNumber(frame.height, MIN_FRAME_SIZE, canvas.height);
+  return {
+    ...frame,
+    width,
+    height,
+    x: clampNumber(frame.x, 0, Math.max(0, canvas.width - width)),
+    y: clampNumber(frame.y, 0, Math.max(0, canvas.height - height)),
+  };
+}
+
+function pickBestMove(mover, blocker, canvas, gap) {
+  const candidates = [
+    { x: blocker.x + blocker.width + gap, y: mover.y },
+    { x: blocker.x - mover.width - gap, y: mover.y },
+    { x: mover.x, y: blocker.y + blocker.height + gap },
+    { x: mover.x, y: blocker.y - mover.height - gap },
+  ]
+    .map((candidate) => clampFrameToCanvas({ ...mover, ...candidate }, canvas))
+    .map((candidate) => ({
+      frame: candidate,
+      distance: Math.abs(candidate.x - mover.x) + Math.abs(candidate.y - mover.y),
+      stillOverlaps: frameOverlaps(candidate, blocker, gap),
+    }))
+    .sort((a, b) => Number(a.stillOverlaps) - Number(b.stillOverlaps) || a.distance - b.distance);
+
+  return candidates[0]?.frame ?? mover;
+}
+
+function resolveFrameOverlaps(frames, changedId, canvas, gap) {
+  let resolved = frames.map((frame) => clampFrameToCanvas(frame, canvas));
+
+  for (let pass = 0; pass < 36; pass += 1) {
+    let moved = false;
+
+    for (let i = 0; i < resolved.length; i += 1) {
+      for (let j = i + 1; j < resolved.length; j += 1) {
+        const first = resolved[i];
+        const second = resolved[j];
+        if (!frameOverlaps(first, second, gap)) continue;
+
+        const moverIndex = first.id === changedId ? j : second.id === changedId ? i : j;
+        const blockerIndex = moverIndex === i ? j : i;
+        const mover = resolved[moverIndex];
+        const blocker = resolved[blockerIndex];
+        const nextMover = pickBestMove(mover, blocker, canvas, gap);
+
+        if (nextMover.x !== mover.x || nextMover.y !== mover.y) {
+          resolved[moverIndex] = nextMover;
+          moved = true;
+        }
+      }
+    }
+
+    if (!moved) break;
+  }
+
+  return resolved.map((frame) => clampFrameToCanvas(frame, canvas));
+}
+
 function CollageFrame({
   frame,
   selected,
@@ -258,6 +329,7 @@ function CollageFrame({
             fill="#fbf7f2"
             stroke={selected && !printMode ? '#c27b4f' : borderColor}
             strokeWidth={selected && !printMode ? Math.max(5, borderWidth) : borderWidth}
+            strokeScaleEnabled={false}
           />
 
           {photo && cover && (
@@ -281,28 +353,17 @@ function CollageFrame({
           )}
 
           {!photo && showEmptyHint && (
-            <>
-              <Rect
-                x={14}
-                y={14}
-                width={Math.max(0, frame.width - 28)}
-                height={Math.max(0, frame.height - 28)}
-                stroke="#d8c7b9"
-                strokeWidth={2}
-                dash={[14, 10]}
-                cornerRadius={12}
-              />
-              <Text
-                x={20}
-                y={frame.height / 2 - 22}
-                width={Math.max(0, frame.width - 40)}
-                align="center"
-                text="Нажми фото, затем эту рамку"
-                fontSize={Math.max(18, Math.min(34, frame.width / 18))}
-                fill="#b49a87"
-                fontStyle="700"
-              />
-            </>
+            <Rect
+              x={14}
+              y={14}
+              width={Math.max(0, frame.width - 28)}
+              height={Math.max(0, frame.height - 28)}
+              stroke="#d8c7b9"
+              strokeWidth={2}
+              strokeScaleEnabled={false}
+              dash={[14, 10]}
+              cornerRadius={12}
+            />
           )}
         </Group>
       </Group>
@@ -313,6 +374,7 @@ function CollageFrame({
           rotateEnabled={false}
           keepRatio={false}
           flipEnabled={false}
+          ignoreStroke
           enabledAnchors={[
             'top-left',
             'top-center',
@@ -347,7 +409,6 @@ function PageLayer({
   settings,
   isActive,
   selectedFrameId,
-  libraryIsEmpty,
   printMode = false,
   onFrameSelect,
   onPhotoMove,
@@ -359,7 +420,7 @@ function PageLayer({
         <Rect width={canvas.width} height={canvas.height} fill={settings.borderColor} />
         {!printMode && (
           <>
-            <Rect width={canvas.width} height={canvas.height} fill="#f7eee7" stroke="#ddc8b8" strokeWidth={4} dash={[28, 18]} />
+            <Rect width={canvas.width} height={canvas.height} fill="#f7eee7" stroke="#ddc8b8" strokeWidth={4} dash={[28, 18]} strokeScaleEnabled={false} />
             <Text
               x={0}
               y={canvas.height / 2 - 30}
@@ -392,6 +453,7 @@ function PageLayer({
             height={Math.max(0, canvas.height - safePadding * 2)}
             stroke="#c27b4f"
             strokeWidth={2}
+            strokeScaleEnabled={false}
             dash={[18, 14]}
             listening={false}
           />
@@ -440,19 +502,6 @@ function PageLayer({
           }}
         />
       ))}
-
-      {!printMode && libraryIsEmpty && (
-        <Text
-          x={0}
-          y={canvas.height / 2 - 28}
-          width={canvas.width}
-          align="center"
-          text="Загрузи фото слева, затем нажми фото и рамку"
-          fontSize={Math.max(26, Math.min(56, canvas.width / 24))}
-          fill="#b7a99d"
-          listening={false}
-        />
-      )}
     </Group>
   );
 }
@@ -484,6 +533,7 @@ export default function App() {
   const spreadStartIndex = currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1;
   const spreadEndIndex = Math.min(spreadStartIndex + 1, pages.length - 1);
   const isSpreadMode = viewMode === 'spread';
+  const frameModeIsLocked = settings.frameMode === 'locked';
   const visibleEntries = isSpreadMode
     ? [
         { page: pages[spreadStartIndex], pageIndex: spreadStartIndex, x: 0 },
@@ -523,9 +573,11 @@ export default function App() {
   }
 
   function updateFrameShape(pageId, frameId, patch) {
-    updatePageFrames(pageId, (currentFrames) =>
-      currentFrames.map((frame) => (frame.id === frameId ? { ...frame, ...patch } : frame))
-    );
+    updatePageFrames(pageId, (currentFrames) => {
+      const nextFrames = currentFrames.map((frame) => (frame.id === frameId ? { ...frame, ...patch } : frame));
+      if (settings.frameMode !== 'locked') return nextFrames.map((frame) => clampFrameToCanvas(frame, canvas));
+      return resolveFrameOverlaps(nextFrames, frameId, canvas, Math.max(0, settings.gap));
+    });
   }
 
   function rebuildFrames(nextCanvas = canvas, nextSettings = settings) {
@@ -548,7 +600,7 @@ export default function App() {
   function updateSetting(key, value) {
     const nextSettings = { ...settings, [key]: value };
     setSettings(nextSettings);
-    if (key === 'showGuides') return;
+    if (key === 'showGuides' || key === 'frameMode') return;
     rebuildAllPages(canvas, nextSettings);
   }
 
@@ -581,6 +633,12 @@ export default function App() {
     });
     event.target.value = '';
     showNotice('Фото загружены. Нажми фото, потом нужную рамку.');
+  }
+
+  function clearPhotoLibrary() {
+    setLibrary([]);
+    setSelectedPhotoId(null);
+    showNotice('Список фото слева очищен. Фото на страницах остались.');
   }
 
   function putPhotoIntoFrame(pageId, frameId, photo) {
@@ -662,16 +720,18 @@ export default function App() {
 
   function updateSelectedFrameGeometry(key, value) {
     if (!selectedFrame) return;
-    updateCurrentFrames((currentFrames) =>
-      currentFrames.map((frame) => {
+    updateCurrentFrames((currentFrames) => {
+      const nextFrames = currentFrames.map((frame) => {
         if (frame.id !== selectedFrame.id) return frame;
         const maxForKey = key === 'x' || key === 'width' ? canvas.width : canvas.height;
         return {
           ...frame,
           [key]: clampNumber(value, key === 'width' || key === 'height' ? MIN_FRAME_SIZE : 0, maxForKey),
         };
-      })
-    );
+      });
+      if (settings.frameMode !== 'locked') return nextFrames.map((frame) => clampFrameToCanvas(frame, canvas));
+      return resolveFrameOverlaps(nextFrames, selectedFrame.id, canvas, Math.max(0, settings.gap));
+    });
   }
 
   function removeSelectedPhoto() {
@@ -761,7 +821,7 @@ export default function App() {
 
   function createProject() {
     return {
-      version: 6,
+      version: 7,
       canvas,
       settings,
       library,
@@ -975,6 +1035,9 @@ export default function App() {
           <button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>
             {settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}
           </button>
+          <button className={`small-button ${frameModeIsLocked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', frameModeIsLocked ? 'free' : 'locked')}>
+            {frameModeIsLocked ? 'Фиксация сетки: вкл' : 'Свободные рамки'}
+          </button>
         </div>
         <div className="page-strip">
           {pages.map((page, index) => (
@@ -1006,6 +1069,7 @@ export default function App() {
             <small>Можно сразу несколько</small>
             <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} />
           </label>
+          <button className="button full" onClick={clearPhotoLibrary} disabled={library.length === 0}>Очистить список фото</button>
           {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
           {library.length === 0 ? (
             <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото” и добавь изображения для коллажа.</p></div>
@@ -1036,7 +1100,7 @@ export default function App() {
           <div className="canvas-toolbar">
             <div>
               <strong>{isSpreadMode ? `Разворот · страницы ${spreadStartIndex + 1}–${Math.min(spreadStartIndex + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong>
-              <span>{selectedPhoto ? ' Нажми рамку, чтобы вставить выбранное фото' : ' Выбери окно: углы меняют размер, фото внутри можно двигать.'}</span>
+              <span>{frameModeIsLocked ? 'Фиксация сетки: рамки отталкиваются и стараются не накладываться.' : 'Свободные рамки: можно двигать, растягивать и накладывать окна.'}</span>
               <em>Экспорт: “PNG страницы” сохраняет одну страницу, “PNG разворота” склеивает две страницы в один файл без зазора.</em>
             </div>
             <button className="small-button" onClick={() => rebuildFrames()}>Перестроить рамки</button>
@@ -1066,7 +1130,6 @@ export default function App() {
                     settings={settings}
                     isActive={entry.page?.id === album.currentPageId}
                     selectedFrameId={selectedFrameId}
-                    libraryIsEmpty={library.length === 0}
                     onFrameSelect={handleFrameSelect}
                     onPhotoMove={updateFramePhoto}
                     onFrameChange={updateFrameShape}
@@ -1116,7 +1179,7 @@ export default function App() {
                   <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => updateSelectedFrameGeometry('width', event.target.value)} /></label>
                   <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => updateSelectedFrameGeometry('height', event.target.value)} /></label>
                 </div>
-                <p className="hint">Выбранная рамка теперь имеет ручки по углам и сторонам. Эти ручки не попадают в PNG.</p>
+                <p className="hint">Режим сейчас: {frameModeIsLocked ? 'фиксация сетки — соседние окна отталкиваются' : 'свободные рамки — можно накладывать'}.</p>
               </div>
               <div className="inspector-block">
                 <h3>Фото внутри окна</h3>
@@ -1153,7 +1216,6 @@ export default function App() {
               settings={settings}
               isActive={false}
               selectedFrameId={null}
-              libraryIsEmpty={false}
               printMode
               onFrameSelect={() => {}}
               onPhotoMove={() => {}}
@@ -1171,7 +1233,6 @@ export default function App() {
               settings={settings}
               isActive={false}
               selectedFrameId={null}
-              libraryIsEmpty={false}
               printMode
               onFrameSelect={() => {}}
               onPhotoMove={() => {}}
@@ -1185,7 +1246,6 @@ export default function App() {
               settings={settings}
               isActive={false}
               selectedFrameId={null}
-              libraryIsEmpty={false}
               printMode
               onFrameSelect={() => {}}
               onPhotoMove={() => {}}
