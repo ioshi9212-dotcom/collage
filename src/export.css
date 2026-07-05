@@ -1,0 +1,25 @@
+.export-stage-holder {
+  position: fixed;
+  left: -100000px;
+  top: -100000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.canvas-toolbar em {
+  display: block;
+  margin-top: 4px;
+  color: #8a7568;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.topbar-actions .accent {
+  white-space: nowrap;
+}
