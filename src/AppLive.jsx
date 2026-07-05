@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 
-const STORAGE_KEY = 'collage-creator-album-live-v1';
+const STORAGE_KEY = 'collage-creator-album-live-v2';
 const LEGACY_KEYS = [
+  'collage-creator-album-live-v1',
+  'collage-creator-album-v11',
   'collage-creator-album-v10',
   'collage-creator-album-v9',
   'collage-creator-album-v8',
@@ -14,6 +16,7 @@ const LEGACY_KEYS = [
 const MIN_FRAME = 80;
 const SPREAD_GAP = 90;
 const EXPORT_RATIO = 2;
+const HANDLE = 22;
 
 const PRESETS = [
   { id: 'a5-portrait', label: 'A5 вертикальный', width: 1480, height: 2100 },
@@ -64,7 +67,7 @@ function downloadDataUrl(filename, dataUrl) {
 function downloadText(filename, text) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }));
   downloadDataUrl(filename, url);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function loadImage(src) {
@@ -129,6 +132,18 @@ function cloneFrames(frames) {
   return frames.map((frame, index) => ({ ...frame, id: `frame_${index + 1}`, photo: frame.photo ? { ...frame.photo } : null }));
 }
 
+function cleanFrame(frame, canvas) {
+  const width = clamp(Math.round(Number(frame.width)), MIN_FRAME, canvas.width);
+  const height = clamp(Math.round(Number(frame.height)), MIN_FRAME, canvas.height);
+  return {
+    ...frame,
+    width,
+    height,
+    x: clamp(Math.round(Number(frame.x)), 0, Math.max(0, canvas.width - width)),
+    y: clamp(Math.round(Number(frame.y)), 0, Math.max(0, canvas.height - height)),
+  };
+}
+
 function coverRect(image, frame, photo) {
   if (!image || !photo) return null;
   const zoom = photo.zoom ?? 1;
@@ -155,109 +170,72 @@ function clampPhoto(rect, frame, x, y) {
   };
 }
 
-function cleanFrame(frame, canvas) {
-  const width = clamp(Math.round(frame.width), MIN_FRAME, canvas.width);
-  const height = clamp(Math.round(frame.height), MIN_FRAME, canvas.height);
-  return {
-    ...frame,
-    width,
-    height,
-    x: clamp(Math.round(frame.x), 0, Math.max(0, canvas.width - width)),
-    y: clamp(Math.round(frame.y), 0, Math.max(0, canvas.height - height)),
-  };
+function overlap(startA, endA, startB, endB) {
+  return Math.max(0, Math.min(endA, endB) - Math.max(startA, startB));
 }
 
-function validFrame(frame, canvas) {
-  const width = Number(frame.width);
-  const height = Number(frame.height);
-  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
-  if (width < MIN_FRAME || height < MIN_FRAME) return null;
-  return cleanFrame(frame, canvas);
-}
-
-function overlaps(a, b, gap = 0) {
-  return a.x < b.x + b.width + gap && a.x + a.width + gap > b.x && a.y < b.y + b.height + gap && a.y + a.height + gap > b.y;
-}
-
-function collides(frame, placed, gap) {
-  return placed.some((item) => overlaps(frame, item, gap));
-}
-
-function score(candidate, original) {
-  return Math.abs(candidate.x - original.x) * 2 + Math.abs(candidate.y - original.y) * 2 + Math.abs(candidate.width - original.width) + Math.abs(candidate.height - original.height);
-}
-
-function findFree(frame, placed, canvas, gap) {
-  const original = cleanFrame(frame, canvas);
-  const step = Math.max(18, Math.round(Math.min(canvas.width, canvas.height) / 64));
-  const candidates = [original];
-  const right = original.x + original.width;
-  const bottom = original.y + original.height;
-
-  placed.forEach((blocker) => {
-    const blockerRight = blocker.x + blocker.width;
-    const blockerBottom = blocker.y + blocker.height;
-    const rightX = blockerRight + gap;
-    const belowY = blockerBottom + gap;
-    candidates.push(
-      { ...original, x: rightX },
-      { ...original, x: blocker.x - original.width - gap },
-      { ...original, y: belowY },
-      { ...original, y: blocker.y - original.height - gap },
-      { ...original, width: blocker.x - gap - original.x },
-      { ...original, x: rightX, width: right - rightX },
-      { ...original, height: blocker.y - gap - original.y },
-      { ...original, y: belowY, height: bottom - belowY },
-      { ...original, x: rightX, width: Math.min(original.width, canvas.width - rightX) },
-      { ...original, y: belowY, height: Math.min(original.height, canvas.height - belowY) }
-    );
-  });
-
-  for (let y = 0; y <= canvas.height - MIN_FRAME; y += step) {
-    for (let x = 0; x <= canvas.width - MIN_FRAME; x += step) candidates.push({ ...original, x, y });
-  }
-
-  [0.85, 0.7, 0.55, 0.4].forEach((scale) => {
-    const width = Math.max(MIN_FRAME, Math.round(original.width * scale));
-    const height = Math.max(MIN_FRAME, Math.round(original.height * scale));
-    for (let y = 0; y <= canvas.height - height; y += step) {
-      for (let x = 0; x <= canvas.width - width; x += step) candidates.push({ ...original, x, y, width, height });
-    }
-  });
-
-  const free = candidates
-    .map((candidate) => validFrame(candidate, canvas))
-    .filter(Boolean)
-    .filter((candidate, index, list) => list.findIndex((item) => item.x === candidate.x && item.y === candidate.y && item.width === candidate.width && item.height === candidate.height) === index)
-    .filter((candidate) => !collides(candidate, placed, gap))
-    .sort((a, b) => score(a, original) - score(b, original))[0];
-
-  return free ?? original;
-}
-
-function reflowLocked(frames, changedId, patch, canvas, gap) {
-  const source = frames.map((frame) => cleanFrame(frame, canvas));
-  const sourceChanged = source.find((frame) => frame.id === changedId) ?? source[0];
-  if (!sourceChanged) return source;
-
-  const changed = cleanFrame({ ...sourceChanged, ...patch }, canvas);
-  const placed = [changed];
-  const byId = new Map([[changed.id, changed]]);
-  const rest = source
-    .filter((frame) => frame.id !== changed.id)
-    .sort((a, b) => {
-      const ao = overlaps(changed, a, gap) ? 0 : 1;
-      const bo = overlaps(changed, b, gap) ? 0 : 1;
-      return ao - bo || a.y - b.y || a.x - b.x;
+function verticalPairs(frames, gap) {
+  const tol = Math.max(4, gap / 2 + 4);
+  const pairs = [];
+  frames.forEach((left) => {
+    frames.forEach((right) => {
+      if (left.id === right.id) return;
+      if (Math.abs(left.x + left.width + gap - right.x) > tol) return;
+      const y1 = Math.max(left.y, right.y);
+      const y2 = Math.min(left.y + left.height, right.y + right.height);
+      if (y2 - y1 < MIN_FRAME / 2) return;
+      pairs.push({ leftId: left.id, rightId: right.id, center: left.x + left.width + gap / 2, y: y1, height: y2 - y1 });
     });
-
-  rest.forEach((frame) => {
-    const next = findFree(frame, placed, canvas, gap);
-    placed.push(next);
-    byId.set(frame.id, next);
   });
+  return pairs;
+}
 
-  return source.map((frame) => byId.get(frame.id) ?? frame);
+function horizontalPairs(frames, gap) {
+  const tol = Math.max(4, gap / 2 + 4);
+  const pairs = [];
+  frames.forEach((top) => {
+    frames.forEach((bottom) => {
+      if (top.id === bottom.id) return;
+      if (Math.abs(top.y + top.height + gap - bottom.y) > tol) return;
+      const x1 = Math.max(top.x, bottom.x);
+      const x2 = Math.min(top.x + top.width, bottom.x + bottom.width);
+      if (x2 - x1 < MIN_FRAME / 2) return;
+      pairs.push({ topId: top.id, bottomId: bottom.id, center: top.y + top.height + gap / 2, x: x1, width: x2 - x1 });
+    });
+  });
+  return pairs;
+}
+
+function moveVerticalBoundary(frames, leftId, rightId, center, gap) {
+  const left = frames.find((frame) => frame.id === leftId);
+  const right = frames.find((frame) => frame.id === rightId);
+  if (!left || !right) return frames;
+  const rightEdge = right.x + right.width;
+  const boundary = clamp(Math.round(center - gap / 2), left.x + MIN_FRAME, rightEdge - gap - MIN_FRAME);
+  return frames.map((frame) => {
+    if (frame.id === leftId) return { ...frame, width: boundary - left.x };
+    if (frame.id === rightId) {
+      const nextX = boundary + gap;
+      return { ...frame, x: nextX, width: rightEdge - nextX };
+    }
+    return frame;
+  });
+}
+
+function moveHorizontalBoundary(frames, topId, bottomId, center, gap) {
+  const top = frames.find((frame) => frame.id === topId);
+  const bottom = frames.find((frame) => frame.id === bottomId);
+  if (!top || !bottom) return frames;
+  const bottomEdge = bottom.y + bottom.height;
+  const boundary = clamp(Math.round(center - gap / 2), top.y + MIN_FRAME, bottomEdge - gap - MIN_FRAME);
+  return frames.map((frame) => {
+    if (frame.id === topId) return { ...frame, height: boundary - top.y };
+    if (frame.id === bottomId) {
+      const nextY = boundary + gap;
+      return { ...frame, y: nextY, height: bottomEdge - nextY };
+    }
+    return frame;
+  });
 }
 
 function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhotoMove }) {
@@ -283,6 +261,7 @@ function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhoto
         event.cancelBubble = true;
       }}
       onDragMove={(event) => {
+        event.cancelBubble = true;
         const next = clampPhoto(rect, frame, event.target.x(), event.target.y());
         event.target.x(next.x);
         event.target.y(next.y);
@@ -305,10 +284,9 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   const [image, setImage] = useState(null);
   const groupRef = useRef(null);
   const transformerRef = useRef(null);
-  const liveTickRef = useRef(false);
   const photo = frame.photo;
   const rect = coverRect(image, frame, photo);
-  const canDragFrame = !printMode && selected && !photo;
+  const canDragFrame = !printMode && selected && !locked && !photo;
 
   useEffect(() => {
     let active = true;
@@ -326,51 +304,26 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
 
   useEffect(() => {
     if (!transformerRef.current || !groupRef.current) return;
-    transformerRef.current.nodes(selected && !printMode ? [groupRef.current] : []);
+    transformerRef.current.nodes(selected && !printMode && !locked ? [groupRef.current] : []);
     transformerRef.current.getLayer()?.batchDraw();
-  }, [selected, printMode, frame.x, frame.y, frame.width, frame.height]);
+  }, [selected, printMode, locked, frame.x, frame.y, frame.width, frame.height]);
 
-  function framePatchFromNode(node) {
-    return {
+  function commitDrag(event) {
+    if (printMode || !selected || locked || photo) return;
+    onFrameChange(frame.id, { x: event.target.x(), y: event.target.y() });
+  }
+
+  function commitTransform() {
+    if (printMode || !selected || locked || !groupRef.current) return;
+    const node = groupRef.current;
+    const patch = {
       x: node.x(),
       y: node.y(),
       width: frame.width * node.scaleX(),
       height: frame.height * node.scaleY(),
     };
-  }
-
-  function liveFrameChange(event) {
-    if (!locked || printMode || !selected || photo || liveTickRef.current) return;
-    liveTickRef.current = true;
-    requestAnimationFrame(() => {
-      liveTickRef.current = false;
-      onFrameChange(frame.id, { x: event.target.x(), y: event.target.y() });
-    });
-  }
-
-  function liveTransformChange() {
-    if (!locked || printMode || !selected || !groupRef.current || liveTickRef.current) return;
-    liveTickRef.current = true;
-    requestAnimationFrame(() => {
-      liveTickRef.current = false;
-      if (!groupRef.current) return;
-      const patch = framePatchFromNode(groupRef.current);
-      groupRef.current.scaleX(1);
-      groupRef.current.scaleY(1);
-      onFrameChange(frame.id, patch);
-    });
-  }
-
-  function commitDrag(event) {
-    if (printMode || !selected || photo) return;
-    onFrameChange(frame.id, { x: event.target.x(), y: event.target.y() });
-  }
-
-  function commitTransform() {
-    if (printMode || !selected || !groupRef.current) return;
-    const patch = framePatchFromNode(groupRef.current);
-    groupRef.current.scaleX(1);
-    groupRef.current.scaleY(1);
+    node.scaleX(1);
+    node.scaleY(1);
     onFrameChange(frame.id, patch);
   }
 
@@ -383,9 +336,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
         draggable={canDragFrame}
         onMouseDown={onSelect}
         onTap={onSelect}
-        onDragMove={liveFrameChange}
         onDragEnd={commitDrag}
-        onTransform={liveTransformChange}
         onTransformEnd={commitTransform}
       >
         <Group clipX={0} clipY={0} clipWidth={frame.width} clipHeight={frame.height}>
@@ -408,7 +359,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
         </Group>
       </Group>
 
-      {selected && !printMode && (
+      {selected && !printMode && !locked && (
         <Transformer
           ref={transformerRef}
           rotateEnabled={false}
@@ -416,14 +367,15 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
           flipEnabled={false}
           ignoreStroke
           enabledAnchors={['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']}
-          anchorSize={locked ? 30 : 24}
+          anchorSize={24}
           anchorCornerRadius={6}
-          borderStroke={locked ? '#2f7d52' : '#c27b4f'}
+          borderStroke="#c27b4f"
           borderStrokeWidth={3}
-          anchorStroke={locked ? '#2f7d52' : '#c27b4f'}
+          anchorStroke="#c27b4f"
           anchorFill="#fff7ef"
           boundBoxFunc={(oldBox, newBox) => {
             if (newBox.width < MIN_FRAME || newBox.height < MIN_FRAME) return oldBox;
+            if (newBox.x < 0 || newBox.y < 0 || newBox.x + newBox.width > canvas.width || newBox.y + newBox.height > canvas.height) return oldBox;
             return newBox;
           }}
         />
@@ -432,9 +384,62 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   );
 }
 
-function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selectedFrameId, printMode = false, onFrameSelect, onPhotoMove, onFrameChange }) {
+function LockedHandles({ page, gap, onVerticalMove, onHorizontalMove, onActivate }) {
+  if (!page) return null;
+  const vertical = verticalPairs(page.frames, gap);
+  const horizontal = horizontalPairs(page.frames, gap);
+
+  return (
+    <>
+      {vertical.map((pair) => (
+        <Rect
+          key={`v-${pair.leftId}-${pair.rightId}`}
+          x={pair.center - HANDLE / 2}
+          y={pair.y}
+          width={HANDLE}
+          height={pair.height}
+          fill="#2f7d52"
+          opacity={0.18}
+          draggable
+          dragBoundFunc={(pos) => ({ x: pos.x, y: pair.y })}
+          onMouseDown={onActivate}
+          onTap={onActivate}
+          onDragMove={(event) => onVerticalMove(pair.leftId, pair.rightId, event.target.x() + HANDLE / 2)}
+          onDragEnd={(event) => onVerticalMove(pair.leftId, pair.rightId, event.target.x() + HANDLE / 2)}
+        />
+      ))}
+      {horizontal.map((pair) => (
+        <Rect
+          key={`h-${pair.topId}-${pair.bottomId}`}
+          x={pair.x}
+          y={pair.center - HANDLE / 2}
+          width={pair.width}
+          height={HANDLE}
+          fill="#2f7d52"
+          opacity={0.18}
+          draggable
+          dragBoundFunc={(pos) => ({ x: pair.x, y: pos.y })}
+          onMouseDown={onActivate}
+          onTap={onActivate}
+          onDragMove={(event) => onHorizontalMove(pair.topId, pair.bottomId, event.target.y() + HANDLE / 2)}
+          onDragEnd={(event) => onHorizontalMove(pair.topId, pair.bottomId, event.target.y() + HANDLE / 2)}
+        />
+      ))}
+    </>
+  );
+}
+
+function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selectedFrameId, printMode = false, onFrameSelect, onPhotoMove, onFrameChange, onVerticalMove, onHorizontalMove, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const safe = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
+
+  if (!page) {
+    return (
+      <Group x={x} y={0}>
+        <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
+      </Group>
+    );
+  }
 
   return (
     <Group x={x} y={0}>
@@ -442,12 +447,12 @@ function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selecte
       {!printMode && settings.showGuides && (
         <>
           <Rect x={safe} y={safe} width={Math.max(0, canvas.width - safe * 2)} height={Math.max(0, canvas.height - safe * 2)} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={2} strokeScaleEnabled={false} dash={[18, 14]} listening={false} />
-          <Text x={safe + 16} y={safe + 16} text={locked ? 'фиксация: live' : 'поля / безопасная зона'} fontSize={28} fill={locked ? '#2f7d52' : '#c27b4f'} opacity={0.62} listening={false} />
+          <Text x={safe + 16} y={safe + 16} text={locked ? 'фиксация: двигай зелёные разделители' : 'поля / безопасная зона'} fontSize={28} fill={locked ? '#2f7d52' : '#c27b4f'} opacity={0.62} listening={false} />
         </>
       )}
-      {!printMode && <Text x={28} y={24} text={`Стр. ${pageIndex + 1}`} fontSize={34} fill={page?.id === activePageId ? (locked ? '#2f7d52' : '#c27b4f') : '#b49a87'} fontStyle="bold" listening={false} />}
+      {!printMode && <Text x={28} y={24} text={`Стр. ${pageIndex + 1}`} fontSize={34} fill={page.id === activePageId ? (locked ? '#2f7d52' : '#c27b4f') : '#b49a87'} fontStyle="bold" listening={false} />}
 
-      {page?.frames.map((frame) => (
+      {page.frames.map((frame) => (
         <CollageFrame
           key={frame.id}
           frame={frame}
@@ -462,6 +467,16 @@ function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selecte
           onFrameChange={(frameId, patch) => !printMode && onFrameChange(page.id, frameId, patch)}
         />
       ))}
+
+      {!printMode && locked && (
+        <LockedHandles
+          page={page}
+          gap={Math.max(0, settings.gap)}
+          onActivate={() => onActivatePage(page.id)}
+          onVerticalMove={(leftId, rightId, center) => onVerticalMove(page.id, leftId, rightId, center)}
+          onHorizontalMove={(topId, bottomId, center) => onHorizontalMove(page.id, topId, bottomId, center)}
+        />
+      )}
     </Group>
   );
 }
@@ -519,10 +534,23 @@ export default function App() {
   }
 
   function changeFrame(pageId, frameId, patch) {
-    updatePageFrames(pageId, (frames) => {
-      if (settings.frameMode === 'locked') return reflowLocked(frames, frameId, patch, canvas, Math.max(0, settings.gap));
-      return frames.map((frame) => (frame.id === frameId ? cleanFrame({ ...frame, ...patch }, canvas) : frame));
-    });
+    updatePageFrames(pageId, (frames) => frames.map((frame) => (frame.id === frameId ? cleanFrame({ ...frame, ...patch }, canvas) : frame)));
+  }
+
+  function moveVertical(pageId, leftId, rightId, center) {
+    setAlbum((current) => ({
+      ...current,
+      currentPageId: pageId,
+      pages: current.pages.map((page) => (page.id === pageId ? { ...page, frames: moveVerticalBoundary(page.frames, leftId, rightId, center, Math.max(0, settings.gap)) } : page)),
+    }));
+  }
+
+  function moveHorizontal(pageId, topId, bottomId, center) {
+    setAlbum((current) => ({
+      ...current,
+      currentPageId: pageId,
+      pages: current.pages.map((page) => (page.id === pageId ? { ...page, frames: moveHorizontalBoundary(page.frames, topId, bottomId, center, Math.max(0, settings.gap)) } : page)),
+    }));
   }
 
   function rebuildAll(nextCanvas = canvas, nextSettings = settings) {
@@ -530,11 +558,20 @@ export default function App() {
     setSelectedFrameId(null);
   }
 
+  function rebuildCurrent(nextSettings = settings) {
+    updatePageFrames(album.currentPageId, (frames) => createFrames(canvas, nextSettings, frames));
+    setSelectedFrameId(null);
+  }
+
   function updateSetting(key, value) {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    if (key === 'showGuides' || key === 'frameMode') {
-      if (key === 'frameMode' && value === 'locked') updatePageFrames(album.currentPageId, (frames) => reflowLocked(frames, selectedFrameId ?? frames[0]?.id, {}, canvas, Math.max(0, settings.gap)));
+    if (key === 'showGuides') return;
+    if (key === 'frameMode') {
+      if (value === 'locked') {
+        rebuildCurrent(next);
+        show('Фиксация включена: двигай зелёные разделители между окнами.');
+      }
       return;
     }
     rebuildAll(canvas, next);
@@ -650,7 +687,7 @@ export default function App() {
   }
 
   function project() {
-    return { version: 'live-1', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 'live-2', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function save() {
@@ -659,8 +696,8 @@ export default function App() {
   }
 
   function normalizedPages(data, nextCanvas, nextSettings) {
-    if (Array.isArray(data.pages) && data.pages.length) return data.pages.map((page, index) => ({ id: page.id ?? id(), title: page.title ?? `Страница ${index + 1}`, frames: Array.isArray(page.frames) ? page.frames : createFrames(nextCanvas, nextSettings) }));
-    if (Array.isArray(data.frames)) return [createPage(nextCanvas, nextSettings, 1, data.frames)];
+    if (Array.isArray(data.pages) && data.pages.length) return data.pages.map((page, index) => ({ id: page.id ?? id(), title: page.title ?? `Страница ${index + 1}`, frames: Array.isArray(page.frames) ? page.frames.map((frame) => cleanFrame(frame, nextCanvas)) : createFrames(nextCanvas, nextSettings) }));
+    if (Array.isArray(data.frames)) return [createPage(nextCanvas, nextSettings, 1, data.frames.map((frame) => cleanFrame(frame, nextCanvas)))];
     return [createPage(nextCanvas, nextSettings, 1), createPage(nextCanvas, nextSettings, 2)];
   }
 
@@ -732,6 +769,9 @@ export default function App() {
       onFrameSelect={selectFrame}
       onPhotoMove={updatePhoto}
       onFrameChange={changeFrame}
+      onVerticalMove={moveVertical}
+      onHorizontalMove={moveHorizontal}
+      onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
     />
   ));
 
@@ -756,7 +796,7 @@ export default function App() {
       {notice && <div className="notice">{notice}</div>}
 
       <section className="settings-bar">
-        <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value); updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+        <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
         <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
         <label className="field small-field"><span>Высота px</span><input type="number" value={canvas.height} onChange={(event) => updateCanvas(canvas.width, event.target.value, 'custom')} /></label>
         <label className="field small-field"><span>Фото-окон</span><select value={settings.frameCount} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{[1,2,3,4,5,6,7,8,9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
@@ -768,7 +808,7 @@ export default function App() {
         <div className="album-head"><strong>Страницы альбома</strong><span>{isSpread ? `Разворот ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1} из ${pages.length}`}</span></div>
         <div className="view-switch"><button className={`small-button ${!isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Страница</button><button className={`small-button ${isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот / 2 страницы</button></div>
         <div className="album-actions"><button className="small-button" onClick={addPage}>+ Страница</button><button className="small-button" onClick={duplicatePage}>Копия</button><button className="small-button" onClick={() => movePage('left')} disabled={currentPageIndex === 0}>←</button><button className="small-button" onClick={() => movePage('right')} disabled={currentPageIndex === pages.length - 1}>→</button><button className="small-button danger" onClick={deletePage}>Удалить</button></div>
-        <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Фиксация: live' : 'Включить фиксацию'}</button></div>
+        <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Фиксация: разделители' : 'Включить фиксацию'}</button></div>
         <div className="page-strip">{pages.map((page, index) => <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`} onClick={() => { setAlbum((current) => ({ ...current, currentPageId: page.id })); setSelectedFrameId(null); }}><b>{index + 1}</b><span>{page.frames.filter((frame) => frame.photo).length}/{page.frames.length}</span><small>{index % 2 === 0 ? 'левая' : 'правая'}</small></button>)}</div>
       </section>
 
@@ -777,29 +817,48 @@ export default function App() {
           <div className="panel-title"><div><h2>Фото</h2><p>На компьютере можно перетаскивать. На телефоне: нажми фото, потом нажми рамку.</p></div><span>{library.length}</span></div>
           <label className="upload-box"><strong>Загрузить фото</strong><small>Можно сразу несколько</small><input type="file" accept="image/*" multiple onChange={uploadPhotos} /></label>
           <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); show('Список фото очищен'); }} disabled={library.length === 0}>Очистить список фото</button>
-          {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку.</div>}
+          {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
           {library.length === 0 ? <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div> : <div className="photo-grid">{library.map((photo) => <button key={photo.id} type="button" className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''}`} draggable onClick={() => { setSelectedPhotoId(photo.id); show('Фото выбрано'); }} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }}><img src={photo.src} alt={photo.name} draggable="false" /><span>{photo.name}</span></button>)}</div>}
         </aside>
 
         <section className={`canvas-area ${isSpread ? 'album-mode' : ''}`}>
-          <div className="canvas-toolbar"><div><strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong><span>{locked ? 'Фиксация live: соседние окна двигаются/сжимаются во время движения рамки.' : 'Свободные рамки: можно накладывать окна. Заполненное окно кадрируется перетаскиванием фото.'}</span><em>PNG страницы сохраняет одну страницу, PNG разворота склеивает две страницы без зазора.</em></div><button className="small-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => createFrames(canvas, settings, frames))}>Перестроить рамки</button><button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); }}>Очистить фото</button></div>
+          <div className="canvas-toolbar">
+            <div>
+              <strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong>
+              <span>{locked ? 'Фиксация: двигай зелёные разделители между окнами. Зазор остаётся постоянным, окна не выходят за страницу.' : 'Свободные рамки: пустые окна можно двигать и растягивать, фото внутри — кадрировать.'}</span>
+              <em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em>
+            </div>
+            <button className="small-button" onClick={() => rebuildCurrent(settings)}>Перестроить рамки</button>
+            <button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); }}>Очистить фото</button>
+          </div>
+
           <div className={`stage-frame ${isSpread ? 'album-preview' : ''}`} onDragOver={(event) => event.preventDefault()} onDrop={dropPhoto}>
             <Stage ref={stageRef} width={stageWidth} height={canvas.height} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') setSelectedFrameId(null); }}>
-              <Layer>{renderEntries}{isSpread && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}</Layer>
+              <Layer>
+                {renderEntries}
+                {isSpread && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}
+              </Layer>
             </Stage>
           </div>
         </section>
 
         <aside className="inspector">
-          <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? 'Растягивай рамку за углы. Фото двигай внутри окна.' : 'Выбери рамку на холсте'}</p></div></div>
-          <div className="inspector-block"><h3>Цвет и рамка</h3><label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label><label className="field"><span>Обводка внутри окна</span><input type="number" min="0" max="80" value={settings.borderWidth} onChange={(event) => updateSetting('borderWidth', clamp(event.target.value, 0, 80))} /></label></div>
-          {selectedFrame ? <><div className="inspector-block"><h3>Положение рамки</h3><div className="geometry-grid"><label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { x: event.target.value })} /></label><label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { y: event.target.value })} /></label><label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label><label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label></div><p className="hint">Режим: {locked ? 'фиксация live' : selectedFrame.photo ? 'фото двигается внутри окна, рамка с фото двигается цифрами' : 'пустую рамку можно двигать мышкой'}.</p></div><div className="inspector-block"><h3>Фото внутри окна</h3>{selectedFrame.photo ? <><p className="photo-name">{selectedFrame.photo.name}</p><label className="range-row"><span>Масштаб</span><input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} /><b>{selectedFrame.photo.zoom.toFixed(2)}</b></label><button className="button full" onClick={() => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 })}>Центрировать фото</button><button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))}>Убрать фото из окна</button></> : <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>}</div></> : <div className="empty-state small-empty"><p>Нажми на окно коллажа, чтобы настроить его.</p></div>}
+          <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? (locked ? 'В фиксации двигай зелёные разделители между окнами.' : 'Растягивай рамку за углы. Фото внутри двигай мышкой.') : 'Выбери рамку на холсте'}</p></div></div>
+          <div className="inspector-block">
+            <h3>Цвет и рамка</h3>
+            <label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label>
+            <label className="field"><span>Обводка внутри окна</span><input type="number" min="0" max="80" value={settings.borderWidth} onChange={(event) => updateSetting('borderWidth', clamp(event.target.value, 0, 80))} /></label>
+          </div>
+          {selectedFrame ? <>
+            <div className="inspector-block"><h3>Положение рамки</h3><div className="geometry-grid"><label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { x: event.target.value })} /></label><label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { y: event.target.value })} /></label><label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label><label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label></div><p className="hint">Режим: {locked ? 'фиксация через разделители, без прыжков трансформера' : selectedFrame.photo ? 'фото внутри окна двигается, рамка с фото двигается цифрами' : 'пустую рамку можно двигать мышкой'}.</p></div>
+            <div className="inspector-block"><h3>Фото внутри окна</h3>{selectedFrame.photo ? <><p className="photo-name">{selectedFrame.photo.name}</p><label className="range-row"><span>Масштаб</span><input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} /><b>{selectedFrame.photo.zoom.toFixed(2)}</b></label><button className="button full" onClick={() => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 })}>Центрировать фото</button><button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))}>Убрать фото из окна</button></> : <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>}</div>
+          </> : <div className="empty-state small-empty"><p>Нажми на любое окно коллажа, чтобы настроить его.</p></div>}
         </aside>
       </section>
 
       <div className="export-stage-holder" aria-hidden="true">
-        <Stage ref={printPageRef} width={canvas.width} height={canvas.height}><Layer><PageLayer page={currentPage} pageIndex={currentPageIndex} x={0} canvas={canvas} settings={settings} activePageId={null} selectedFrameId={null} printMode onFrameSelect={() => {}} onPhotoMove={() => {}} onFrameChange={() => {}} /></Layer></Stage>
-        <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}><Layer><PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} canvas={canvas} settings={settings} activePageId={null} selectedFrameId={null} printMode onFrameSelect={() => {}} onPhotoMove={() => {}} onFrameChange={() => {}} />{pages[spreadStart + 1] && <PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} canvas={canvas} settings={settings} activePageId={null} selectedFrameId={null} printMode onFrameSelect={() => {}} onPhotoMove={() => {}} onFrameChange={() => {}} />}</Layer></Stage>
+        <Stage ref={printPageRef} width={canvas.width} height={canvas.height}><Layer><PageLayer page={currentPage} pageIndex={currentPageIndex} x={0} canvas={canvas} settings={settings} activePageId={null} selectedFrameId={null} printMode onFrameSelect={() => {}} onPhotoMove={() => {}} onFrameChange={() => {}} onVerticalMove={() => {}} onHorizontalMove={() => {}} onActivatePage={() => {}} /></Layer></Stage>
+        <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}><Layer><PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} canvas={canvas} settings={settings} activePageId={null} selectedFrameId={null} printMode onFrameSelect={() => {}} onPhotoMove={() => {}} onFrameChange={() => {}} onVerticalMove={() => {}} onHorizontalMove={() => {}} onActivatePage={() => {}} /><PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} canvas={canvas} settings={settings} activePageId={null} selectedFrameId={null} printMode onFrameSelect={() => {}} onPhotoMove={() => {}} onFrameChange={() => {}} onVerticalMove={() => {}} onHorizontalMove={() => {}} onActivatePage={() => {}} /></Layer></Stage>
       </div>
     </main>
   );
