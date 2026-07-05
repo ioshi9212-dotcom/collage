@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 
-const STORAGE_KEY = 'collage-creator-album-v8';
+const STORAGE_KEY = 'collage-creator-album-v9';
 const LEGACY_STORAGE_KEYS = [
+  'collage-creator-album-v8',
   'collage-creator-album-v7',
   'collage-creator-album-v6',
   'collage-creator-album-v5',
@@ -160,6 +161,18 @@ function getCoverRect(image, frame, photo) {
   };
 }
 
+function clampPhotoPosition(cover, frame, x, y) {
+  if (!cover) return { x, y };
+  const minX = Math.min(0, frame.width - cover.width);
+  const maxX = 0;
+  const minY = Math.min(0, frame.height - cover.height);
+  const maxY = 0;
+  return {
+    x: clampNumber(x, minX, maxX),
+    y: clampNumber(y, minY, maxY),
+  };
+}
+
 function clampFrameToCanvas(frame, canvas) {
   const width = clampNumber(Math.round(frame.width), MIN_FRAME_SIZE, canvas.width);
   const height = clampNumber(Math.round(frame.height), MIN_FRAME_SIZE, canvas.height);
@@ -218,11 +231,13 @@ function findFreePosition(frame, placed, canvas, gap) {
 
 function reflowLockedFrames(frames, changedId, patch, canvas, gap) {
   const source = frames.map((frame) => clampFrameToCanvas(frame, canvas));
-  const changed = clampFrameToCanvas({ ...source.find((frame) => frame.id === changedId), ...patch }, canvas);
+  const sourceChanged = source.find((frame) => frame.id === changedId) ?? source[0];
+  if (!sourceChanged) return source;
+  const changed = clampFrameToCanvas({ ...sourceChanged, ...patch }, canvas);
   const map = new Map([[changed.id, changed]]);
   const placed = [changed];
   const rest = source
-    .filter((frame) => frame.id !== changedId)
+    .filter((frame) => frame.id !== changed.id)
     .sort((a, b) => a.y - b.y || a.x - b.x);
 
   rest.forEach((frame) => {
@@ -240,6 +255,8 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
   const transformerRef = useRef(null);
   const photo = frame.photo;
   const cover = photo ? getCoverRect(image, frame, photo) : null;
+  const canDragFrame = !printMode && selected && !photo;
+  const canDragPhoto = !printMode && selected && Boolean(photo);
 
   useEffect(() => {
     let active = true;
@@ -269,7 +286,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
   }, [selected, printMode, frame.x, frame.y, frame.width, frame.height]);
 
   function commitDrag(event) {
-    if (printMode || !selected) return;
+    if (printMode || !selected || photo) return;
     onFrameChange(frame.id, {
       x: event.target.x(),
       y: event.target.y(),
@@ -290,13 +307,37 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
     onFrameChange(frame.id, next);
   }
 
+  function selectFromPhoto(event) {
+    event.cancelBubble = true;
+    onSelect();
+  }
+
+  function clampDraggedPhoto(event) {
+    if (!cover) return;
+    const next = clampPhotoPosition(cover, frame, event.target.x(), event.target.y());
+    event.target.x(next.x);
+    event.target.y(next.y);
+  }
+
+  function commitPhotoDrag(event) {
+    if (printMode || !cover) return;
+    event.cancelBubble = true;
+    const next = clampPhotoPosition(cover, frame, event.target.x(), event.target.y());
+    event.target.x(next.x);
+    event.target.y(next.y);
+    onPhotoMove(frame.id, {
+      offsetX: Math.round(next.x - cover.baseX),
+      offsetY: Math.round(next.y - cover.baseY),
+    });
+  }
+
   return (
     <>
       <Group
         ref={groupRef}
         x={frame.x}
         y={frame.y}
-        draggable={!printMode && selected}
+        draggable={canDragFrame}
         onMouseDown={onSelect}
         onTap={onSelect}
         onDragEnd={commitDrag}
@@ -321,16 +362,14 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, showE
               y={cover.y}
               width={cover.width}
               height={cover.height}
-              draggable={!printMode && selected}
-              onMouseDown={onSelect}
-              onTap={onSelect}
-              onDragEnd={(event) => {
-                if (printMode) return;
-                onPhotoMove(frame.id, {
-                  offsetX: Math.round(event.target.x() - cover.baseX),
-                  offsetY: Math.round(event.target.y() - cover.baseY),
-                });
+              draggable={canDragPhoto}
+              onMouseDown={selectFromPhoto}
+              onTap={selectFromPhoto}
+              onDragStart={(event) => {
+                event.cancelBubble = true;
               }}
+              onDragMove={clampDraggedPhoto}
+              onDragEnd={commitPhotoDrag}
             />
           )}
 
@@ -723,7 +762,7 @@ export default function App() {
   }
 
   function createProject() {
-    return { version: 8, canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 9, canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function saveProject() {
@@ -941,7 +980,7 @@ export default function App() {
           <div className="canvas-toolbar">
             <div>
               <strong>{isSpreadMode ? `Разворот · страницы ${spreadStartIndex + 1}–${Math.min(spreadStartIndex + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong>
-              <span>{locked ? 'Фиксация сетки: после отпускания рамки соседние окна переставляются в свободные места.' : 'Свободные рамки: можно двигать, растягивать и накладывать окна.'}</span>
+              <span>{locked ? 'Фиксация сетки: после отпускания рамки соседние окна переставляются в свободные места.' : 'Свободные рамки: пустые окна можно двигать, заполненные окна кадрируются перетаскиванием фото.'}</span>
               <em>Экспорт: “PNG страницы” сохраняет одну страницу, “PNG разворота” склеивает две страницы в один файл без зазора.</em>
             </div>
             <button className="small-button" onClick={() => rebuildFrames()}>Перестроить рамки</button>
@@ -961,7 +1000,7 @@ export default function App() {
         </section>
 
         <aside className="inspector">
-          <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? 'Двигай и растягивай рамку на холсте или правь цифрами' : 'Выбери рамку на холсте'}</p></div></div>
+          <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? 'Растягивай рамку за углы. Фото внутри двигай мышкой в пределах окна.' : 'Выбери рамку на холсте'}</p></div></div>
           <div className="inspector-block">
             <h3>Цвет и рамка</h3>
             <label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label>
@@ -978,7 +1017,7 @@ export default function App() {
                   <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => updateSelectedFrameGeometry('width', event.target.value)} /></label>
                   <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => updateSelectedFrameGeometry('height', event.target.value)} /></label>
                 </div>
-                <p className="hint">Режим сейчас: {locked ? 'фиксация сетки — соседние окна переставляются после отпускания' : 'свободные рамки — можно накладывать'}.</p>
+                <p className="hint">Режим сейчас: {locked ? 'фиксация сетки — соседние окна переставляются после отпускания' : selectedFrame.photo ? 'фото внутри окна двигается, рамка с фото двигается цифрами' : 'пустую рамку можно двигать мышкой'}.</p>
               </div>
               <div className="inspector-block">
                 <h3>Фото внутри окна</h3>
