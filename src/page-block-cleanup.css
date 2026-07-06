@@ -1,11 +1,13 @@
 /* UI cleanup pass 3: album/pages block */
 .album-bar {
-  display: grid !important;
-  grid-template-columns: minmax(180px, 240px) max-content 1fr !important;
+  display: inline-grid !important;
+  width: fit-content !important;
+  max-width: 100% !important;
+  grid-template-columns: minmax(180px, 240px) max-content !important;
   grid-template-areas:
-    'head pages pages'
-    'view pages pages'
-    'actions nav nav' !important;
+    'head pages'
+    'view pages'
+    'actions nav' !important;
   align-items: stretch !important;
   gap: 10px !important;
 }
@@ -33,8 +35,9 @@
 .page-strip {
   grid-area: pages;
   justify-self: start !important;
-  width: max-content;
-  max-width: 100%;
+  align-self: start !important;
+  width: max-content !important;
+  max-width: min(100%, 720px) !important;
   position: relative;
   display: flex !important;
   align-content: flex-start;
@@ -126,6 +129,8 @@
 
 @media (max-width: 1360px) {
   .album-bar {
+    display: grid !important;
+    width: 100% !important;
     grid-template-columns: 1fr !important;
     grid-template-areas:
       'head'
@@ -136,8 +141,8 @@
   }
 
   .page-strip {
-    width: 100%;
-    max-width: 100%;
+    width: max-content !important;
+    max-width: 100% !important;
     min-height: 86px;
   }
 
