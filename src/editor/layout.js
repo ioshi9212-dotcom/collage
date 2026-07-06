@@ -32,6 +32,57 @@ function columnIdAt(rowIndex, columnIndex) {
   return `row_${rowIndex + 1}_column_${columnIndex + 1}`;
 }
 
+function finiteFrameSize(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= MIN_FRAME ? Math.round(number) : null;
+}
+
+function countLayoutFrames(layout) {
+  if (!layout?.rows) return 0;
+  return layout.rows.reduce((sum, row) => sum + (Array.isArray(row.columns) ? row.columns.length : 0), 0);
+}
+
+function syncGridLayoutToFrames(layout, previousFrames = [], canvas) {
+  if (layout?.type !== 'grid' || !Array.isArray(layout.rows)) return layout;
+
+  const previousById = new Map(previousFrames.map((frame) => [frame.id, frame]));
+  const next = structuredClone(layout);
+  const maxInnerWidth = Math.max(MIN_FRAME, canvas.width - next.padding * 2);
+  const maxInnerHeight = Math.max(MIN_FRAME, canvas.height - next.padding * 2);
+  const totalRowGaps = next.gap * Math.max(0, next.rows.length - 1);
+
+  next.rows.forEach((row) => {
+    const rowFrames = row.columns.map((column) => previousById.get(column.frameId)).filter(Boolean);
+    const heights = rowFrames.map((frame) => finiteFrameSize(frame.height)).filter((height) => height !== null);
+    if (heights.length) row.height = Math.max(MIN_FRAME, Math.round(Math.max(...heights)));
+
+    row.columns.forEach((column) => {
+      const frame = previousById.get(column.frameId);
+      const width = finiteFrameSize(frame?.width);
+      if (width !== null) column.width = width;
+    });
+
+    const rowGap = next.gap * Math.max(0, row.columns.length - 1);
+    const rowWidth = row.columns.reduce((sum, column) => sum + column.width, 0) + rowGap;
+    if (rowWidth > maxInnerWidth) {
+      const scale = Math.max(0.01, (maxInnerWidth - rowGap) / Math.max(1, rowWidth - rowGap));
+      row.columns.forEach((column) => {
+        column.width = Math.max(MIN_FRAME, Math.round(column.width * scale));
+      });
+    }
+  });
+
+  const rowsHeight = next.rows.reduce((sum, row) => sum + row.height, 0) + totalRowGaps;
+  if (rowsHeight > maxInnerHeight) {
+    const scale = Math.max(0.01, (maxInnerHeight - totalRowGaps) / Math.max(1, rowsHeight - totalRowGaps));
+    next.rows.forEach((row) => {
+      row.height = Math.max(MIN_FRAME, Math.round(row.height * scale));
+    });
+  }
+
+  return next;
+}
+
 export function cleanFrame(frame, canvas) {
   const width = clamp(Math.round(Number(frame.width)), MIN_FRAME, canvas.width);
   const height = clamp(Math.round(Number(frame.height)), MIN_FRAME, canvas.height);
@@ -114,7 +165,14 @@ export function framesFromLayout(layout, previousFrames = []) {
 }
 
 export function ensureLayout(page, canvas, settings) {
-  if (page?.layout?.type === 'grid' && Array.isArray(page.layout.rows)) return page.layout;
+  const frameCount = Number(settings.frameCount) || countLayoutFrames(page?.layout) || page?.frames?.length || 5;
+  const expectedCount = Math.max(1, Math.min(9, frameCount));
+  const layoutCount = countLayoutFrames(page?.layout);
+
+  if (page?.layout?.type === 'grid' && Array.isArray(page.layout.rows) && layoutCount === expectedCount) {
+    return syncGridLayoutToFrames(page.layout, page.frames ?? [], canvas);
+  }
+
   return buildGridLayout(canvas, settings, page?.frames ?? []).layout;
 }
 
