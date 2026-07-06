@@ -16,6 +16,9 @@
   --ui-active: #25282d;
   --ui-danger: #a33a3a;
   --ui-danger-bg: #fff5f5;
+  --ui-panel-border: rgba(35, 38, 43, 0.12);
+  --ui-panel-bg: rgba(255, 255, 255, 0.88);
+  --ui-panel-bg-soft: rgba(246, 247, 248, 0.72);
 }
 
 .button,
@@ -181,4 +184,187 @@ select {
 .inspector-block,
 .panel-title span {
   border-radius: var(--ui-card-radius) !important;
+}
+
+/* UI cleanup pass 2: visually split overloaded top controls into meaningful groups. */
+.topbar {
+  align-items: flex-start !important;
+}
+
+.topbar-actions {
+  display: grid !important;
+  grid-template-columns: repeat(4, max-content) repeat(2, max-content) !important;
+  grid-template-rows: auto auto !important;
+  justify-content: end !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+  padding: 8px !important;
+  border: 1px solid var(--ui-panel-border) !important;
+  border-radius: var(--ui-card-radius) !important;
+  background: var(--ui-panel-bg) !important;
+}
+
+.topbar-actions::before,
+.topbar-actions::after,
+.settings-bar::before,
+.settings-bar::after,
+.view-switch::before,
+.album-actions::before,
+.spread-actions::before {
+  color: var(--ui-muted);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.topbar-actions::before {
+  content: 'Файл';
+  grid-column: 1 / 5;
+  grid-row: 1;
+}
+
+.topbar-actions::after {
+  content: 'Экспорт';
+  grid-column: 5 / 7;
+  grid-row: 1;
+  padding-left: 8px;
+  border-left: 1px solid var(--ui-panel-border);
+}
+
+.topbar-actions > .button {
+  grid-row: 2;
+}
+
+.topbar-actions > .button:nth-of-type(1) { grid-column: 1; }
+.topbar-actions > .button:nth-of-type(2) { grid-column: 2; }
+.topbar-actions > .button:nth-of-type(3) { grid-column: 3; }
+.topbar-actions > .button:nth-of-type(4) { grid-column: 4; }
+.topbar-actions > .button:nth-of-type(5) { grid-column: 5; margin-left: 8px; }
+.topbar-actions > .button:nth-of-type(6) { grid-column: 6; }
+
+.settings-bar {
+  display: grid !important;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(2, minmax(92px, 0.65fr)) repeat(2, minmax(92px, 0.65fr)) minmax(145px, 0.8fr) !important;
+  grid-template-rows: auto auto !important;
+  align-items: end !important;
+  gap: 8px 10px !important;
+  border-radius: var(--ui-card-radius) !important;
+  background: var(--ui-panel-bg) !important;
+}
+
+.settings-bar::before {
+  content: 'Документ';
+  grid-column: 1 / 6;
+  grid-row: 1;
+}
+
+.settings-bar::after {
+  content: 'Макет текущей страницы';
+  grid-column: 6;
+  grid-row: 1;
+  padding-left: 10px;
+  border-left: 1px solid var(--ui-panel-border);
+}
+
+.settings-bar > .field {
+  grid-row: 2;
+}
+
+.settings-bar > .field:nth-of-type(1) { grid-column: 1; }
+.settings-bar > .field:nth-of-type(2) { grid-column: 2; }
+.settings-bar > .field:nth-of-type(3) { grid-column: 3; }
+.settings-bar > .field:nth-of-type(5) { grid-column: 4; }
+.settings-bar > .field:nth-of-type(6) { grid-column: 5; }
+.settings-bar > .field:nth-of-type(4) {
+  grid-column: 6;
+  padding-left: 10px;
+  border-left: 1px solid var(--ui-panel-border);
+}
+
+.album-bar {
+  display: grid !important;
+  grid-template-columns: minmax(150px, auto) auto auto auto minmax(0, 1fr) !important;
+  align-items: end !important;
+  gap: 10px !important;
+  border-radius: var(--ui-card-radius) !important;
+  background: var(--ui-panel-bg) !important;
+}
+
+.view-switch,
+.album-actions,
+.spread-actions {
+  display: grid !important;
+  grid-template-rows: auto auto !important;
+  grid-auto-flow: column !important;
+  align-items: end !important;
+  gap: 6px !important;
+  padding: 8px !important;
+  border: 1px solid var(--ui-panel-border) !important;
+  border-radius: var(--ui-card-radius) !important;
+  background: var(--ui-panel-bg-soft) !important;
+}
+
+.view-switch::before,
+.album-actions::before,
+.spread-actions::before {
+  grid-row: 1;
+  grid-column: 1 / -1;
+}
+
+.view-switch::before { content: 'Вид'; }
+.album-actions::before { content: 'Страницы'; }
+.spread-actions::before { content: 'Навигация / отображение'; }
+
+.view-switch > .small-button,
+.album-actions > .small-button,
+.spread-actions > .small-button {
+  grid-row: 2;
+}
+
+.page-strip {
+  align-self: stretch !important;
+  padding: 0 2px 4px !important;
+}
+
+@media (max-width: 1280px) {
+  .topbar-actions,
+  .settings-bar,
+  .album-bar {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .topbar-actions::before,
+  .topbar-actions::after,
+  .settings-bar::before,
+  .settings-bar::after {
+    grid-column: 1 / -1 !important;
+    padding-left: 0 !important;
+    border-left: 0 !important;
+  }
+
+  .topbar-actions > .button,
+  .settings-bar > .field {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    border-left: 0 !important;
+  }
+
+  .page-strip {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar-actions,
+  .settings-bar,
+  .album-bar,
+  .view-switch,
+  .album-actions,
+  .spread-actions {
+    grid-template-columns: 1fr !important;
+  }
 }
