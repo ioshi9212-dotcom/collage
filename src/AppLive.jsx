@@ -13,8 +13,9 @@ import {
   resizeRow,
 } from './editor/layout';
 
-const STORAGE_KEY = 'collage-creator-album-live-v5-sharp-preview';
+const STORAGE_KEY = 'collage-creator-album-live-v6-page-frame-count';
 const LEGACY_KEYS = [
+  'collage-creator-album-live-v5-sharp-preview',
   'collage-creator-album-live-v4-grid-layout',
   'collage-creator-album-live-v3',
   'collage-creator-album-live-v2',
@@ -97,9 +98,32 @@ function scaleForPreview(width, height, isSpread) {
   return Math.min(1, maxWidth / width, maxHeight / height);
 }
 
+function countFramesInLayout(layout) {
+  if (!layout?.rows) return 0;
+  return layout.rows.reduce((sum, row) => sum + (Array.isArray(row.columns) ? row.columns.length : 0), 0);
+}
+
+function resolvePageFrameCount(page, fallbackSettings = DEFAULT_SETTINGS) {
+  const saved = Number(page?.frameCount);
+  if (Number.isFinite(saved) && saved >= 1) return clamp(saved, 1, 9);
+  const fromLayout = countFramesInLayout(page?.layout);
+  if (fromLayout) return clamp(fromLayout, 1, 9);
+  const fromFrames = Array.isArray(page?.frames) ? page.frames.length : 0;
+  if (fromFrames) return clamp(fromFrames, 1, 9);
+  return clamp(Number(fallbackSettings.frameCount) || DEFAULT_SETTINGS.frameCount, 1, 9);
+}
+
+function settingsForPage(settings, page, explicitFrameCount) {
+  return {
+    ...settings,
+    frameCount: explicitFrameCount ?? resolvePageFrameCount(page, settings),
+  };
+}
+
 function createPage(canvas, settings, number, previousFrames = []) {
-  const built = buildGridLayout(canvas, settings, previousFrames);
-  return { id: makeId(), title: `Страница ${number}`, layout: built.layout, frames: built.frames };
+  const frameCount = clamp(Number(settings.frameCount) || DEFAULT_SETTINGS.frameCount, 1, 9);
+  const built = buildGridLayout(canvas, { ...settings, frameCount }, previousFrames);
+  return { id: makeId(), title: `Страница ${number}`, frameCount, layout: built.layout, frames: built.frames };
 }
 
 function initialAlbum() {
@@ -355,6 +379,7 @@ export default function App() {
   const pages = album.pages;
   const currentPageIndex = Math.max(0, pages.findIndex((page) => page.id === album.currentPageId));
   const currentPage = pages[currentPageIndex] ?? pages[0];
+  const currentPageFrameCount = resolvePageFrameCount(currentPage, settings);
   const spreadStart = currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1;
   const isSpread = viewMode === 'spread';
   const locked = settings.frameMode === 'locked';
@@ -389,18 +414,46 @@ export default function App() {
     updatePageFrames(pageId, (frames) => frames.map((frame) => (frame.id === frameId ? cleanFrame({ ...frame, ...patch }, canvas) : frame)));
   }
 
-  function rebuildAll(nextCanvas = canvas, nextSettings = settings) {
+  function rebuildPage(pageId, nextCanvas = canvas, nextSettings = settings, explicitFrameCount) {
     setAlbum((current) => ({
       ...current,
       pages: current.pages.map((page) => {
-        const built = buildGridLayout(nextCanvas, nextSettings, page.frames);
-        return { ...page, layout: built.layout, frames: built.frames };
+        if (page.id !== pageId) return page;
+        const frameCount = explicitFrameCount ?? resolvePageFrameCount(page, nextSettings);
+        const pageSettings = settingsForPage(nextSettings, page, frameCount);
+        const built = buildGridLayout(nextCanvas, pageSettings, page.frames);
+        return { ...page, frameCount, layout: built.layout, frames: built.frames };
       }),
     }));
     setSelectedFrameId(null);
   }
 
+  function rebuildAll(nextCanvas = canvas, nextSettings = settings) {
+    setAlbum((current) => ({
+      ...current,
+      pages: current.pages.map((page) => {
+        const frameCount = resolvePageFrameCount(page, nextSettings);
+        const pageSettings = settingsForPage(nextSettings, page, frameCount);
+        const built = buildGridLayout(nextCanvas, pageSettings, page.frames);
+        return { ...page, frameCount, layout: built.layout, frames: built.frames };
+      }),
+    }));
+    setSelectedFrameId(null);
+  }
+
+  function updateCurrentPageFrameCount(value) {
+    const frameCount = clamp(Number(value), 1, 9);
+    const nextSettings = { ...settings, frameCount };
+    setSettings(nextSettings);
+    rebuildPage(album.currentPageId, canvas, nextSettings, frameCount);
+    show(`На странице ${currentPageIndex + 1}: ${frameCount} фото-окон`);
+  }
+
   function updateSetting(key, value) {
+    if (key === 'frameCount') {
+      updateCurrentPageFrameCount(value);
+      return;
+    }
     const next = { ...settings, [key]: value };
     setSettings(next);
     if (key === 'showGuides') return;
@@ -422,7 +475,7 @@ export default function App() {
       currentPageId: pageId,
       pages: current.pages.map((page) => {
         if (page.id !== pageId) return page;
-        const oldLayout = ensureLayout(page, canvas, settings);
+        const oldLayout = ensureLayout(page, canvas, settingsForPage(settings, page));
         const nextLayout = layoutUpdater(oldLayout);
         return { ...page, layout: nextLayout, frames: framesFromLayout(nextLayout, page.frames) };
       }),
@@ -503,7 +556,8 @@ export default function App() {
 
   function duplicatePage() {
     if (!currentPage) return;
-    const page = createPage(canvas, settings, pages.length + 1, currentPage.frames);
+    const pageSettings = settingsForPage(settings, currentPage, currentPageFrameCount);
+    const page = createPage(canvas, pageSettings, pages.length + 1, currentPage.frames);
     setAlbum((current) => {
       const index = current.pages.findIndex((item) => item.id === current.currentPageId);
       const next = [...current.pages];
@@ -538,7 +592,7 @@ export default function App() {
   }
 
   function project() {
-    return { version: 'live-5-sharp-preview', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 'live-6-page-frame-count', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function save() {
@@ -550,9 +604,12 @@ export default function App() {
     if (Array.isArray(data.pages) && data.pages.length) {
       return data.pages.map((page, index) => {
         const frames = Array.isArray(page.frames) ? page.frames.map((frame) => cleanFrame(frame, nextCanvas)) : [];
-        const trustLayout = (data.version === 'live-4-grid-layout' || data.version === 'live-5-sharp-preview') && page.layout?.type === 'grid';
-        const layout = trustLayout ? page.layout : buildGridLayout(nextCanvas, nextSettings, frames).layout;
-        return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, layout, frames: framesFromLayout(layout, frames) };
+        const existingLayoutCount = countFramesInLayout(page.layout);
+        const frameCount = clamp(Number(page.frameCount) || existingLayoutCount || frames.length || nextSettings.frameCount, 1, 9);
+        const trustLayout = page.layout?.type === 'grid' && existingLayoutCount === frameCount;
+        const pageSettings = { ...nextSettings, frameCount };
+        const layout = trustLayout ? page.layout : buildGridLayout(nextCanvas, pageSettings, frames).layout;
+        return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, frameCount, layout, frames: framesFromLayout(layout, frames) };
       });
     }
     if (Array.isArray(data.frames)) return [createPage(nextCanvas, nextSettings, 1, data.frames.map((frame) => cleanFrame(frame, nextCanvas)))];
@@ -670,7 +727,7 @@ export default function App() {
         <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
         <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
         <label className="field small-field"><span>Высота px</span><input type="number" value={canvas.height} onChange={(event) => updateCanvas(canvas.width, event.target.value, 'custom')} /></label>
-        <label className="field small-field"><span>Фото-окон</span><select value={settings.frameCount} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
+        <label className="field small-field"><span>Фото-окон этой страницы</span><select value={currentPageFrameCount} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
         <label className="field small-field"><span>Зазор</span><input type="number" value={settings.gap} onChange={(event) => updateSetting('gap', clamp(event.target.value, 0, 200))} /></label>
         <label className="field small-field"><span>Поля</span><input type="number" value={settings.padding} onChange={(event) => updateSetting('padding', clamp(event.target.value, 0, 300))} /></label>
       </section>
@@ -680,7 +737,7 @@ export default function App() {
         <div className="view-switch"><button className={`small-button ${!isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Страница</button><button className={`small-button ${isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот / 2 страницы</button></div>
         <div className="album-actions"><button className="small-button" onClick={addPage}>+ Страница</button><button className="small-button" onClick={duplicatePage}>Копия</button><button className="small-button" onClick={() => movePage('left')} disabled={currentPageIndex === 0}>←</button><button className="small-button" onClick={() => movePage('right')} disabled={currentPageIndex === pages.length - 1}>→</button><button className="small-button danger" onClick={deletePage}>Удалить</button></div>
         <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Включить сетку'}</button></div>
-        <div className="page-strip">{pages.map((page, index) => <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`} onClick={() => { setAlbum((current) => ({ ...current, currentPageId: page.id })); setSelectedFrameId(null); }}><b>{index + 1}</b><span>{page.frames.filter((frame) => frame.photo).length}/{page.frames.length}</span><small>{index % 2 === 0 ? 'левая' : 'правая'}</small></button>)}</div>
+        <div className="page-strip">{pages.map((page, index) => <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`} onClick={() => { setAlbum((current) => ({ ...current, currentPageId: page.id })); setSelectedFrameId(null); }}><b>{index + 1}</b><span>{page.frames.filter((frame) => frame.photo).length}/{resolvePageFrameCount(page, settings)}</span><small>{index % 2 === 0 ? 'левая' : 'правая'}</small></button>)}</div>
       </section>
 
       <section className="workspace three-columns">
@@ -693,7 +750,7 @@ export default function App() {
         </aside>
 
         <section className={`canvas-area ${isSpread ? 'album-mode' : ''}`}>
-          <div className="canvas-toolbar"><div><strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong><span>{locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна не перетаскиваются, только меняют размер за маркеры. Фото внутри можно двигать.'}</span><em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em></div><button className="small-button" onClick={() => rebuildAll(canvas, settings)}>Перестроить рамки</button><button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); }}>Очистить фото</button></div>
+          <div className="canvas-toolbar"><div><strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong><span>{locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна не перетаскиваются, только меняют размер за маркеры. Фото внутри можно двигать.'}</span><em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em></div><button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button><button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); }}>Очистить фото</button></div>
 
           <div className={`stage-frame ${isSpread ? 'album-preview' : ''}`} style={{ width: stageDisplayWidth, height: stageDisplayHeight }} onDragOver={(event) => event.preventDefault()} onDrop={dropPhoto}>
             <div className="stage-scale-shell" style={{ width: stageRealWidth, height: canvas.height, transform: `scale(${previewScale})` }}>
