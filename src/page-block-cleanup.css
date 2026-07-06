@@ -1,12 +1,11 @@
-/* UI cleanup pass 3: make the album/pages block readable.
-   This pass only changes layout and labels visually; editor logic stays untouched. */
+/* UI cleanup pass 3: album/pages block */
 .album-bar {
   display: grid !important;
-  grid-template-columns: minmax(180px, 240px) minmax(260px, 1fr) !important;
+  grid-template-columns: minmax(180px, 240px) max-content 1fr !important;
   grid-template-areas:
-    'head pages'
-    'view pages'
-    'actions nav' !important;
+    'head pages pages'
+    'view pages pages'
+    'actions nav nav' !important;
   align-items: stretch !important;
   gap: 10px !important;
 }
@@ -33,6 +32,9 @@
 
 .page-strip {
   grid-area: pages;
+  justify-self: start !important;
+  width: max-content;
+  max-width: 100%;
   position: relative;
   display: flex !important;
   align-content: flex-start;
@@ -73,17 +75,9 @@
   text-transform: uppercase;
 }
 
-.view-switch {
-  grid-area: view;
-}
-
-.album-actions {
-  grid-area: actions;
-}
-
-.spread-actions {
-  grid-area: nav;
-}
+.view-switch { grid-area: view; }
+.album-actions { grid-area: actions; }
+.spread-actions { grid-area: nav; }
 
 .view-switch,
 .album-actions,
@@ -92,17 +86,9 @@
   min-width: 0;
 }
 
-.view-switch::before {
-  content: 'Режим просмотра' !important;
-}
-
-.album-actions::before {
-  content: 'Текущая страница' !important;
-}
-
-.spread-actions::before {
-  content: 'Навигация и вид' !important;
-}
+.view-switch::before { content: 'Режим просмотра' !important; }
+.album-actions::before { content: 'Текущая страница' !important; }
+.spread-actions::before { content: 'Навигация и вид' !important; }
 
 .view-switch > .small-button,
 .album-actions > .small-button,
@@ -120,40 +106,13 @@
   font-size: 0 !important;
 }
 
-.view-switch > .small-button:nth-child(1)::after {
-  content: '1 страница';
-  font-size: 12px;
-}
-
-.view-switch > .small-button:nth-child(2)::after {
-  content: 'Разворот';
-  font-size: 12px;
-}
-
-.album-actions > .small-button:nth-child(1)::after {
-  content: '+ Страница';
-  font-size: 12px;
-}
-
-.album-actions > .small-button:nth-child(2)::after {
-  content: 'Копировать страницу';
-  font-size: 12px;
-}
-
-.album-actions > .small-button:nth-child(3)::after {
-  content: 'Удалить страницу';
-  font-size: 12px;
-}
-
-.spread-actions > .small-button:nth-child(1)::after {
-  content: '← Предыдущий разворот';
-  font-size: 12px;
-}
-
-.spread-actions > .small-button:nth-child(2)::after {
-  content: 'Следующий разворот →';
-  font-size: 12px;
-}
+.view-switch > .small-button:nth-child(1)::after { content: '1 страница'; font-size: 12px; }
+.view-switch > .small-button:nth-child(2)::after { content: 'Разворот'; font-size: 12px; }
+.album-actions > .small-button:nth-child(1)::after { content: '+ Страница'; font-size: 12px; }
+.album-actions > .small-button:nth-child(2)::after { content: 'Копировать страницу'; font-size: 12px; }
+.album-actions > .small-button:nth-child(3)::after { content: 'Удалить страницу'; font-size: 12px; }
+.spread-actions > .small-button:nth-child(1)::after { content: '← Предыдущий разворот'; font-size: 12px; }
+.spread-actions > .small-button:nth-child(2)::after { content: 'Следующий разворот →'; font-size: 12px; }
 
 .spread-actions > .small-button:nth-child(3) {
   margin-left: 10px;
@@ -177,6 +136,8 @@
   }
 
   .page-strip {
+    width: 100%;
+    max-width: 100%;
     min-height: 86px;
   }
 
