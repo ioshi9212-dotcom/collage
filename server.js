@@ -1,10 +1,10 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { createServer } from 'node:http';
 
 const port = Number(process.env.PORT || 3000);
 const host = '0.0.0.0';
-const distDir = join(process.cwd(), 'dist');
+const distDir = resolve(process.cwd(), 'dist');
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -34,8 +34,15 @@ function sendFile(response, filePath) {
 
 function safeJoin(baseDir, requestedPath) {
   const decodedPath = decodeURIComponent(requestedPath.split('?')[0]);
-  const cleanPath = normalize(decodedPath).replace(/^\/+/, '');
-  return join(baseDir, cleanPath);
+  const cleanPath = normalize(decodedPath).replace(/^[/\\]+/, '');
+  const resolvedPath = resolve(join(baseDir, cleanPath));
+  const baseWithSep = baseDir.endsWith(sep) ? baseDir : `${baseDir}${sep}`;
+
+  if (resolvedPath !== baseDir && !resolvedPath.startsWith(baseWithSep)) {
+    return null;
+  }
+
+  return resolvedPath;
 }
 
 const server = createServer((request, response) => {
@@ -49,7 +56,7 @@ const server = createServer((request, response) => {
   const filePath = safeJoin(distDir, requestedUrl);
 
   try {
-    if (existsSync(filePath) && statSync(filePath).isFile()) {
+    if (filePath && existsSync(filePath) && statSync(filePath).isFile()) {
       sendFile(response, filePath);
       return;
     }

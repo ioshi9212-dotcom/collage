@@ -13,8 +13,9 @@ import {
   resizeRow,
 } from './editor/layout';
 
-const STORAGE_KEY = 'collage-creator-album-live-v8-delete-frame';
+const STORAGE_KEY = 'collage-creator-album-live-v9-photo-usage-highlight';
 const LEGACY_KEYS = [
+  'collage-creator-album-live-v8-delete-frame',
   'collage-creator-album-live-v7-frame-drag-bounds',
   'collage-creator-album-live-v6-page-frame-count',
   'collage-creator-album-live-v5-sharp-preview',
@@ -431,6 +432,15 @@ export default function App() {
 
   const selectedFrame = useMemo(() => currentPage?.frames.find((frame) => frame.id === selectedFrameId) ?? null, [currentPage, selectedFrameId]);
   const selectedPhoto = useMemo(() => library.find((photo) => photo.id === selectedPhotoId) ?? null, [library, selectedPhotoId]);
+  const usedPhotoIds = useMemo(() => {
+    const used = new Set();
+    pages.forEach((page) => {
+      page.frames?.forEach((frame) => {
+        if (frame.photo?.id) used.add(frame.photo.id);
+      });
+    });
+    return used;
+  }, [pages]);
 
   function show(text) {
     setNotice(text);
@@ -648,12 +658,17 @@ export default function App() {
   }
 
   function project() {
-    return { version: 'live-8-delete-frame', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 'live-9-photo-usage-highlight', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(project()));
-    show('Альбом сохранён');
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(project()));
+      show('Альбом сохранён');
+    } catch (error) {
+      console.error(error);
+      show('Не удалось сохранить: проект слишком большой. Скачай JSON или очисти лишние фото.');
+    }
   }
 
   function normalizePages(data, nextCanvas, nextSettings) {
@@ -802,7 +817,23 @@ export default function App() {
           <label className="upload-box"><strong>Загрузить фото</strong><small>Можно сразу несколько</small><input type="file" accept="image/*" multiple onChange={uploadPhotos} /></label>
           <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); show('Список фото очищен'); }} disabled={library.length === 0}>Очистить список фото</button>
           {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
-          {library.length === 0 ? <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div> : <div className="photo-grid">{library.map((photo) => <button key={photo.id} type="button" className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''}`} draggable onClick={() => { setSelectedPhotoId(photo.id); show('Фото выбрано'); }} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }}><img src={photo.src} alt={photo.name} draggable="false" /><span>{photo.name}</span></button>)}</div>}
+          {library.length === 0 ? <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div> : <div className="photo-grid">{library.map((photo) => {
+            const isUsed = usedPhotoIds.has(photo.id);
+            return (
+              <button
+                key={photo.id}
+                type="button"
+                className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''} ${isUsed ? 'used-photo-card' : ''}`}
+                draggable
+                onClick={() => { setSelectedPhotoId(photo.id); show(isUsed ? 'Фото уже есть в альбоме. Можно вставить ещё раз.' : 'Фото выбрано'); }}
+                onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }}
+              >
+                <img src={photo.src} alt={photo.name} draggable="false" />
+                {isUsed && <small className="photo-used-badge">В альбоме</small>}
+                <span>{photo.name}</span>
+              </button>
+            );
+          })}</div>}
         </aside>
 
         <section className={`canvas-area ${isSpread ? 'album-mode' : ''}`}>

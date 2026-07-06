@@ -39,3 +39,32 @@
 .export-stage-holder .konvajs-content {
   box-shadow: none !important;
 }
+
+.photo-card.used-photo-card {
+  position: relative;
+  outline: 4px solid rgba(47, 125, 82, 0.75);
+  box-shadow: 0 0 0 2px #fff7ef, 0 14px 26px rgba(47, 125, 82, 0.22);
+}
+
+.photo-card.used-photo-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 3px rgba(47, 125, 82, 0.38);
+}
+
+.photo-used-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  border-radius: 999px;
+  background: rgba(47, 125, 82, 0.94);
+  color: #fff;
+  padding: 4px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
