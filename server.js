@@ -1,5 +1,5 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { createServer } from 'node:http';
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import pg from 'pg';
@@ -11,6 +11,7 @@ const distDir = resolve(process.cwd(), 'dist');
 const sessionSecret = process.env.SESSION_SECRET || 'collage-dev-secret-change-me';
 const databaseUrl = process.env.DATABASE_URL || '';
 const jsonLimitBytes = Number(process.env.JSON_LIMIT_BYTES || 60 * 1024 * 1024);
+const publicNoCacheFiles = new Set(['cloud-auth.js', 'cloud-auth.css', 'album-layers.js', 'album-layers.css']);
 
 let pool = null;
 let dbReadyPromise = null;
@@ -47,11 +48,18 @@ function sendJson(response, status, payload, headers = {}) {
   response.end(JSON.stringify(payload));
 }
 
+function cacheControlFor(filePath) {
+  const extension = extname(filePath).toLowerCase();
+  const name = basename(filePath);
+  if (extension === '.html' || publicNoCacheFiles.has(name)) return 'no-cache';
+  return 'public, max-age=31536000, immutable';
+}
+
 function sendFile(response, filePath) {
   const extension = extname(filePath).toLowerCase();
   response.writeHead(200, {
     'Content-Type': mimeTypes[extension] || 'application/octet-stream',
-    'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+    'Cache-Control': cacheControlFor(filePath),
   });
 
   createReadStream(filePath).pipe(response);
