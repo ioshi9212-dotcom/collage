@@ -10,6 +10,10 @@
     'actions nav' !important;
   align-items: stretch !important;
   gap: 10px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
 }
 
 .album-head {
