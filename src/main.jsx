@@ -4,7 +4,6 @@ import './styles.css';
 import './compact.css';
 import './canvas-scale-fix.css';
 import './button-cleanup.css';
-import './page-block-cleanup.css';
 import './inspector-cleanup.css';
 import App from './AppLive.jsx';
 
