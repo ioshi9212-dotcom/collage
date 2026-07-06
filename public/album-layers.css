@@ -1,0 +1,163 @@
+:root {
+  --album-green: #4f8f74;
+  --album-green-dark: #3f7560;
+  --album-soft: #eef7f2;
+  --album-line: rgba(28, 40, 36, 0.14);
+  --album-text: #1f2723;
+  --album-muted: #66736d;
+}
+
+.album-tool-panel {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 8px;
+  border: 1px solid var(--album-line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 28px rgba(31, 45, 39, 0.06);
+}
+
+.album-mode-tabs,
+.album-mode-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.album-mode-tab,
+.album-mode-button {
+  min-height: 32px;
+  border: 1px solid var(--album-line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--album-text);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.album-mode-tab.active,
+.album-mode-button.primary {
+  border-color: var(--album-green-dark);
+  background: var(--album-green);
+  color: #fff;
+}
+
+.album-mode-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.album-mode-note {
+  color: var(--album-muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.album-layer-overlay {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.album-text-item {
+  position: absolute;
+  min-width: 80px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #1f2723;
+  font-family: Arial, sans-serif;
+  line-height: 1.18;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: default;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.album-text-mode .album-text-item {
+  pointer-events: auto;
+  cursor: move;
+}
+
+.album-text-mode .album-text-item:hover,
+.album-text-item.selected {
+  border-color: rgba(79, 143, 116, 0.58);
+  background: rgba(238, 247, 242, 0.3);
+  box-shadow: 0 0 0 3px rgba(79, 143, 116, 0.12);
+}
+
+.album-text-item[contenteditable='true'] {
+  cursor: text;
+  outline: none;
+}
+
+.album-text-inspector {
+  display: none;
+  grid-template-columns: minmax(160px, 1fr) 82px 90px auto;
+  gap: 6px;
+  align-items: end;
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid var(--album-line);
+}
+
+.album-tool-panel.has-selected-text .album-text-inspector {
+  display: grid;
+}
+
+.album-text-inspector label {
+  display: grid;
+  gap: 4px;
+}
+
+.album-text-inspector span {
+  color: var(--album-muted);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.album-text-inspector textarea,
+.album-text-inspector input {
+  min-height: 34px;
+  border: 1px solid var(--album-line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--album-text);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.album-text-inspector textarea {
+  min-height: 48px;
+  resize: vertical;
+}
+
+@media (max-width: 1100px) {
+  .album-tool-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .album-text-inspector {
+    grid-template-columns: 1fr 80px 90px;
+  }
+}
+
+@media (max-width: 760px) {
+  .album-text-inspector {
+    grid-template-columns: 1fr;
+  }
+}
