@@ -13,8 +13,9 @@ import {
   resizeRow,
 } from './editor/layout';
 
-const STORAGE_KEY = 'collage-creator-album-live-v10-layer-move-photo';
+const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const LEGACY_KEYS = [
+  'collage-creator-album-live-v10-layer-move-photo',
   'collage-creator-album-live-v9-photo-usage-highlight',
   'collage-creator-album-live-v8-delete-frame',
   'collage-creator-album-live-v7-frame-drag-bounds',
@@ -512,10 +513,19 @@ export default function App() {
     }
     const next = { ...settings, [key]: value };
     setSettings(next);
-    if (key === 'showGuides') return;
+
+    if (key === 'showGuides' || key === 'borderColor' || key === 'borderWidth') return;
+
+    if (key === 'frameMode') {
+      setMoveFrameWithPhotoId(null);
+      show(value === 'locked' ? 'Сетка включена. Раскладка сохранена.' : 'Свободный режим включён. Раскладка сохранена.');
+      return;
+    }
+
     rebuildAll(canvas, next);
-    if (key === 'frameMode' && value === 'locked') show('Фиксация включена: двигай зелёные разделители между окнами.');
   }
+
+
 
   function updateCanvas(width, height, presetId = settings.presetId) {
     const nextCanvas = { width: clamp(width, 300, 5000), height: clamp(height, 300, 5000) };
@@ -613,6 +623,8 @@ export default function App() {
     setMoveFrameWithPhotoId(null);
   }
 
+
+
   function duplicatePage() {
     if (!currentPage) return;
     const pageSettings = settingsForPage(settings, currentPage, currentPageFrameCount);
@@ -626,6 +638,8 @@ export default function App() {
     setMoveFrameWithPhotoId(null);
   }
 
+
+
   function deletePage() {
     if (pages.length <= 1) return show('Нельзя удалить единственную страницу');
     setAlbum((current) => {
@@ -635,6 +649,8 @@ export default function App() {
     });
     setMoveFrameWithPhotoId(null);
   }
+
+
 
   function deleteSelectedFrame() {
     if (!selectedFrame || !currentPage) return;
@@ -675,6 +691,8 @@ export default function App() {
     show('Теперь перетащи рамку: фото поедет вместе с ней.');
   }
 
+
+
   function movePage(direction) {
     setAlbum((current) => {
       const index = current.pages.findIndex((page) => page.id === current.currentPageId);
@@ -687,14 +705,18 @@ export default function App() {
     setMoveFrameWithPhotoId(null);
   }
 
+
+
   function goSpread(direction) {
     const next = direction === 'next' ? Math.min(pages.length - 1, spreadStart + 2) : Math.max(0, spreadStart - 2);
     setAlbum((current) => ({ ...current, currentPageId: pages[next]?.id ?? pages[0].id }));
     setMoveFrameWithPhotoId(null);
   }
 
+
+
   function project() {
-    return { version: 'live-10-layer-move-photo', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 'live-11-preserve-mode-layout', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function save() {
@@ -849,7 +871,7 @@ export default function App() {
       <section className="album-bar">
         <div className="album-head"><strong>Страницы альбома</strong><span>{isSpread ? `Разворот ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1} из ${pages.length}`}</span></div>
         <div className="view-switch"><button className={`small-button ${!isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Страница</button><button className={`small-button ${isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот / 2 страницы</button></div>
-        <div className="album-actions"><button className="small-button" onClick={addPage}>+ Страница</button><button className="small-button" onClick={duplicatePage}>Копия</button><button className="small-button" onClick={() => movePage('left')} disabled={currentPageIndex === 0}>←</button><button className="small-button" onClick={() => movePage('right')} disabled={currentPageIndex === pages.length - 1}>→</button><button className="small-button danger" onClick={deletePage}>Удалить</button></div>
+        <div className="album-actions"><button className="small-button" onClick={addPage}>+ Страница</button><button className="small-button" onClick={duplicatePage}>Копия</button><button className="small-button danger" onClick={deletePage}>Удалить</button></div>
         <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Включить сетку'}</button></div>
         <div className="page-strip">{pages.map((page, index) => <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`} onClick={() => { setAlbum((current) => ({ ...current, currentPageId: page.id })); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}><b>{index + 1}</b><span>{page.frames.filter((frame) => frame.photo).length}/{resolvePageFrameCount(page, settings)}</span><small>{index % 2 === 0 ? 'левая' : 'правая'}</small></button>)}</div>
       </section>
