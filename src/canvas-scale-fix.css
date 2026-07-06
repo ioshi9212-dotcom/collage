@@ -9,7 +9,16 @@
   max-width: none !important;
 }
 
-/* These stages are only for PNG export. They must stay mounted, but should not be visible in the editor. */
+/* The editor viewport should fit the scaled canvas instead of leaving a long empty checkerboard field below it. */
+.stage-frame {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: calc(100vh - 240px) !important;
+  overflow: auto !important;
+}
+
+/* Export stages are used only to render PNG files. Keep them mounted for Konva export,
+   but keep them invisible in the editor. */
 .export-stage-holder {
   position: fixed !important;
   left: 0 !important;
