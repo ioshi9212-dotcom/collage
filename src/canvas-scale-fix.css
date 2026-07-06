@@ -1,0 +1,10 @@
+/* Overrides the old CSS zoom for Konva. The preview is now scaled by Stage scaleX/scaleY in AppLive.jsx. */
+.stage-frame .konvajs-content,
+.album-preview .konvajs-content {
+  zoom: 1 !important;
+}
+
+.stage-frame canvas,
+.album-preview canvas {
+  max-width: none !important;
+}

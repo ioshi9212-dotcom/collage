@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
+import {
+  MIN_FRAME,
+  buildGridLayout,
+  cleanFrame,
+  clamp,
+  ensureLayout,
+  framesFromLayout,
+  getColumnHandles,
+  getRowHandles,
+  resizeColumn,
+  resizeRow,
+} from './editor/layout';
 
-const STORAGE_KEY = 'collage-creator-album-live-v3';
+const STORAGE_KEY = 'collage-creator-album-live-v4-grid-layout';
 const LEGACY_KEYS = [
+  'collage-creator-album-live-v3',
   'collage-creator-album-live-v2',
   'collage-creator-album-live-v1',
   'collage-creator-album-v11',
@@ -15,10 +28,9 @@ const LEGACY_KEYS = [
   'collage-creator-album-v4',
 ];
 
-const MIN_FRAME = 80;
 const SPREAD_GAP = 90;
 const EXPORT_RATIO = 2;
-const HANDLE = 24;
+const HANDLE = 28;
 
 const PRESETS = [
   { id: 'a5-portrait', label: 'A5 вертикальный', width: 1480, height: 2100 },
@@ -43,14 +55,8 @@ const DEFAULT_SETTINGS = {
 
 const imageCache = new Map();
 
-function id() {
+function makeId() {
   return globalThis.crypto?.randomUUID?.() ?? `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function clamp(value, min, max) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return min;
-  return Math.min(max, Math.max(min, number));
 }
 
 function pad(value) {
@@ -85,49 +91,14 @@ function loadImage(src) {
   });
 }
 
-function layoutRows(count) {
+function createPage(canvas, settings, number, previousFrames = []) {
+  const built = buildGridLayout(canvas, settings, previousFrames);
   return {
-    1: [1],
-    2: [2],
-    3: [2, 1],
-    4: [2, 2],
-    5: [2, 2, 1],
-    6: [3, 3],
-    7: [3, 3, 1],
-    8: [4, 4],
-    9: [3, 3, 3],
-  }[count] ?? [2, 2, 1];
-}
-
-function createFrames(canvas, settings, previous = []) {
-  const rows = layoutRows(settings.frameCount);
-  const padding = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
-  const gap = Math.max(0, settings.gap);
-  const innerWidth = Math.max(40, canvas.width - padding * 2);
-  const innerHeight = Math.max(40, canvas.height - padding * 2);
-  const rowHeight = (innerHeight - gap * (rows.length - 1)) / rows.length;
-  const frames = [];
-
-  rows.forEach((columns, rowIndex) => {
-    const width = (innerWidth - gap * (columns - 1)) / columns;
-    for (let column = 0; column < columns; column += 1) {
-      const old = previous[frames.length];
-      frames.push({
-        id: old?.id ?? `frame_${frames.length + 1}`,
-        x: Math.round(padding + column * (width + gap)),
-        y: Math.round(padding + rowIndex * (rowHeight + gap)),
-        width: Math.round(width),
-        height: Math.round(rowHeight),
-        photo: old?.photo ?? null,
-      });
-    }
-  });
-
-  return frames.slice(0, settings.frameCount);
-}
-
-function createPage(canvas, settings, number, frames) {
-  return { id: id(), title: `Страница ${number}`, frames: frames ?? createFrames(canvas, settings) };
+    id: makeId(),
+    title: `Страница ${number}`,
+    layout: built.layout,
+    frames: built.frames,
+  };
 }
 
 function cloneFrames(frames) {
@@ -136,18 +107,6 @@ function cloneFrames(frames) {
     id: `frame_${index + 1}`,
     photo: frame.photo ? { ...frame.photo } : null,
   }));
-}
-
-function cleanFrame(frame, canvas) {
-  const width = clamp(Math.round(Number(frame.width)), MIN_FRAME, canvas.width);
-  const height = clamp(Math.round(Number(frame.height)), MIN_FRAME, canvas.height);
-  return {
-    ...frame,
-    width,
-    height,
-    x: clamp(Math.round(Number(frame.x)), 0, Math.max(0, canvas.width - width)),
-    y: clamp(Math.round(Number(frame.y)), 0, Math.max(0, canvas.height - height)),
-  };
 }
 
 function coverRect(image, frame, photo) {
@@ -176,122 +135,10 @@ function clampPhoto(rect, frame, x, y) {
   };
 }
 
-function verticalPairs(frames, gap) {
-  const tolerance = Math.max(4, gap / 2 + 4);
-  const pairs = [];
-
-  frames.forEach((left) => {
-    frames.forEach((right) => {
-      if (left.id === right.id) return;
-      if (Math.abs(left.x + left.width + gap - right.x) > tolerance) return;
-
-      const y1 = Math.max(left.y, right.y);
-      const y2 = Math.min(left.y + left.height, right.y + right.height);
-      if (y2 - y1 < MIN_FRAME / 2) return;
-
-      pairs.push({
-        leftId: left.id,
-        rightId: right.id,
-        center: left.x + left.width + gap / 2,
-        y: y1,
-        height: y2 - y1,
-      });
-    });
-  });
-
-  return pairs;
-}
-
-function horizontalPairs(frames, gap) {
-  const tolerance = Math.max(4, gap / 2 + 4);
-  const pairs = [];
-
-  frames.forEach((top) => {
-    frames.forEach((bottom) => {
-      if (top.id === bottom.id) return;
-      if (Math.abs(top.y + top.height + gap - bottom.y) > tolerance) return;
-
-      const x1 = Math.max(top.x, bottom.x);
-      const x2 = Math.min(top.x + top.width, bottom.x + bottom.width);
-      if (x2 - x1 < MIN_FRAME / 2) return;
-
-      pairs.push({
-        topId: top.id,
-        bottomId: bottom.id,
-        center: top.y + top.height + gap / 2,
-        x: x1,
-        width: x2 - x1,
-      });
-    });
-  });
-
-  return pairs;
-}
-
-function groupPairs(pairs, axis) {
-  const map = new Map();
-
-  pairs.forEach((pair) => {
-    const key = String(Math.round(pair.center));
-    const item = map.get(key) ?? { center: pair.center, pairs: [], min: Infinity, max: -Infinity };
-    item.pairs.push(pair);
-
-    if (axis === 'x') {
-      item.min = Math.min(item.min, pair.y);
-      item.max = Math.max(item.max, pair.y + pair.height);
-    } else {
-      item.min = Math.min(item.min, pair.x);
-      item.max = Math.max(item.max, pair.x + pair.width);
-    }
-
-    map.set(key, item);
-  });
-
-  return Array.from(map.values());
-}
-
-function moveVerticalBoundary(frames, leftId, rightId, center, gap) {
-  const left = frames.find((frame) => frame.id === leftId);
-  const right = frames.find((frame) => frame.id === rightId);
-  if (!left || !right) return frames;
-
-  const rightEdge = right.x + right.width;
-  const boundary = clamp(Math.round(center - gap / 2), left.x + MIN_FRAME, rightEdge - gap - MIN_FRAME);
-
-  return frames.map((frame) => {
-    if (frame.id === leftId) return { ...frame, width: boundary - left.x };
-    if (frame.id === rightId) {
-      const nextX = boundary + gap;
-      return { ...frame, x: nextX, width: rightEdge - nextX };
-    }
-    return frame;
-  });
-}
-
-function moveHorizontalBoundary(frames, topId, bottomId, center, gap) {
-  const top = frames.find((frame) => frame.id === topId);
-  const bottom = frames.find((frame) => frame.id === bottomId);
-  if (!top || !bottom) return frames;
-
-  const bottomEdge = bottom.y + bottom.height;
-  const boundary = clamp(Math.round(center - gap / 2), top.y + MIN_FRAME, bottomEdge - gap - MIN_FRAME);
-
-  return frames.map((frame) => {
-    if (frame.id === topId) return { ...frame, height: boundary - top.y };
-    if (frame.id === bottomId) {
-      const nextY = boundary + gap;
-      return { ...frame, y: nextY, height: bottomEdge - nextY };
-    }
-    return frame;
-  });
-}
-
-function moveVerticalGroup(frames, pairs, center, gap) {
-  return pairs.reduce((nextFrames, pair) => moveVerticalBoundary(nextFrames, pair.leftId, pair.rightId, center, gap), frames);
-}
-
-function moveHorizontalGroup(frames, pairs, center, gap) {
-  return pairs.reduce((nextFrames, pair) => moveHorizontalBoundary(nextFrames, pair.topId, pair.bottomId, center, gap), frames);
+function initialAlbum() {
+  const first = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 1);
+  const second = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 2);
+  return { pages: [first, second], currentPageId: first.id };
 }
 
 function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhotoMove }) {
@@ -340,36 +187,38 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   const [image, setImage] = useState(null);
   const groupRef = useRef(null);
   const transformerRef = useRef(null);
-  const photo = frame.photo;
-  const rect = coverRect(image, frame, photo);
+  const rect = coverRect(image, frame, frame.photo);
 
   useEffect(() => {
     let active = true;
-    if (!photo?.src) {
+    if (!frame.photo?.src) {
       setImage(null);
       return () => {
         active = false;
       };
     }
-
-    loadImage(photo.src)
-      .then((loaded) => active && setImage(loaded))
-      .catch(() => active && setImage(null));
-
+    loadImage(frame.photo.src)
+      .then((loaded) => {
+        if (active) setImage(loaded);
+      })
+      .catch(() => {
+        if (active) setImage(null);
+      });
     return () => {
       active = false;
     };
-  }, [photo?.src]);
+  }, [frame.photo?.src]);
 
   useEffect(() => {
-    if (!transformerRef.current || !groupRef.current) return;
-    transformerRef.current.nodes(selected && !printMode && !locked ? [groupRef.current] : []);
-    transformerRef.current.getLayer()?.batchDraw();
+    const transformer = transformerRef.current;
+    const group = groupRef.current;
+    if (!transformer || !group) return;
+    transformer.nodes(selected && !printMode && !locked ? [group] : []);
+    transformer.getLayer()?.batchDraw();
   }, [selected, printMode, locked, frame.x, frame.y, frame.width, frame.height]);
 
   function commitTransform() {
     if (printMode || !selected || locked || !groupRef.current) return;
-
     const node = groupRef.current;
     const patch = {
       x: node.x(),
@@ -377,7 +226,6 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
       width: frame.width * node.scaleX(),
       height: frame.height * node.scaleY(),
     };
-
     node.scaleX(1);
     node.scaleY(1);
     onFrameChange(frame.id, patch);
@@ -408,7 +256,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
 
           <PhotoImage frame={frame} selected={selected} image={image} rect={rect} printMode={printMode} onSelect={onSelect} onPhotoMove={onPhotoMove} />
 
-          {!photo && !printMode && (
+          {!frame.photo && !printMode && (
             <Rect
               x={14}
               y={14}
@@ -440,7 +288,8 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
           anchorFill="#fff7ef"
           boundBoxFunc={(oldBox, newBox) => {
             if (newBox.width < MIN_FRAME || newBox.height < MIN_FRAME) return oldBox;
-            if (newBox.x < 0 || newBox.y < 0 || newBox.x + newBox.width > canvas.width || newBox.y + newBox.height > canvas.height) return oldBox;
+            if (newBox.x < 0 || newBox.y < 0) return oldBox;
+            if (newBox.x + newBox.width > canvas.width || newBox.y + newBox.height > canvas.height) return oldBox;
             return newBox;
           }}
         />
@@ -449,46 +298,71 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   );
 }
 
-function LockedHandles({ page, gap, onVerticalMove, onHorizontalMove, onActivate }) {
-  if (!page) return null;
-  const vertical = groupPairs(verticalPairs(page.frames, gap), 'x');
-  const horizontal = groupPairs(horizontalPairs(page.frames, gap), 'y');
+function GridHandles({ layout, onColumnResize, onRowResize, onActivate }) {
+  if (!layout) return null;
+  const columns = getColumnHandles(layout);
+  const rows = getRowHandles(layout);
 
   return (
     <>
-      {vertical.map((group) => (
+      {columns.map((handle) => (
         <Rect
-          key={`v-${Math.round(group.center)}-${group.pairs.length}`}
-          x={group.center - HANDLE / 2}
-          y={group.min}
+          key={handle.key}
+          x={handle.x - HANDLE / 2}
+          y={handle.y}
           width={HANDLE}
-          height={group.max - group.min}
+          height={handle.height}
           fill="#2f7d52"
-          opacity={0.16}
+          opacity={0.18}
           draggable
-          dragBoundFunc={(pos) => ({ x: pos.x, y: group.min })}
-          onMouseDown={onActivate}
-          onTap={onActivate}
-          onDragMove={(event) => onVerticalMove(group.pairs, event.target.x() + HANDLE / 2)}
-          onDragEnd={(event) => onVerticalMove(group.pairs, event.target.x() + HANDLE / 2)}
+          onMouseDown={(event) => {
+            event.cancelBubble = true;
+            onActivate();
+          }}
+          onTap={(event) => {
+            event.cancelBubble = true;
+            onActivate();
+          }}
+          onDragMove={(event) => {
+            event.cancelBubble = true;
+            event.target.y(handle.y);
+            onColumnResize(handle.rowIndex, handle.dividerIndex, event.target.x() + HANDLE / 2);
+          }}
+          onDragEnd={(event) => {
+            event.cancelBubble = true;
+            event.target.y(handle.y);
+            onColumnResize(handle.rowIndex, handle.dividerIndex, event.target.x() + HANDLE / 2);
+          }}
         />
       ))}
-
-      {horizontal.map((group) => (
+      {rows.map((handle) => (
         <Rect
-          key={`h-${Math.round(group.center)}-${group.pairs.length}`}
-          x={group.min}
-          y={group.center - HANDLE / 2}
-          width={group.max - group.min}
+          key={handle.key}
+          x={handle.x}
+          y={handle.y - HANDLE / 2}
+          width={handle.width}
           height={HANDLE}
           fill="#2f7d52"
-          opacity={0.16}
+          opacity={0.18}
           draggable
-          dragBoundFunc={(pos) => ({ x: group.min, y: pos.y })}
-          onMouseDown={onActivate}
-          onTap={onActivate}
-          onDragMove={(event) => onHorizontalMove(group.pairs, event.target.y() + HANDLE / 2)}
-          onDragEnd={(event) => onHorizontalMove(group.pairs, event.target.y() + HANDLE / 2)}
+          onMouseDown={(event) => {
+            event.cancelBubble = true;
+            onActivate();
+          }}
+          onTap={(event) => {
+            event.cancelBubble = true;
+            onActivate();
+          }}
+          onDragMove={(event) => {
+            event.cancelBubble = true;
+            event.target.x(handle.x);
+            onRowResize(handle.rowIndex, event.target.y() + HANDLE / 2);
+          }}
+          onDragEnd={(event) => {
+            event.cancelBubble = true;
+            event.target.x(handle.x);
+            onRowResize(handle.rowIndex, event.target.y() + HANDLE / 2);
+          }}
         />
       ))}
     </>
@@ -507,8 +381,8 @@ function PageLayer({
   onFrameSelect,
   onPhotoMove,
   onFrameChange,
-  onVerticalMove,
-  onHorizontalMove,
+  onColumnResize,
+  onRowResize,
   onActivatePage,
 }) {
   const locked = settings.frameMode === 'locked';
@@ -525,7 +399,6 @@ function PageLayer({
   return (
     <Group x={x} y={0}>
       <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
-
       {!printMode && settings.showGuides && (
         <>
           <Rect
@@ -542,7 +415,7 @@ function PageLayer({
           <Text
             x={safe + 16}
             y={safe + 16}
-            text={locked ? 'фиксация: разделители' : 'поля / безопасная зона'}
+            text={locked ? 'сетка: двигай разделители' : 'поля / безопасная зона'}
             fontSize={28}
             fill={locked ? '#2f7d52' : '#c27b4f'}
             opacity={0.62}
@@ -550,7 +423,6 @@ function PageLayer({
           />
         </>
       )}
-
       {!printMode && (
         <Text
           x={28}
@@ -580,22 +452,21 @@ function PageLayer({
       ))}
 
       {!printMode && locked && (
-        <LockedHandles
-          page={page}
-          gap={Math.max(0, settings.gap)}
+        <GridHandles
+          layout={page.layout}
           onActivate={() => onActivatePage(page.id)}
-          onVerticalMove={(pairs, center) => onVerticalMove(page.id, pairs, center)}
-          onHorizontalMove={(pairs, center) => onHorizontalMove(page.id, pairs, center)}
+          onColumnResize={(rowIndex, dividerIndex, centerX) => onColumnResize(page.id, rowIndex, dividerIndex, centerX)}
+          onRowResize={(rowIndex, centerY) => onRowResize(page.id, rowIndex, centerY)}
         />
       )}
     </Group>
   );
 }
 
-function initialAlbum() {
-  const first = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 1);
-  const second = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 2);
-  return { pages: [first, second], currentPageId: first.id };
+function scaleForPreview(width, height, isSpread) {
+  const maxWidth = isSpread ? 980 : 760;
+  const maxHeight = 620;
+  return Math.min(1, maxWidth / width, maxHeight / height);
 }
 
 export default function App() {
@@ -620,7 +491,10 @@ export default function App() {
   const spreadStart = currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1;
   const isSpread = viewMode === 'spread';
   const locked = settings.frameMode === 'locked';
-  const stageWidth = isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
+  const stageRealWidth = isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
+  const previewScale = scaleForPreview(stageRealWidth, canvas.height, isSpread);
+  const stageDisplayWidth = stageRealWidth * previewScale;
+  const stageDisplayHeight = canvas.height * previewScale;
   const entries = isSpread
     ? [
         { page: pages[spreadStart], pageIndex: spreadStart, x: 0 },
@@ -648,30 +522,13 @@ export default function App() {
     updatePageFrames(pageId, (frames) => frames.map((frame) => (frame.id === frameId ? cleanFrame({ ...frame, ...patch }, canvas) : frame)));
   }
 
-  function moveVertical(pageId, pairs, center) {
-    setAlbum((current) => ({
-      ...current,
-      currentPageId: pageId,
-      pages: current.pages.map((page) => (
-        page.id === pageId ? { ...page, frames: moveVerticalGroup(page.frames, pairs, center, Math.max(0, settings.gap)) } : page
-      )),
-    }));
-  }
-
-  function moveHorizontal(pageId, pairs, center) {
-    setAlbum((current) => ({
-      ...current,
-      currentPageId: pageId,
-      pages: current.pages.map((page) => (
-        page.id === pageId ? { ...page, frames: moveHorizontalGroup(page.frames, pairs, center, Math.max(0, settings.gap)) } : page
-      )),
-    }));
-  }
-
   function rebuildAll(nextCanvas = canvas, nextSettings = settings) {
     setAlbum((current) => ({
       ...current,
-      pages: current.pages.map((page) => ({ ...page, frames: createFrames(nextCanvas, nextSettings, page.frames) })),
+      pages: current.pages.map((page) => {
+        const built = buildGridLayout(nextCanvas, nextSettings, page.frames);
+        return { ...page, layout: built.layout, frames: built.frames };
+      }),
     }));
     setSelectedFrameId(null);
   }
@@ -679,18 +536,9 @@ export default function App() {
   function updateSetting(key, value) {
     const next = { ...settings, [key]: value };
     setSettings(next);
-
     if (key === 'showGuides') return;
-
-    if (key === 'frameMode') {
-      if (value === 'locked') {
-        rebuildAll(canvas, next);
-        show('Фиксация включена: все страницы очищены в ровную сетку. Двигай зелёные разделители.');
-      }
-      return;
-    }
-
     rebuildAll(canvas, next);
+    if (key === 'frameMode' && value === 'locked') show('Фиксация включена: двигай зелёные разделители между окнами.');
   }
 
   function updateCanvas(width, height, presetId = settings.presetId) {
@@ -701,12 +549,33 @@ export default function App() {
     rebuildAll(nextCanvas, nextSettings);
   }
 
+  function updateLayoutPage(pageId, layoutUpdater) {
+    setAlbum((current) => ({
+      ...current,
+      currentPageId: pageId,
+      pages: current.pages.map((page) => {
+        if (page.id !== pageId) return page;
+        const oldLayout = ensureLayout(page, canvas, settings);
+        const nextLayout = layoutUpdater(oldLayout);
+        return { ...page, layout: nextLayout, frames: framesFromLayout(nextLayout, page.frames) };
+      }),
+    }));
+  }
+
+  function resizeGridColumn(pageId, rowIndex, dividerIndex, centerX) {
+    updateLayoutPage(pageId, (layout) => resizeColumn(layout, rowIndex, dividerIndex, centerX));
+  }
+
+  function resizeGridRow(pageId, rowIndex, centerY) {
+    updateLayoutPage(pageId, (layout) => resizeRow(layout, rowIndex, centerY));
+  }
+
   function uploadPhotos(event) {
     const files = Array.from(event.target.files ?? []);
     files.forEach((file) => {
       if (!file.type.startsWith('image/')) return;
       const reader = new FileReader();
-      reader.onload = () => setLibrary((current) => [...current, { id: id(), name: file.name, src: reader.result }]);
+      reader.onload = () => setLibrary((current) => [...current, { id: makeId(), name: file.name, src: reader.result }]);
       reader.readAsDataURL(file);
     });
     event.target.value = '';
@@ -714,11 +583,7 @@ export default function App() {
   }
 
   function putPhoto(pageId, frameId, photo) {
-    updatePageFrames(pageId, (frames) => frames.map((frame) => (
-      frame.id === frameId
-        ? { ...frame, photo: { id: photo.id, name: photo.name, src: photo.src, zoom: 1, offsetX: 0, offsetY: 0 } }
-        : frame
-    )));
+    updatePageFrames(pageId, (frames) => frames.map((frame) => (frame.id === frameId ? { ...frame, photo: { id: photo.id, name: photo.name, src: photo.src, zoom: 1, offsetX: 0, offsetY: 0 } } : frame)));
     setAlbum((current) => ({ ...current, currentPageId: pageId }));
     setSelectedFrameId(frameId);
   }
@@ -730,7 +595,6 @@ export default function App() {
       show('Фото вставлено');
       return;
     }
-
     setAlbum((current) => ({ ...current, currentPageId: pageId }));
     setSelectedFrameId(frameId);
   }
@@ -739,29 +603,26 @@ export default function App() {
     event.preventDefault();
     const photo = library.find((item) => item.id === event.dataTransfer.getData('photo-id'));
     if (!photo || !stageRef.current) return;
-
     stageRef.current.setPointersPositions(event);
     const point = stageRef.current.getPointerPosition();
     if (!point) return;
 
+    const actualPoint = { x: point.x / previewScale, y: point.y / previewScale };
     for (const entry of entries) {
       if (!entry.page) continue;
-      const x = point.x - entry.x;
-      const y = point.y;
+      const x = actualPoint.x - entry.x;
+      const y = actualPoint.y;
       const frame = entry.page.frames.find((item) => x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height);
       if (frame) {
         putPhoto(entry.page.id, frame.id, photo);
         return;
       }
     }
-
     show('Перетащи фото прямо в рамку');
   }
 
   function updatePhoto(pageId, frameId, patch) {
-    updatePageFrames(pageId, (frames) => frames.map((frame) => (
-      frame.id === frameId && frame.photo ? { ...frame, photo: { ...frame.photo, ...patch } } : frame
-    )));
+    updatePageFrames(pageId, (frames) => frames.map((frame) => (frame.id === frameId && frame.photo ? { ...frame, photo: { ...frame.photo, ...patch } } : frame)));
   }
 
   function addPage() {
@@ -800,7 +661,6 @@ export default function App() {
       const index = current.pages.findIndex((page) => page.id === current.currentPageId);
       const target = direction === 'left' ? index - 1 : index + 1;
       if (target < 0 || target >= current.pages.length) return current;
-
       const next = [...current.pages];
       [next[index], next[target]] = [next[target], next[index]];
       return { ...current, pages: next };
@@ -813,7 +673,7 @@ export default function App() {
   }
 
   function project() {
-    return { version: 'live-3', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 'live-4-grid-layout', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function save() {
@@ -821,41 +681,36 @@ export default function App() {
     show('Альбом сохранён');
   }
 
-  function normalizedPages(data, nextCanvas, nextSettings) {
+  function normalizePages(data, nextCanvas, nextSettings) {
     if (Array.isArray(data.pages) && data.pages.length) {
-      return data.pages.map((page, index) => ({
-        id: page.id ?? id(),
-        title: page.title ?? `Страница ${index + 1}`,
-        frames: Array.isArray(page.frames)
-          ? page.frames.map((frame) => cleanFrame(frame, nextCanvas))
-          : createFrames(nextCanvas, nextSettings),
-      }));
+      return data.pages.map((page, index) => {
+        const frames = Array.isArray(page.frames) ? page.frames.map((frame) => cleanFrame(frame, nextCanvas)) : [];
+        const trustLayout = data.version === 'live-4-grid-layout' && page.layout?.type === 'grid';
+        const layout = trustLayout ? page.layout : buildGridLayout(nextCanvas, nextSettings, frames).layout;
+        return {
+          id: page.id ?? makeId(),
+          title: page.title ?? `Страница ${index + 1}`,
+          layout,
+          frames: framesFromLayout(layout, frames),
+        };
+      });
     }
-
-    if (Array.isArray(data.frames)) {
-      return [createPage(nextCanvas, nextSettings, 1, data.frames.map((frame) => cleanFrame(frame, nextCanvas)))];
-    }
-
+    if (Array.isArray(data.frames)) return [createPage(nextCanvas, nextSettings, 1, data.frames.map((frame) => cleanFrame(frame, nextCanvas)))];
     return [createPage(nextCanvas, nextSettings, 1), createPage(nextCanvas, nextSettings, 2)];
   }
 
   function loadSaved() {
     const raw = localStorage.getItem(STORAGE_KEY) ?? LEGACY_KEYS.map((key) => localStorage.getItem(key)).find(Boolean);
     if (!raw) return show('Сохранённого проекта пока нет');
-
     try {
       const data = JSON.parse(raw);
       const nextCanvas = data.canvas ?? DEFAULT_CANVAS;
       const nextSettings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
-      const nextPages = normalizedPages(data, nextCanvas, nextSettings);
-
+      const nextPages = normalizePages(data, nextCanvas, nextSettings);
       setCanvas(nextCanvas);
       setSettings(nextSettings);
       setLibrary(Array.isArray(data.library) ? data.library : []);
-      setAlbum({
-        pages: nextPages,
-        currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id,
-      });
+      setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
       setViewMode(data.viewMode === 'single' ? 'single' : 'spread');
       setSelectedFrameId(null);
       setSelectedPhotoId(null);
@@ -868,20 +723,20 @@ export default function App() {
   function importJson(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
         const nextCanvas = data.canvas ?? DEFAULT_CANVAS;
         const nextSettings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
-        const nextPages = normalizedPages(data, nextCanvas, nextSettings);
-
+        const nextPages = normalizePages(data, nextCanvas, nextSettings);
         setCanvas(nextCanvas);
         setSettings(nextSettings);
         setLibrary(Array.isArray(data.library) ? data.library : []);
         setAlbum({ pages: nextPages, currentPageId: nextPages[0].id });
         setViewMode(data.viewMode === 'single' ? 'single' : 'spread');
+        setSelectedFrameId(null);
+        setSelectedPhotoId(null);
         show('JSON открыт');
       } catch {
         show('Файл не похож на проект');
@@ -914,11 +769,25 @@ export default function App() {
       onFrameSelect={selectFrame}
       onPhotoMove={updatePhoto}
       onFrameChange={changeFrame}
-      onVerticalMove={moveVertical}
-      onHorizontalMove={moveHorizontal}
+      onColumnResize={resizeGridColumn}
+      onRowResize={resizeGridRow}
       onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
     />
   ));
+
+  const commonPageLayerProps = {
+    canvas,
+    settings,
+    activePageId: null,
+    selectedFrameId: null,
+    printMode: true,
+    onFrameSelect: () => {},
+    onPhotoMove: () => {},
+    onFrameChange: () => {},
+    onColumnResize: () => {},
+    onRowResize: () => {},
+    onActivatePage: () => {},
+  };
 
   return (
     <main className="app-shell">
@@ -943,118 +812,42 @@ export default function App() {
       <section className="settings-bar">
         <label className="field wide-field">
           <span>Размер страницы</span>
-          <select
-            value={settings.presetId}
-            onChange={(event) => {
-              const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0];
-              updateCanvas(preset.width, preset.height, preset.id);
-            }}
-          >
+          <select value={settings.presetId} onChange={(event) => {
+            const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0];
+            updateCanvas(preset.width, preset.height, preset.id);
+          }}>
             {PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
           </select>
         </label>
         <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
         <label className="field small-field"><span>Высота px</span><input type="number" value={canvas.height} onChange={(event) => updateCanvas(canvas.width, event.target.value, 'custom')} /></label>
-        <label className="field small-field">
-          <span>Фото-окон</span>
-          <select value={settings.frameCount} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}
-          </select>
-        </label>
+        <label className="field small-field"><span>Фото-окон</span><select value={settings.frameCount} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{[1,2,3,4,5,6,7,8,9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
         <label className="field small-field"><span>Зазор</span><input type="number" value={settings.gap} onChange={(event) => updateSetting('gap', clamp(event.target.value, 0, 200))} /></label>
         <label className="field small-field"><span>Поля</span><input type="number" value={settings.padding} onChange={(event) => updateSetting('padding', clamp(event.target.value, 0, 300))} /></label>
       </section>
 
       <section className="album-bar">
-        <div className="album-head">
-          <strong>Страницы альбома</strong>
-          <span>{isSpread ? `Разворот ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1} из ${pages.length}`}</span>
-        </div>
-        <div className="view-switch">
-          <button className={`small-button ${!isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Страница</button>
-          <button className={`small-button ${isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот / 2 страницы</button>
-        </div>
-        <div className="album-actions">
-          <button className="small-button" onClick={addPage}>+ Страница</button>
-          <button className="small-button" onClick={duplicatePage}>Копия</button>
-          <button className="small-button" onClick={() => movePage('left')} disabled={currentPageIndex === 0}>←</button>
-          <button className="small-button" onClick={() => movePage('right')} disabled={currentPageIndex === pages.length - 1}>→</button>
-          <button className="small-button danger" onClick={deletePage}>Удалить</button>
-        </div>
-        <div className="spread-actions">
-          <button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button>
-          <button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button>
-          <button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>
-            {settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}
-          </button>
-          <button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>
-            {locked ? 'Фиксация: разделители' : 'Включить фиксацию'}
-          </button>
-        </div>
-        <div className="page-strip">
-          {pages.map((page, index) => (
-            <button
-              key={page.id}
-              type="button"
-              className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`}
-              onClick={() => {
-                setAlbum((current) => ({ ...current, currentPageId: page.id }));
-                setSelectedFrameId(null);
-              }}
-            >
-              <b>{index + 1}</b>
-              <span>{page.frames.filter((frame) => frame.photo).length}/{page.frames.length}</span>
-              <small>{index % 2 === 0 ? 'левая' : 'правая'}</small>
-            </button>
-          ))}
-        </div>
+        <div className="album-head"><strong>Страницы альбома</strong><span>{isSpread ? `Разворот ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1} из ${pages.length}`}</span></div>
+        <div className="view-switch"><button className={`small-button ${!isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Страница</button><button className={`small-button ${isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот / 2 страницы</button></div>
+        <div className="album-actions"><button className="small-button" onClick={addPage}>+ Страница</button><button className="small-button" onClick={duplicatePage}>Копия</button><button className="small-button" onClick={() => movePage('left')} disabled={currentPageIndex === 0}>←</button><button className="small-button" onClick={() => movePage('right')} disabled={currentPageIndex === pages.length - 1}>→</button><button className="small-button danger" onClick={deletePage}>Удалить</button></div>
+        <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Включить сетку'}</button></div>
+        <div className="page-strip">{pages.map((page, index) => <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`} onClick={() => { setAlbum((current) => ({ ...current, currentPageId: page.id })); setSelectedFrameId(null); }}><b>{index + 1}</b><span>{page.frames.filter((frame) => frame.photo).length}/{page.frames.length}</span><small>{index % 2 === 0 ? 'левая' : 'правая'}</small></button>)}</div>
       </section>
 
       <section className="workspace three-columns">
         <aside className="sidebar">
-          <div className="panel-title">
-            <div>
-              <h2>Фото</h2>
-              <p>На компьютере можно перетаскивать. На телефоне: нажми фото, потом нажми рамку.</p>
-            </div>
-            <span>{library.length}</span>
-          </div>
-          <label className="upload-box">
-            <strong>Загрузить фото</strong>
-            <small>Можно сразу несколько</small>
-            <input type="file" accept="image/*" multiple onChange={uploadPhotos} />
-          </label>
+          <div className="panel-title"><div><h2>Фото</h2><p>На компьютере можно перетаскивать. На телефоне: нажми фото, потом нажми рамку.</p></div><span>{library.length}</span></div>
+          <label className="upload-box"><strong>Загрузить фото</strong><small>Можно сразу несколько</small><input type="file" accept="image/*" multiple onChange={uploadPhotos} /></label>
           <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); show('Список фото очищен'); }} disabled={library.length === 0}>Очистить список фото</button>
           {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
-          {library.length === 0 ? (
-            <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div>
-          ) : (
-            <div className="photo-grid">
-              {library.map((photo) => (
-                <button
-                  key={photo.id}
-                  type="button"
-                  className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''}`}
-                  draggable
-                  onClick={() => { setSelectedPhotoId(photo.id); show('Фото выбрано'); }}
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = 'copy';
-                    event.dataTransfer.setData('photo-id', photo.id);
-                  }}
-                >
-                  <img src={photo.src} alt={photo.name} draggable="false" />
-                  <span>{photo.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {library.length === 0 ? <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div> : <div className="photo-grid">{library.map((photo) => <button key={photo.id} type="button" className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''}`} draggable onClick={() => { setSelectedPhotoId(photo.id); show('Фото выбрано'); }} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }}><img src={photo.src} alt={photo.name} draggable="false" /><span>{photo.name}</span></button>)}</div>}
         </aside>
 
         <section className={`canvas-area ${isSpread ? 'album-mode' : ''}`}>
           <div className="canvas-toolbar">
             <div>
               <strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong>
-              <span>{locked ? 'Фиксация: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободные рамки: окна не перетаскиваются, только меняют размер за маркеры. Фото внутри можно двигать.'}</span>
+              <span>{locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна не перетаскиваются, только меняют размер за маркеры. Фото внутри можно двигать.'}</span>
               <em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em>
             </div>
             <button className="small-button" onClick={() => rebuildAll(canvas, settings)}>Перестроить рамки</button>
@@ -1062,8 +855,15 @@ export default function App() {
           </div>
 
           <div className={`stage-frame ${isSpread ? 'album-preview' : ''}`} onDragOver={(event) => event.preventDefault()} onDrop={dropPhoto}>
-            <Stage ref={stageRef} width={stageWidth} height={canvas.height} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') setSelectedFrameId(null); }}>
-              <Layer>
+            <Stage
+              ref={stageRef}
+              width={stageDisplayWidth}
+              height={stageDisplayHeight}
+              onMouseDown={(event) => {
+                if (event.target === event.target.getStage() || event.target.name() === 'background') setSelectedFrameId(null);
+              }}
+            >
+              <Layer scaleX={previewScale} scaleY={previewScale}>
                 {renderEntries}
                 {isSpread && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}
               </Layer>
@@ -1072,66 +872,22 @@ export default function App() {
         </section>
 
         <aside className="inspector">
-          <div className="panel-title compact">
-            <div>
-              <h2>Настройки окна</h2>
-              <p>{selectedFrame ? (locked ? 'В фиксации двигай зелёные разделители между окнами.' : 'Меняй размер рамки за маркеры. Фото внутри двигай мышкой.') : 'Выбери рамку на холсте'}</p>
-            </div>
-          </div>
+          <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? (locked ? 'В сетке двигай зелёные разделители между окнами.' : 'Меняй размер рамки за маркеры. Фото внутри двигай мышкой.') : 'Выбери рамку на холсте'}</p></div></div>
           <div className="inspector-block">
             <h3>Цвет и рамка</h3>
             <label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label>
             <label className="field"><span>Обводка внутри окна</span><input type="number" min="0" max="80" value={settings.borderWidth} onChange={(event) => updateSetting('borderWidth', clamp(event.target.value, 0, 80))} /></label>
           </div>
-
-          {selectedFrame ? (
-            <>
-              <div className="inspector-block">
-                <h3>Положение рамки</h3>
-                <div className="geometry-grid">
-                  <label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { x: event.target.value })} /></label>
-                  <label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { y: event.target.value })} /></label>
-                  <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label>
-                  <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label>
-                </div>
-                <p className="hint">Режим: {locked ? 'фиксация через разделители, без перетаскивания окон' : selectedFrame.photo ? 'фото внутри окна двигается, рамка меняется только за маркеры/цифры' : 'рамка меняет размер за маркеры, но не перетаскивается'}.</p>
-              </div>
-              <div className="inspector-block">
-                <h3>Фото внутри окна</h3>
-                {selectedFrame.photo ? (
-                  <>
-                    <p className="photo-name">{selectedFrame.photo.name}</p>
-                    <label className="range-row">
-                      <span>Масштаб</span>
-                      <input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} />
-                      <b>{selectedFrame.photo.zoom.toFixed(2)}</b>
-                    </label>
-                    <button className="button full" onClick={() => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 })}>Центрировать фото</button>
-                    <button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))}>Убрать фото из окна</button>
-                  </>
-                ) : (
-                  <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="empty-state small-empty"><p>Нажми на любое окно коллажа, чтобы настроить его.</p></div>
-          )}
+          {selectedFrame ? <>
+            <div className="inspector-block"><h3>Положение рамки</h3><div className="geometry-grid"><label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { x: event.target.value })} /></label><label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { y: event.target.value })} /></label><label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label><label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label></div><p className="hint">Режим: {locked ? 'сетка через layout, без угадывания соседей по координатам' : selectedFrame.photo ? 'фото внутри окна двигается, рамка меняется только за маркеры/цифры' : 'рамка меняет размер за маркеры, но не перетаскивается'}</p></div>
+            <div className="inspector-block"><h3>Фото внутри окна</h3>{selectedFrame.photo ? <><p className="photo-name">{selectedFrame.photo.name}</p><label className="range-row"><span>Масштаб</span><input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} /><b>{selectedFrame.photo.zoom.toFixed(2)}</b></label><button className="button full" onClick={() => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 })}>Центрировать фото</button><button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))}>Убрать фото из окна</button></> : <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>}</div>
+          </> : <div className="empty-state small-empty"><p>Нажми на любое окно коллажа, чтобы настроить его.</p></div>}
         </aside>
       </section>
 
       <div className="export-stage-holder" aria-hidden="true">
-        <Stage ref={printPageRef} width={canvas.width} height={canvas.height}>
-          <Layer>
-            <PageLayer page={currentPage} pageIndex={currentPageIndex} x={0} canvas={canvas} settings={settings} activePageId={null} selectedFrameId={null} printMode onFrameSelect={() => {}} onPhotoMove={() => {}} onFrameChange={() => {}} onVerticalMove={() => {}} onHorizontalMove={() => {}} onActivatePage={() => {}} />
-          </Layer>
-        </Stage>
-        <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}>
-          <Layer>
-            <PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} canvas={canvas} settings={settings} activePageId={null} selectedFrameId={null} printMode onFrameSelect={() => {}} onPhotoMove={() => {}} onFrameChange={() => {}} onVerticalMove={() => {}} onHorizontalMove={() => {}} onActivatePage={() => {}} />
-            <PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} canvas={canvas} settings={settings} activePageId={null} selectedFrameId={null} printMode onFrameSelect={() => {}} onPhotoMove={() => {}} onFrameChange={() => {}} onVerticalMove={() => {}} onHorizontalMove={() => {}} onActivatePage={() => {}} />
-          </Layer>
-        </Stage>
+        <Stage ref={printPageRef} width={canvas.width} height={canvas.height}><Layer><PageLayer page={currentPage} pageIndex={currentPageIndex} x={0} {...commonPageLayerProps} /></Layer></Stage>
+        <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}><Layer><PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} {...commonPageLayerProps} /><PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} {...commonPageLayerProps} /></Layer></Stage>
       </div>
     </main>
   );

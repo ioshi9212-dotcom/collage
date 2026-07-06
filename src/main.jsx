@@ -1,12 +1,12 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './AppLive.jsx';
 import './styles.css';
 import './compact.css';
-import './export.css';
+import './canvas-scale-fix.css';
+import App from './AppLive.jsx';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );
