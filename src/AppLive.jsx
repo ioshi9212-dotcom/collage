@@ -13,8 +13,9 @@ import {
   resizeRow,
 } from './editor/layout';
 
-const STORAGE_KEY = 'collage-creator-album-live-v7-frame-drag-bounds';
+const STORAGE_KEY = 'collage-creator-album-live-v8-delete-frame';
 const LEGACY_KEYS = [
+  'collage-creator-album-live-v7-frame-drag-bounds',
   'collage-creator-album-live-v6-page-frame-count',
   'collage-creator-album-live-v5-sharp-preview',
   'collage-creator-album-live-v4-grid-layout',
@@ -609,6 +610,27 @@ export default function App() {
     });
   }
 
+  function deleteSelectedFrame() {
+    if (!selectedFrame || !currentPage) return;
+    const frameCount = resolvePageFrameCount(currentPage, settings);
+    if (frameCount <= 1) return show('Нельзя удалить последнее окно на странице');
+    const nextFrameCount = frameCount - 1;
+    const keptFrames = currentPage.frames.filter((frame) => frame.id !== selectedFrame.id);
+    const nextSettings = { ...settings, frameCount: nextFrameCount };
+    setSettings(nextSettings);
+    setAlbum((current) => ({
+      ...current,
+      pages: current.pages.map((page) => {
+        if (page.id !== current.currentPageId) return page;
+        const pageSettings = settingsForPage(nextSettings, page, nextFrameCount);
+        const built = buildGridLayout(canvas, pageSettings, keptFrames);
+        return { ...page, frameCount: nextFrameCount, layout: built.layout, frames: built.frames };
+      }),
+    }));
+    setSelectedFrameId(null);
+    show(`Окно удалено. На странице ${currentPageIndex + 1}: ${nextFrameCount} фото-окон`);
+  }
+
   function movePage(direction) {
     setAlbum((current) => {
       const index = current.pages.findIndex((page) => page.id === current.currentPageId);
@@ -626,7 +648,7 @@ export default function App() {
   }
 
   function project() {
-    return { version: 'live-7-frame-drag-bounds', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 'live-8-delete-frame', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function save() {
@@ -801,7 +823,33 @@ export default function App() {
         <aside className="inspector">
           <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? (locked ? 'В сетке двигай зелёные разделители между окнами.' : 'Двигай рамку внутри страницы или меняй размер за маркеры. Фото внутри двигай мышкой.') : 'Выбери рамку на холсте'}</p></div></div>
           <div className="inspector-block"><h3>Цвет и рамка</h3><label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label><label className="field"><span>Обводка внутри окна</span><input type="number" min="0" max="80" value={settings.borderWidth} onChange={(event) => updateSetting('borderWidth', clamp(event.target.value, 0, 80))} /></label></div>
-          {selectedFrame ? <><div className="inspector-block"><h3>Положение рамки</h3><div className="geometry-grid"><label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { x: event.target.value })} /></label><label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { y: event.target.value })} /></label><label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label><label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label></div><p className="hint">Режим: {locked ? 'сетка через layout, без угадывания соседей по координатам' : selectedFrame.photo ? 'фото внутри окна двигается, рамка двигается за свободную область/границу' : 'рамка двигается внутри страницы и меняет размер за маркеры'}.</p></div><div className="inspector-block"><h3>Фото внутри окна</h3>{selectedFrame.photo ? <><p className="photo-name">{selectedFrame.photo.name}</p><label className="range-row"><span>Масштаб</span><input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} /><b>{selectedFrame.photo.zoom.toFixed(2)}</b></label><button className="button full" onClick={() => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 })}>Центрировать фото</button><button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))}>Убрать фото из окна</button></> : <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>}</div></> : <div className="empty-state small-empty"><p>Нажми на любое окно коллажа, чтобы настроить его.</p></div>}
+          {selectedFrame ? (
+            <>
+              <div className="inspector-block">
+                <h3>Положение рамки</h3>
+                <div className="geometry-grid">
+                  <label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { x: event.target.value })} /></label>
+                  <label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { y: event.target.value })} /></label>
+                  <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label>
+                  <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label>
+                </div>
+                <button className="button full danger-button" onClick={deleteSelectedFrame} disabled={currentPageFrameCount <= 1}>Удалить окно</button>
+                <p className="hint">Удаление перестроит эту страницу: соседние окна сдвинутся, фото сохранятся по порядку.</p>
+                <p className="hint">Режим: {locked ? 'сетка через layout, без угадывания соседей по координатам' : selectedFrame.photo ? 'фото внутри окна двигается, рамка двигается за свободную область/границу' : 'рамка двигается внутри страницы и меняет размер за маркеры'}.</p>
+              </div>
+              <div className="inspector-block">
+                <h3>Фото внутри окна</h3>
+                {selectedFrame.photo ? (
+                  <>
+                    <p className="photo-name">{selectedFrame.photo.name}</p>
+                    <label className="range-row"><span>Масштаб</span><input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} /><b>{selectedFrame.photo.zoom.toFixed(2)}</b></label>
+                    <button className="button full" onClick={() => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 })}>Центрировать фото</button>
+                    <button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))}>Убрать фото из окна</button>
+                  </>
+                ) : <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>}
+              </div>
+            </>
+          ) : <div className="empty-state small-empty"><p>Нажми на любое окно коллажа, чтобы настроить его.</p></div>}
         </aside>
       </section>
 
