@@ -1,9 +1,9 @@
 /* UI cleanup pass 3 v2: compact pages / view panel.
-   Goal: one low service bar, less vertical weight, no huge page strip container. */
+   Goal: one low service bar, less vertical weight, no hidden controls. */
 .album-bar {
   display: grid !important;
-  grid-template-columns: auto max-content max-content max-content !important;
-  grid-template-areas: 'head pages view nav' !important;
+  grid-template-columns: auto max-content max-content max-content max-content !important;
+  grid-template-areas: 'head pages actions view nav' !important;
   align-items: stretch !important;
   gap: 8px !important;
   padding: 8px !important;
@@ -49,7 +49,7 @@
   min-height: 50px !important;
   width: auto !important;
   min-width: 0 !important;
-  max-width: min(44vw, 640px) !important;
+  max-width: min(40vw, 620px) !important;
   overflow-x: auto;
   padding: 4px !important;
   border: 1px solid var(--ui-panel-border, rgba(35, 38, 43, 0.12)) !important;
@@ -88,11 +88,7 @@
 }
 
 .album-actions {
-  grid-area: pages;
-  justify-self: end;
-  align-self: end;
-  margin-right: 4px;
-  pointer-events: none;
+  grid-area: actions;
 }
 
 .spread-actions {
@@ -100,6 +96,7 @@
 }
 
 .view-switch,
+.album-actions,
 .spread-actions {
   display: grid !important;
   grid-auto-flow: column !important;
@@ -107,17 +104,6 @@
   align-items: stretch !important;
   gap: 6px !important;
   min-width: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-}
-
-.album-actions {
-  display: grid !important;
-  grid-auto-flow: column !important;
-  grid-template-rows: none !important;
-  align-items: end !important;
-  gap: 4px !important;
   padding: 0 !important;
   border: 0 !important;
   background: transparent !important;
@@ -138,9 +124,8 @@
 }
 
 .album-actions > .small-button {
-  pointer-events: auto;
-  min-height: 24px !important;
-  padding: 0 7px !important;
+  min-height: 30px !important;
+  padding: 0 8px !important;
   font-size: 11px !important;
 }
 
@@ -158,7 +143,7 @@
 
 .view-switch > .small-button:nth-child(1)::after { content: '1 стр.'; font-size: 12px; }
 .view-switch > .small-button:nth-child(2)::after { content: 'Разворот'; font-size: 12px; }
-.album-actions > .small-button:nth-child(1)::after { content: '+'; font-size: 13px; font-weight: 900; }
+.album-actions > .small-button:nth-child(1)::after { content: '+ Страница'; font-size: 11px; }
 .album-actions > .small-button:nth-child(2)::after { content: 'Копия'; font-size: 11px; }
 .album-actions > .small-button:nth-child(3)::after { content: 'Удалить'; font-size: 11px; }
 .spread-actions > .small-button:nth-child(1)::after { content: '←'; font-size: 13px; }
@@ -166,20 +151,49 @@
 .spread-actions > .small-button:nth-child(3)::after { content: 'Направляющие'; font-size: 12px; }
 .spread-actions > .small-button:nth-child(4)::after { content: 'Сетка'; font-size: 12px; }
 
+/* Workspace cleanup: do not stretch the white canvas card far beyond the actual preview. */
+.canvas-area {
+  width: fit-content !important;
+  max-width: 100% !important;
+  justify-self: start !important;
+}
+
+.canvas-toolbar {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 1500px) {
+  .album-bar {
+    grid-template-columns: auto max-content max-content !important;
+    grid-template-areas:
+      'head pages actions'
+      'view nav nav' !important;
+  }
+
+  .page-strip {
+    max-width: min(52vw, 620px) !important;
+  }
+}
+
 @media (max-width: 1360px) {
   .album-bar {
     grid-template-columns: auto 1fr !important;
     grid-template-areas:
       'head pages'
+      'actions pages'
       'view nav' !important;
   }
 
   .page-strip {
     max-width: 100% !important;
   }
+}
 
-  .album-actions {
-    grid-area: pages;
+@media (max-width: 980px) {
+  .canvas-area {
+    width: auto !important;
+    justify-self: stretch !important;
   }
 }
 
@@ -189,6 +203,7 @@
     grid-template-areas:
       'head'
       'pages'
+      'actions'
       'view'
       'nav' !important;
   }
@@ -198,11 +213,13 @@
   }
 
   .view-switch,
+  .album-actions,
   .spread-actions {
     grid-auto-flow: row !important;
   }
 
   .view-switch > .small-button,
+  .album-actions > .small-button,
   .spread-actions > .small-button {
     width: 100%;
   }
