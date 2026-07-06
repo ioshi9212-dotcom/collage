@@ -103,6 +103,7 @@ export function framesFromLayout(layout, previousFrames = []) {
         width: Math.round(column.width),
         height: Math.round(row.height),
         photo: previous?.photo ?? null,
+        zIndex: previous?.zIndex ?? 0,
       });
       x += column.width + layout.gap;
     });
