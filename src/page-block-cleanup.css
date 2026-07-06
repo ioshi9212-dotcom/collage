@@ -1,0 +1,202 @@
+/* UI cleanup pass 3: make the album/pages block readable.
+   This pass only changes layout and labels visually; editor logic stays untouched. */
+.album-bar {
+  display: grid !important;
+  grid-template-columns: minmax(180px, 240px) minmax(260px, 1fr) !important;
+  grid-template-areas:
+    'head pages'
+    'view pages'
+    'actions nav' !important;
+  align-items: stretch !important;
+  gap: 10px !important;
+}
+
+.album-head {
+  grid-area: head;
+  min-width: 0 !important;
+  align-content: start;
+  border: 1px solid var(--ui-panel-border, rgba(35, 38, 43, 0.12));
+  border-radius: var(--ui-card-radius, 6px);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 10px;
+}
+
+.album-head strong {
+  font-size: 13px !important;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.album-head span {
+  color: var(--ui-muted, #68707a) !important;
+}
+
+.page-strip {
+  grid-area: pages;
+  position: relative;
+  display: flex !important;
+  align-content: flex-start;
+  align-items: stretch;
+  gap: 8px !important;
+  min-height: 92px;
+  overflow-x: auto;
+  border: 1px solid var(--ui-panel-border, rgba(35, 38, 43, 0.12));
+  border-radius: var(--ui-card-radius, 6px);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 24px 8px 8px !important;
+}
+
+.page-strip::before {
+  content: 'Лента страниц';
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  color: var(--ui-muted, #68707a);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.page-chip {
+  flex: 0 0 74px !important;
+  min-height: 56px !important;
+  padding: 7px 6px !important;
+}
+
+.page-chip b {
+  font-size: 19px !important;
+}
+
+.page-chip small {
+  text-transform: uppercase;
+}
+
+.view-switch {
+  grid-area: view;
+}
+
+.album-actions {
+  grid-area: actions;
+}
+
+.spread-actions {
+  grid-area: nav;
+}
+
+.view-switch,
+.album-actions,
+.spread-actions {
+  align-content: start !important;
+  min-width: 0;
+}
+
+.view-switch::before {
+  content: 'Режим просмотра' !important;
+}
+
+.album-actions::before {
+  content: 'Текущая страница' !important;
+}
+
+.spread-actions::before {
+  content: 'Навигация и вид' !important;
+}
+
+.view-switch > .small-button,
+.album-actions > .small-button,
+.spread-actions > .small-button {
+  white-space: nowrap;
+}
+
+.view-switch > .small-button:nth-child(1),
+.view-switch > .small-button:nth-child(2),
+.album-actions > .small-button:nth-child(1),
+.album-actions > .small-button:nth-child(2),
+.album-actions > .small-button:nth-child(3),
+.spread-actions > .small-button:nth-child(1),
+.spread-actions > .small-button:nth-child(2) {
+  font-size: 0 !important;
+}
+
+.view-switch > .small-button:nth-child(1)::after {
+  content: '1 страница';
+  font-size: 12px;
+}
+
+.view-switch > .small-button:nth-child(2)::after {
+  content: 'Разворот';
+  font-size: 12px;
+}
+
+.album-actions > .small-button:nth-child(1)::after {
+  content: '+ Страница';
+  font-size: 12px;
+}
+
+.album-actions > .small-button:nth-child(2)::after {
+  content: 'Копировать страницу';
+  font-size: 12px;
+}
+
+.album-actions > .small-button:nth-child(3)::after {
+  content: 'Удалить страницу';
+  font-size: 12px;
+}
+
+.spread-actions > .small-button:nth-child(1)::after {
+  content: '← Предыдущий разворот';
+  font-size: 12px;
+}
+
+.spread-actions > .small-button:nth-child(2)::after {
+  content: 'Следующий разворот →';
+  font-size: 12px;
+}
+
+.spread-actions > .small-button:nth-child(3) {
+  margin-left: 10px;
+  border-left-width: 3px !important;
+}
+
+.spread-actions > .small-button:nth-child(3),
+.spread-actions > .small-button:nth-child(4) {
+  min-width: 150px;
+}
+
+@media (max-width: 1360px) {
+  .album-bar {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      'head'
+      'pages'
+      'view'
+      'actions'
+      'nav' !important;
+  }
+
+  .page-strip {
+    min-height: 86px;
+  }
+
+  .spread-actions > .small-button:nth-child(3) {
+    margin-left: 0;
+    border-left-width: 1px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .view-switch,
+  .album-actions,
+  .spread-actions {
+    grid-auto-flow: row !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .view-switch > .small-button,
+  .album-actions > .small-button,
+  .spread-actions > .small-button {
+    width: 100%;
+  }
+}
