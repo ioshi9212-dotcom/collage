@@ -23,6 +23,13 @@
     return node;
   }
 
+  function friendlyApiError(payload) {
+    if (payload?.error === 'database_not_configured' || String(payload?.message || '').includes('DATABASE_URL')) {
+      return 'База не подключена: в Railway у сервиса нет DATABASE_URL. Добавь Postgres к этому проекту и сделай Redeploy.';
+    }
+    return payload?.message || payload?.error || 'Ошибка запроса';
+  }
+
   async function api(path, options = {}) {
     const response = await fetch(path, {
       credentials: 'include',
@@ -31,7 +38,7 @@
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload.message || payload.error || 'Ошибка запроса');
+      throw new Error(friendlyApiError(payload));
     }
     return payload;
   }
@@ -99,8 +106,9 @@
       const result = await api('/api/me');
       state.user = result.user || null;
       if (state.user) await loadProjects(false);
-    } catch {
+    } catch (error) {
       state.user = null;
+      setTimeout(() => setStatus(error.message), 0);
     }
     render();
   }
