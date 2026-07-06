@@ -97,11 +97,17 @@
     ];
   }
 
-  function pageItems(pageNumber) {
+  function pageLayer(pageNumber) {
     const key = String(pageNumber);
     if (!state.layers.pages[key]) state.layers.pages[key] = { texts: [], drawings: [], templates: [] };
     if (!Array.isArray(state.layers.pages[key].texts)) state.layers.pages[key].texts = [];
-    return state.layers.pages[key].texts;
+    if (!Array.isArray(state.layers.pages[key].drawings)) state.layers.pages[key].drawings = [];
+    if (!Array.isArray(state.layers.pages[key].templates)) state.layers.pages[key].templates = [];
+    return state.layers.pages[key];
+  }
+
+  function pageTexts(pageNumber) {
+    return pageLayer(pageNumber).texts;
   }
 
   function selectedItem() {
@@ -112,18 +118,11 @@
     return null;
   }
 
-  function setMode(mode) {
-    state.mode = mode;
-    state.selectedTextId = null;
-    localStorage.setItem(MODE_KEY, mode);
-    render();
-    const messages = {
-      collage: 'Режим коллажа: рамки и фото снова редактируются.',
-      text: 'Режим текста: коллаж не меняется, можно двигать и редактировать текст.',
-      drawings: 'Рисунки пока пустые. Кнопка уже подготовлена.',
-      templates: 'Шаблоны пока пустые. Кнопка уже подготовлена.',
-    };
-    showNotice(messages[mode] || 'Режим переключён');
+  function selectedItemPageNumber() {
+    for (const [pageNumber, page] of Object.entries(state.layers.pages)) {
+      if (page?.texts?.some((text) => text.id === state.selectedTextId)) return Number(pageNumber);
+    }
+    return activePageNumber();
   }
 
   function showNotice(text) {
@@ -133,6 +132,20 @@
       return;
     }
     console.info(text);
+  }
+
+  function setMode(mode) {
+    state.mode = mode;
+    state.selectedTextId = null;
+    localStorage.setItem(MODE_KEY, mode);
+    const messages = {
+      collage: 'Режим коллажа: рамки и фото снова редактируются.',
+      text: 'Режим текста: панели фото и рамок заменены на настройки текста.',
+      drawings: 'Рисунки пока пустые. Панели уже подготовлены.',
+      templates: 'Шаблоны пока пустые. Панели уже подготовлены.',
+    };
+    render();
+    showNotice(messages[mode] || 'Режим переключён');
   }
 
   function addText() {
@@ -147,20 +160,21 @@
       fontSize: 56,
       color: '#1f2723',
     };
-    pageItems(pageNumber).push(item);
+    pageTexts(pageNumber).push(item);
     state.selectedTextId = item.id;
-    saveLayers();
     state.mode = 'text';
     localStorage.setItem(MODE_KEY, 'text');
+    saveLayers();
     render();
   }
 
-  function updateSelected(patch) {
+  function updateSelected(patch, options = {}) {
     const item = selectedItem();
     if (!item) return;
     Object.assign(item, patch);
     saveLayers();
-    render();
+    renderOverlay();
+    if (options.renderPanels) renderSidePanels();
   }
 
   function deleteSelected() {
@@ -173,7 +187,13 @@
     render();
   }
 
-  function ensurePanel() {
+  function clampNumber(value, min, max) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return min;
+    return Math.min(max, Math.max(min, number));
+  }
+
+  function ensureTopPanel() {
     let panel = document.querySelector('.album-tool-panel');
     const albumBar = document.querySelector('.album-bar');
     if (!albumBar) return null;
@@ -185,7 +205,30 @@
     return panel;
   }
 
-  function button(label, mode) {
+  function ensureModePanels() {
+    const workspace = document.querySelector('.workspace');
+    const canvasArea = document.querySelector('.canvas-area');
+    if (!workspace || !canvasArea) return { left: null, right: null };
+
+    let left = workspace.querySelector(':scope > .album-mode-sidebar');
+    let right = workspace.querySelector(':scope > .album-mode-inspector');
+
+    if (!left) {
+      left = document.createElement('aside');
+      left.className = 'album-mode-sidebar';
+      workspace.insertBefore(left, canvasArea);
+    }
+
+    if (!right) {
+      right = document.createElement('aside');
+      right.className = 'album-mode-inspector';
+      canvasArea.insertAdjacentElement('afterend', right);
+    }
+
+    return { left, right };
+  }
+
+  function modeButton(label, mode) {
     const node = document.createElement('button');
     node.type = 'button';
     node.className = `album-mode-tab ${state.mode === mode ? 'active' : ''}`;
@@ -194,7 +237,7 @@
     return node;
   }
 
-  function action(label, fn, extra = '') {
+  function actionButton(label, fn, extra = '') {
     const node = document.createElement('button');
     node.type = 'button';
     node.className = `album-mode-button ${extra}`.trim();
@@ -203,84 +246,202 @@
     return node;
   }
 
-  function renderPanel() {
-    const panel = ensurePanel();
+  function renderTopPanel() {
+    const panel = ensureTopPanel();
     if (!panel) return;
-    const selected = selectedItem();
-    panel.className = `album-tool-panel ${selected ? 'has-selected-text' : ''}`;
     panel.innerHTML = '';
 
     const tabs = document.createElement('div');
     tabs.className = 'album-mode-tabs';
     tabs.append(
-      button('Коллаж', 'collage'),
-      button('Текст', 'text'),
-      button('Рисунки', 'drawings'),
-      button('Шаблоны', 'templates')
+      modeButton('Коллаж', 'collage'),
+      modeButton('Текст', 'text'),
+      modeButton('Рисунки', 'drawings'),
+      modeButton('Шаблоны', 'templates')
     );
 
     const note = document.createElement('div');
     note.className = 'album-mode-note';
     note.textContent = state.mode === 'text'
-      ? 'Текст редактируется отдельным слоем. Рамки коллажа не меняются.'
+      ? 'Текст отдельным слоем. Коллаж не перестраивается и не сбрасывается.'
       : state.mode === 'collage'
-        ? 'Коллаж редактируется как раньше. Текст остаётся на странице.'
+        ? 'Рамки и фото редактируются как раньше. Текст остаётся на странице.'
         : 'Раздел подготовлен, наполнение добавим позже.';
 
     const actions = document.createElement('div');
     actions.className = 'album-mode-actions';
     if (state.mode === 'text') {
-      actions.append(action('+ Текст', addText, 'primary'), action('PNG вида + текст', exportCurrentViewWithText));
-      if (selected) actions.append(action('Удалить текст', deleteSelected));
+      actions.append(actionButton('+ Текст', addText, 'primary'), actionButton('PNG вида + текст', exportCurrentViewWithText));
     } else if (state.mode === 'drawings') {
-      const empty = action('+ Рисунок', () => showNotice('Рисунки пока пустые. Потом добавим библиотеку.'), '');
-      actions.append(empty);
+      actions.append(actionButton('+ Рисунок', () => showNotice('Рисунки пока пустые. Потом добавим библиотеку.')));
     } else if (state.mode === 'templates') {
-      const empty = action('+ Шаблон', () => showNotice('Шаблоны пока пустые. Потом добавим библиотеку.'), '');
-      actions.append(empty);
+      actions.append(actionButton('+ Шаблон', () => showNotice('Шаблоны пока пустые. Потом добавим библиотеку.')));
     }
 
-    const inspector = document.createElement('div');
-    inspector.className = 'album-text-inspector';
-    if (selected) {
-      inspector.append(
-        field('Текст', textarea(selected.text, (value) => updateSelected({ text: value }))),
-        field('Размер', input('number', selected.fontSize, (value) => updateSelected({ fontSize: clampNumber(value, 12, 220) }))),
-        field('Цвет', input('color', selected.color, (value) => updateSelected({ color: value }))),
-        action('Удалить', deleteSelected)
-      );
-    }
-
-    panel.append(tabs, note, actions, inspector);
+    panel.append(tabs, note, actions);
   }
 
-  function field(label, control) {
+  function titleBlock(title, subtitle, badge) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'album-mode-title';
+
+    const text = document.createElement('div');
+    const h2 = document.createElement('h2');
+    h2.textContent = title;
+    const p = document.createElement('p');
+    p.textContent = subtitle;
+    text.append(h2, p);
+    wrapper.append(text);
+
+    if (badge) {
+      const b = document.createElement('span');
+      b.className = 'album-mode-badge';
+      b.textContent = badge;
+      wrapper.append(b);
+    }
+
+    return wrapper;
+  }
+
+  function block(title, children = []) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'album-mode-block';
+    if (title) {
+      const h3 = document.createElement('h3');
+      h3.textContent = title;
+      wrapper.append(h3);
+    }
+    children.forEach((child) => wrapper.append(child));
+    return wrapper;
+  }
+
+  function empty(text) {
+    const node = document.createElement('div');
+    node.className = 'album-mode-empty';
+    node.textContent = text;
+    return node;
+  }
+
+  function hint(text) {
+    const node = document.createElement('div');
+    node.className = 'album-mode-hint';
+    node.textContent = text;
+    return node;
+  }
+
+  function editField(label, control) {
     const wrapper = document.createElement('label');
+    wrapper.className = 'album-edit-field';
     const caption = document.createElement('span');
     caption.textContent = label;
     wrapper.append(caption, control);
     return wrapper;
   }
 
-  function input(type, value, onChange) {
+  function input(type, value, onInput) {
     const node = document.createElement('input');
     node.type = type;
-    node.value = value;
-    node.addEventListener('input', () => onChange(node.value));
+    node.value = value ?? '';
+    node.addEventListener('input', () => onInput(node.value));
     return node;
   }
 
-  function textarea(value, onChange) {
+  function textarea(value, onInput) {
     const node = document.createElement('textarea');
-    node.value = value;
-    node.addEventListener('input', () => onChange(node.value));
+    node.value = value ?? '';
+    node.addEventListener('input', () => onInput(node.value));
     return node;
   }
 
-  function clampNumber(value, min, max) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) return min;
-    return Math.min(max, Math.max(min, number));
+  function renderTextLeft(left) {
+    const pageNumber = activePageNumber();
+    const texts = pageTexts(pageNumber);
+    left.append(
+      titleBlock('Текст', 'Текстовые блоки текущей страницы.', `${texts.length}`),
+      block(null, [actionButton('+ Добавить текст', addText, 'primary')])
+    );
+
+    if (!texts.length) {
+      left.append(empty('Текста на этой странице пока нет. Нажми “+ Добавить текст”.'));
+      return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'album-text-list';
+    texts.forEach((item, index) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = `album-text-card ${item.id === state.selectedTextId ? 'active' : ''}`;
+      const name = document.createElement('strong');
+      name.textContent = item.text?.trim() || `Текст ${index + 1}`;
+      const meta = document.createElement('small');
+      meta.textContent = `x ${Math.round(item.x || 0)}, y ${Math.round(item.y || 0)} · ${Math.round(item.fontSize || 56)} px`;
+      card.append(name, meta);
+      card.addEventListener('click', () => {
+        state.selectedTextId = item.id;
+        render();
+      });
+      list.append(card);
+    });
+
+    left.append(block('Слои текста', [list]));
+  }
+
+  function renderTextRight(right) {
+    const selected = selectedItem();
+    right.append(titleBlock('Настройки текста', selected ? 'Редактируй выбранный текст здесь.' : 'Выбери текст на странице или в списке.', selected ? 'выбран' : 'нет'));
+
+    if (!selected) {
+      right.append(empty('Нажми на текст на холсте или выбери его слева. Коллажные рамки в этом режиме не трогаются.'));
+      return;
+    }
+
+    const textArea = textarea(selected.text, (value) => updateSelected({ text: value }));
+    const sizeInput = input('number', selected.fontSize, (value) => updateSelected({ fontSize: clampNumber(value, 12, 220) }));
+    const colorInput = input('color', selected.color || '#1f2723', (value) => updateSelected({ color: value }));
+
+    const geometry = document.createElement('div');
+    geometry.className = 'album-geometry-grid';
+    geometry.append(
+      editField('X', input('number', Math.round(selected.x || 0), (value) => updateSelected({ x: clampNumber(value, -5000, 5000) }))),
+      editField('Y', input('number', Math.round(selected.y || 0), (value) => updateSelected({ y: clampNumber(value, -5000, 5000) }))),
+      editField('Ширина', input('number', Math.round(selected.width || 500), (value) => updateSelected({ width: clampNumber(value, 80, 3000) }))),
+      editField('Размер', sizeInput)
+    );
+
+    right.append(
+      block('Содержание', [editField('Текст', textArea)]),
+      block('Внешний вид', [editField('Цвет', colorInput), geometry]),
+      block(null, [actionButton('Удалить текст', deleteSelected, 'danger')])
+    );
+  }
+
+  function renderEmptyMode(left, right, mode) {
+    const label = mode === 'drawings' ? 'Рисунки' : 'Шаблоны';
+    left.append(
+      titleBlock(label, 'Раздел пока подготовлен как структура.', 'пусто'),
+      empty(mode === 'drawings' ? 'Тут позже будет загрузка/выбор рисунков.' : 'Тут позже будут готовые шаблоны.'),
+      block(null, [actionButton(mode === 'drawings' ? '+ Рисунок' : '+ Шаблон', () => showNotice(`${label} пока пустые. Наполнение добавим позже.`))])
+    );
+    right.append(
+      titleBlock(`Настройки: ${label.toLowerCase()}`, 'Появятся, когда добавим элементы.', 'скоро'),
+      empty('Пока редактировать нечего. Коллаж при переключении режима не меняется.')
+    );
+  }
+
+  function renderSidePanels() {
+    document.body.dataset.albumMode = state.mode;
+    const { left, right } = ensureModePanels();
+    if (!left || !right) return;
+    left.innerHTML = '';
+    right.innerHTML = '';
+
+    if (state.mode === 'text') {
+      renderTextLeft(left);
+      renderTextRight(right);
+    } else if (state.mode === 'drawings' || state.mode === 'templates') {
+      renderEmptyMode(left, right, state.mode);
+    }
   }
 
   function ensureOverlay() {
@@ -303,10 +464,9 @@
     const overlay = ensureOverlay();
     if (!overlay) return;
     overlay.innerHTML = '';
-    const visible = visiblePages();
 
-    visible.forEach(({ pageNumber, x }) => {
-      pageItems(pageNumber).forEach((item) => {
+    visiblePages().forEach(({ pageNumber, x }) => {
+      pageTexts(pageNumber).forEach((item) => {
         const div = document.createElement('div');
         div.className = `album-text-item ${item.id === state.selectedTextId ? 'selected' : ''}`;
         div.textContent = item.text || '';
@@ -317,20 +477,7 @@
         div.style.color = item.color || '#1f2723';
         div.dataset.id = item.id;
         div.dataset.page = String(pageNumber);
-        div.addEventListener('pointerdown', (event) => startTextDrag(event, item, pageNumber));
-        div.addEventListener('dblclick', () => {
-          if (state.mode !== 'text') return;
-          div.setAttribute('contenteditable', 'true');
-          div.focus();
-        });
-        div.addEventListener('blur', () => {
-          if (div.getAttribute('contenteditable') === 'true') {
-            item.text = div.textContent || '';
-            div.removeAttribute('contenteditable');
-            saveLayers();
-            render();
-          }
-        });
+        div.addEventListener('pointerdown', (event) => startTextDrag(event, item));
         overlay.append(div);
       });
     });
@@ -347,9 +494,10 @@
 
   function startTextDrag(event, item) {
     if (state.mode !== 'text') return;
-    if (event.target.getAttribute('contenteditable') === 'true') return;
     event.preventDefault();
     event.stopPropagation();
+
+    const wasSelected = state.selectedTextId === item.id;
     state.selectedTextId = item.id;
     const scale = stageScale();
     state.dragging = {
@@ -358,28 +506,37 @@
       startClientY: event.clientY,
       startX: Number(item.x || 0),
       startY: Number(item.y || 0),
+      moved: false,
       scale,
     };
+
     window.addEventListener('pointermove', moveTextDrag);
     window.addEventListener('pointerup', stopTextDrag, { once: true });
-    render();
+    if (!wasSelected) render();
   }
 
   function moveTextDrag(event) {
     if (!state.dragging) return;
     const item = selectedItem();
     if (!item) return;
-    item.x = Math.round(state.dragging.startX + (event.clientX - state.dragging.startClientX) / state.dragging.scale);
-    item.y = Math.round(state.dragging.startY + (event.clientY - state.dragging.startClientY) / state.dragging.scale);
+
+    const dx = (event.clientX - state.dragging.startClientX) / state.dragging.scale;
+    const dy = (event.clientY - state.dragging.startClientY) / state.dragging.scale;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) state.dragging.moved = true;
+
+    item.x = Math.round(state.dragging.startX + dx);
+    item.y = Math.round(state.dragging.startY + dy);
     saveLayers();
     renderOverlay();
   }
 
   function stopTextDrag() {
+    const shouldRenderPanels = state.dragging?.moved;
     state.dragging = null;
     window.removeEventListener('pointermove', moveTextDrag);
     saveLayers();
-    render();
+    renderOverlay();
+    if (shouldRenderPanels) renderSidePanels();
   }
 
   function exportCurrentViewWithText() {
@@ -388,7 +545,6 @@
     if (!shell || !stageCanvas) return showNotice('Не нашла холст для экспорта');
 
     const logicalWidth = Number.parseFloat(shell.style.width) || stageCanvas.width;
-    const logicalHeight = Number.parseFloat(shell.style.height) || stageCanvas.height;
     const ratio = stageCanvas.width / logicalWidth;
     const output = document.createElement('canvas');
     output.width = stageCanvas.width;
@@ -397,7 +553,7 @@
     ctx.drawImage(stageCanvas, 0, 0);
 
     visiblePages().forEach(({ pageNumber, x }) => {
-      pageItems(pageNumber).forEach((item) => {
+      pageTexts(pageNumber).forEach((item) => {
         drawWrappedText(ctx, item.text || '', (x + Number(item.x || 0)) * ratio, Number(item.y || 0) * ratio, Number(item.width || 500) * ratio, Number(item.fontSize || 56) * ratio, item.color || '#1f2723');
       });
     });
@@ -444,13 +600,25 @@
   }
 
   function render() {
-    renderPanel();
+    document.body.dataset.albumMode = state.mode;
+    renderTopPanel();
+    renderSidePanels();
     renderOverlay();
+  }
+
+  function isTypingInAlbumPanel() {
+    const active = document.activeElement;
+    return Boolean(active?.closest?.('.album-tool-panel, .album-mode-sidebar, .album-mode-inspector, .cloud-auth-panel'));
   }
 
   window.addEventListener('DOMContentLoaded', () => {
     extractLayersFromCurrentProject();
     render();
-    setInterval(render, 700);
+    setInterval(() => {
+      if (isTypingInAlbumPanel()) return;
+      renderTopPanel();
+      renderSidePanels();
+      renderOverlay();
+    }, 1000);
   });
 })();
