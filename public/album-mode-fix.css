@@ -1,15 +1,19 @@
 :root{--album-green:#4f8f74;--album-line:rgba(28,40,36,.14);--album-muted:#66736d;--album-text:#1f2723;}
 
-/* Hotfix: do not replace the whole workspace layout in layer modes. */
+/* Stable mode layout: left photo panel stays, right collage inspector is replaced. */
 body[data-album-mode='text'] .workspace>.sidebar,
 body[data-album-mode='drawings'] .workspace>.sidebar,
 body[data-album-mode='templates'] .workspace>.sidebar{display:grid!important;}
 
 body[data-album-mode='text'] .workspace>.inspector,
 body[data-album-mode='drawings'] .workspace>.inspector,
-body[data-album-mode='templates'] .workspace>.inspector{display:grid!important;}
+body[data-album-mode='templates'] .workspace>.inspector{display:none!important;}
 
-.album-mode-sidebar,.album-mode-inspector{display:none!important;}
+.album-mode-sidebar{display:none!important;}
+body[data-album-mode='collage'] .album-mode-inspector{display:none!important;}
+body[data-album-mode='text'] .album-mode-inspector,
+body[data-album-mode='drawings'] .album-mode-inspector,
+body[data-album-mode='templates'] .album-mode-inspector{display:grid!important;}
 
 /* In text/draw/template mode the original Konva canvas is only a background. */
 body[data-album-mode='text'] .konvajs-content,
@@ -20,16 +24,9 @@ body[data-album-mode='text'] .canvas-toolbar .small-button,
 body[data-album-mode='drawings'] .canvas-toolbar .small-button,
 body[data-album-mode='templates'] .canvas-toolbar .small-button{pointer-events:none;opacity:.45;}
 
-.album-layer-overlay{position:absolute;inset:0 auto auto 0;z-index:20;pointer-events:none;}
+.album-layer-cover{position:absolute;inset:0 auto auto 0;z-index:19;pointer-events:none;}
+.album-layer-overlay{z-index:20;}
 .album-page-cover{position:absolute;top:0;height:100%;background:#fff;pointer-events:none;}
 .album-photo-replica{position:absolute;overflow:hidden;background:#fff;pointer-events:none;}
 .album-photo-replica img{display:block;width:100%;height:100%;object-fit:cover;user-select:none;}
 .album-text-mode .album-text-item{pointer-events:auto;cursor:move;}
-
-.album-tool-panel.has-selected-text{grid-template-columns:auto minmax(180px,1fr) auto;}
-.album-inline-text-editor{display:none;grid-template-columns:minmax(180px,1fr) 76px 80px auto;gap:6px;grid-column:1/-1;padding-top:8px;border-top:1px solid var(--album-line);}
-.album-tool-panel.has-selected-text .album-inline-text-editor{display:grid;}
-.album-inline-text-editor label{display:grid;gap:4px;}
-.album-inline-text-editor span{color:var(--album-muted);font-size:10px;font-weight:850;letter-spacing:.05em;text-transform:uppercase;}
-.album-inline-text-editor textarea,.album-inline-text-editor input{min-height:34px;border:1px solid var(--album-line);border-radius:4px;background:#fff;color:var(--album-text);padding:6px 8px;font:inherit;font-size:12px;}
-.album-inline-text-editor textarea{min-height:52px;resize:vertical;}
