@@ -1,24 +1,30 @@
-/* Overrides the old CSS zoom for Konva. The preview is now scaled by Stage scaleX/scaleY in AppLive.jsx. */
 .stage-frame .konvajs-content,
 .album-preview .konvajs-content {
   zoom: 1 !important;
 }
 
-.stage-frame canvas,
-.album-preview canvas {
-  max-width: none !important;
-}
-
-/* The editor viewport should fit the scaled canvas instead of leaving a long empty checkerboard field below it. */
 .stage-frame {
+  position: relative !important;
   height: auto !important;
   min-height: 0 !important;
   max-height: calc(100vh - 240px) !important;
   overflow: auto !important;
 }
 
-/* Export stages are used only to render PNG files. Keep them mounted for Konva export,
-   but keep them invisible in the editor. */
+.stage-scale-shell {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: top left;
+  will-change: transform;
+}
+
+.stage-frame canvas,
+.album-preview canvas {
+  max-width: none !important;
+  image-rendering: auto !important;
+}
+
 .export-stage-holder {
   position: fixed !important;
   left: 0 !important;
