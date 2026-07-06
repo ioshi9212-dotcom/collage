@@ -13,8 +13,9 @@ import {
   resizeRow,
 } from './editor/layout';
 
-const STORAGE_KEY = 'collage-creator-album-live-v9-photo-usage-highlight';
+const STORAGE_KEY = 'collage-creator-album-live-v10-layer-move-photo';
 const LEGACY_KEYS = [
+  'collage-creator-album-live-v9-photo-usage-highlight',
   'collage-creator-album-live-v8-delete-frame',
   'collage-creator-album-live-v7-frame-drag-bounds',
   'collage-creator-album-live-v6-page-frame-count',
@@ -194,7 +195,7 @@ function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhoto
   );
 }
 
-function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, onSelect, onPhotoMove, onFrameChange }) {
+function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish }) {
   const [image, setImage] = useState(null);
   const groupRef = useRef(null);
   const frameRectRef = useRef(null);
@@ -232,6 +233,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
     const node = event.target;
     clampFrameNode(node);
     onFrameChange(frame.id, { x: node.x(), y: node.y() });
+    onFrameDragFinish?.();
   }
 
   function commitTransform() {
@@ -279,6 +281,9 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
             onTransformEnd={commitTransform}
           />
           <PhotoImage frame={frame} selected={selected} image={image} rect={rect} printMode={printMode} onSelect={onSelect} onPhotoMove={onPhotoMove} />
+          {moveFrameWithPhoto && !printMode && selected && !locked && (
+            <Rect x={0} y={0} width={frame.width} height={frame.height} fill="rgba(47, 125, 82, 0.01)" stroke="#2f7d52" strokeWidth={6} strokeScaleEnabled={false} dash={[18, 12]} />
+          )}
           {!frame.photo && !printMode && (
             <Rect x={14} y={14} width={Math.max(0, frame.width - 28)} height={Math.max(0, frame.height - 28)} stroke="#d8c7b9" strokeWidth={2} strokeScaleEnabled={false} dash={[14, 10]} cornerRadius={12} listening={false} />
           )}
@@ -352,12 +357,13 @@ function GridHandles({ layout, onColumnResize, onRowResize, onActivate }) {
   );
 }
 
-function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selectedFrameId, printMode = false, onFrameSelect, onPhotoMove, onFrameChange, onColumnResize, onRowResize, onActivatePage }) {
+function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const safe = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
   if (!page) {
     return <Group x={x} y={0}><Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} /></Group>;
   }
+  const orderedFrames = [...page.frames].sort((a, b) => (Number(a.zIndex) || 0) - (Number(b.zIndex) || 0));
   return (
     <Group x={x} y={0}>
       <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
@@ -368,7 +374,7 @@ function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selecte
         </>
       )}
       {!printMode && <Text x={28} y={24} text={`Стр. ${pageIndex + 1}`} fontSize={34} fill={page.id === activePageId ? (locked ? '#2f7d52' : '#c27b4f') : '#b49a87'} fontStyle="bold" listening={false} />}
-      {page.frames.map((frame) => (
+      {orderedFrames.map((frame) => (
         <CollageFrame
           key={frame.id}
           frame={frame}
@@ -379,9 +385,11 @@ function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selecte
           printMode={printMode}
           canvas={canvas}
           pageOffsetX={x}
+          moveFrameWithPhoto={!printMode && frame.id === moveFrameWithPhotoId}
           onSelect={() => !printMode && onFrameSelect(page.id, frame.id)}
           onPhotoMove={(frameId, patch) => !printMode && onPhotoMove(page.id, frameId, patch)}
           onFrameChange={(frameId, patch) => !printMode && onFrameChange(page.id, frameId, patch)}
+          onFrameDragFinish={() => !printMode && onFrameDragFinish?.(frame.id)}
         />
       ))}
       {!printMode && locked && (
@@ -409,6 +417,7 @@ export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
+  const [moveFrameWithPhotoId, setMoveFrameWithPhotoId] = useState(null);
   const [viewMode, setViewMode] = useState('spread');
   const [notice, setNotice] = useState('');
 
@@ -471,6 +480,7 @@ export default function App() {
       }),
     }));
     setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
   }
 
   function rebuildAll(nextCanvas = canvas, nextSettings = settings) {
@@ -484,6 +494,7 @@ export default function App() {
       }),
     }));
     setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
   }
 
   function updateCurrentPageFrameCount(value) {
@@ -551,6 +562,7 @@ export default function App() {
     updatePageFrames(pageId, (frames) => frames.map((frame) => (frame.id === frameId ? { ...frame, photo: { id: photo.id, name: photo.name, src: photo.src, zoom: 1, offsetX: 0, offsetY: 0 } } : frame)));
     setAlbum((current) => ({ ...current, currentPageId: pageId }));
     setSelectedFrameId(frameId);
+    setMoveFrameWithPhotoId(null);
   }
 
   function selectFrame(pageId, frameId) {
@@ -562,6 +574,7 @@ export default function App() {
     }
     setAlbum((current) => ({ ...current, currentPageId: pageId }));
     setSelectedFrameId(frameId);
+    setMoveFrameWithPhotoId((current) => (current && current !== frameId ? null : current));
   }
 
   function dropPhoto(event) {
@@ -597,6 +610,7 @@ export default function App() {
       return { pages: next, currentPageId: page.id };
     });
     setViewMode('spread');
+    setMoveFrameWithPhotoId(null);
   }
 
   function duplicatePage() {
@@ -609,6 +623,7 @@ export default function App() {
       next.splice(index + 1, 0, page);
       return { pages: next, currentPageId: page.id };
     });
+    setMoveFrameWithPhotoId(null);
   }
 
   function deletePage() {
@@ -618,6 +633,7 @@ export default function App() {
       const next = current.pages.filter((page) => page.id !== current.currentPageId);
       return { pages: next, currentPageId: next[Math.min(index, next.length - 1)].id };
     });
+    setMoveFrameWithPhotoId(null);
   }
 
   function deleteSelectedFrame() {
@@ -638,7 +654,25 @@ export default function App() {
       }),
     }));
     setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
     show(`Окно удалено. На странице ${currentPageIndex + 1}: ${nextFrameCount} фото-окон`);
+  }
+
+  function bringSelectedFrameToFront() {
+    if (!selectedFrame || locked) return;
+    const maxZ = Math.max(0, ...(currentPage?.frames ?? []).map((frame) => Number(frame.zIndex) || 0));
+    updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => (frame.id === selectedFrame.id ? { ...frame, zIndex: maxZ + 1 } : frame)));
+    show('Окно поднято поверх остальных');
+  }
+
+  function enableMoveFrameWithPhoto() {
+    if (!selectedFrame || locked) return;
+    if (!selectedFrame.photo) {
+      show('В этом окне нет фото. Рамку можно двигать обычным способом.');
+      return;
+    }
+    setMoveFrameWithPhotoId(selectedFrame.id);
+    show('Теперь перетащи рамку: фото поедет вместе с ней.');
   }
 
   function movePage(direction) {
@@ -650,15 +684,17 @@ export default function App() {
       [next[index], next[target]] = [next[target], next[index]];
       return { ...current, pages: next };
     });
+    setMoveFrameWithPhotoId(null);
   }
 
   function goSpread(direction) {
     const next = direction === 'next' ? Math.min(pages.length - 1, spreadStart + 2) : Math.max(0, spreadStart - 2);
     setAlbum((current) => ({ ...current, currentPageId: pages[next]?.id ?? pages[0].id }));
+    setMoveFrameWithPhotoId(null);
   }
 
   function project() {
-    return { version: 'live-9-photo-usage-highlight', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 'live-10-layer-move-photo', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function save() {
@@ -702,6 +738,7 @@ export default function App() {
       setViewMode(data.viewMode === 'single' ? 'single' : 'spread');
       setSelectedFrameId(null);
       setSelectedPhotoId(null);
+      setMoveFrameWithPhotoId(null);
       show('Альбом загружен');
     } catch {
       show('Не получилось открыть сохранение');
@@ -725,6 +762,7 @@ export default function App() {
         setViewMode(data.viewMode === 'single' ? 'single' : 'spread');
         setSelectedFrameId(null);
         setSelectedPhotoId(null);
+        setMoveFrameWithPhotoId(null);
         show('JSON открыт');
       } catch {
         show('Файл не похож на проект');
@@ -736,6 +774,7 @@ export default function App() {
 
   function exportPng(stageRefToExport, filename, message) {
     setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const uri = stageRefToExport.current?.toDataURL({ pixelRatio: EXPORT_RATIO, mimeType: 'image/png' });
       if (!uri) return show('Не получилось собрать PNG');
@@ -754,9 +793,11 @@ export default function App() {
       settings={settings}
       activePageId={album.currentPageId}
       selectedFrameId={selectedFrameId}
+      moveFrameWithPhotoId={moveFrameWithPhotoId}
       onFrameSelect={selectFrame}
       onPhotoMove={updatePhoto}
       onFrameChange={changeFrame}
+      onFrameDragFinish={() => setMoveFrameWithPhotoId(null)}
       onColumnResize={resizeGridColumn}
       onRowResize={resizeGridRow}
       onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
@@ -768,10 +809,12 @@ export default function App() {
     settings,
     activePageId: null,
     selectedFrameId: null,
+    moveFrameWithPhotoId: null,
     printMode: true,
     onFrameSelect: () => {},
     onPhotoMove: () => {},
     onFrameChange: () => {},
+    onFrameDragFinish: () => {},
     onColumnResize: () => {},
     onRowResize: () => {},
     onActivatePage: () => {},
@@ -808,7 +851,7 @@ export default function App() {
         <div className="view-switch"><button className={`small-button ${!isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Страница</button><button className={`small-button ${isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот / 2 страницы</button></div>
         <div className="album-actions"><button className="small-button" onClick={addPage}>+ Страница</button><button className="small-button" onClick={duplicatePage}>Копия</button><button className="small-button" onClick={() => movePage('left')} disabled={currentPageIndex === 0}>←</button><button className="small-button" onClick={() => movePage('right')} disabled={currentPageIndex === pages.length - 1}>→</button><button className="small-button danger" onClick={deletePage}>Удалить</button></div>
         <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Включить сетку'}</button></div>
-        <div className="page-strip">{pages.map((page, index) => <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`} onClick={() => { setAlbum((current) => ({ ...current, currentPageId: page.id })); setSelectedFrameId(null); }}><b>{index + 1}</b><span>{page.frames.filter((frame) => frame.photo).length}/{resolvePageFrameCount(page, settings)}</span><small>{index % 2 === 0 ? 'левая' : 'правая'}</small></button>)}</div>
+        <div className="page-strip">{pages.map((page, index) => <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`} onClick={() => { setAlbum((current) => ({ ...current, currentPageId: page.id })); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}><b>{index + 1}</b><span>{page.frames.filter((frame) => frame.photo).length}/{resolvePageFrameCount(page, settings)}</span><small>{index % 2 === 0 ? 'левая' : 'правая'}</small></button>)}</div>
       </section>
 
       <section className="workspace three-columns">
@@ -837,11 +880,11 @@ export default function App() {
         </aside>
 
         <section className={`canvas-area ${isSpread ? 'album-mode' : ''}`}>
-          <div className="canvas-toolbar"><div><strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong><span>{locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span><em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em></div><button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button><button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); }}>Очистить фото</button></div>
+          <div className="canvas-toolbar"><div><strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong><span>{locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span><em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em></div><button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button><button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button></div>
 
           <div className={`stage-frame ${isSpread ? 'album-preview' : ''}`} style={{ width: stageDisplayWidth, height: stageDisplayHeight }} onDragOver={(event) => event.preventDefault()} onDrop={dropPhoto}>
             <div className="stage-scale-shell" style={{ width: stageRealWidth, height: canvas.height, transform: `scale(${previewScale})` }}>
-              <Stage ref={stageRef} width={stageRealWidth} height={canvas.height} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') setSelectedFrameId(null); }}>
+              <Stage ref={stageRef} width={stageRealWidth} height={canvas.height} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); } }}>
                 <Layer>
                   {renderEntries}
                   {isSpread && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}
@@ -864,9 +907,11 @@ export default function App() {
                   <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label>
                   <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label>
                 </div>
+                {!locked && <button className="button full" onClick={bringSelectedFrameToFront}>Поверх остальных</button>}
+                {!locked && <button className={`button full ${moveFrameWithPhotoId === selectedFrame.id ? 'accent' : ''}`} onClick={enableMoveFrameWithPhoto} disabled={!selectedFrame.photo}>{moveFrameWithPhotoId === selectedFrame.id ? 'Перетащи рамку сейчас' : 'Двигать рамку с фото'}</button>}
                 <button className="button full danger-button" onClick={deleteSelectedFrame} disabled={currentPageFrameCount <= 1}>Удалить окно</button>
                 <p className="hint">Удаление перестроит эту страницу: соседние окна сдвинутся, фото сохранятся по порядку.</p>
-                <p className="hint">Режим: {locked ? 'сетка через layout, без угадывания соседей по координатам' : selectedFrame.photo ? 'фото внутри окна двигается, рамка двигается за свободную область/границу' : 'рамка двигается внутри страницы и меняет размер за маркеры'}.</p>
+                <p className="hint">Режим: {locked ? 'сетка через layout, без угадывания соседей по координатам' : selectedFrame.photo ? 'фото внутри окна двигается; для движения рамки вместе с фото нажми кнопку выше' : 'рамка двигается внутри страницы и меняет размер за маркеры'}.</p>
               </div>
               <div className="inspector-block">
                 <h3>Фото внутри окна</h3>
