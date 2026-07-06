@@ -1,74 +1,85 @@
-/* UI cleanup pass 3: restore readable album/pages block. */
+/* UI cleanup pass 3 v2: compact pages / view panel.
+   Goal: one low service bar, less vertical weight, no huge page strip container. */
 .album-bar {
   display: grid !important;
-  grid-template-columns: minmax(180px, 240px) minmax(260px, 1fr) !important;
-  grid-template-areas:
-    'head pages'
-    'view pages'
-    'actions nav' !important;
+  grid-template-columns: auto max-content max-content max-content !important;
+  grid-template-areas: 'head pages view nav' !important;
   align-items: stretch !important;
-  gap: 10px !important;
+  gap: 8px !important;
+  padding: 8px !important;
+  border: 1px solid var(--ui-panel-border, rgba(35, 38, 43, 0.12)) !important;
+  border-radius: var(--ui-card-radius, 6px) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
 }
 
 .album-head {
   grid-area: head;
-  min-width: 0 !important;
-  align-content: start;
-  border: 1px solid var(--ui-panel-border, rgba(35, 38, 43, 0.12));
-  border-radius: var(--ui-card-radius, 6px);
-  background: rgba(255, 255, 255, 0.72);
-  padding: 10px;
+  min-width: 126px !important;
+  max-width: 170px !important;
+  padding: 4px 8px !important;
+  border: 0 !important;
+  background: transparent !important;
+  align-content: center !important;
 }
 
 .album-head strong {
-  font-size: 13px !important;
-  letter-spacing: 0.02em;
+  display: block;
+  margin: 0 0 2px !important;
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .album-head span {
+  display: block;
+  margin: 0 !important;
   color: var(--ui-muted, #68707a) !important;
+  font-size: 11px !important;
+  line-height: 1.15 !important;
 }
 
 .page-strip {
   grid-area: pages;
   position: relative;
   display: flex !important;
-  align-content: flex-start;
-  align-items: stretch;
-  gap: 8px !important;
-  min-height: 92px;
+  align-items: stretch !important;
+  align-content: center !important;
+  gap: 6px !important;
+  min-height: 50px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: min(44vw, 640px) !important;
   overflow-x: auto;
-  border: 1px solid var(--ui-panel-border, rgba(35, 38, 43, 0.12));
-  border-radius: var(--ui-card-radius, 6px);
-  background: rgba(255, 255, 255, 0.72);
-  padding: 24px 8px 8px !important;
+  padding: 4px !important;
+  border: 1px solid var(--ui-panel-border, rgba(35, 38, 43, 0.12)) !important;
+  border-radius: var(--ui-card-radius, 6px) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
 }
 
 .page-strip::before {
-  content: 'Лента страниц';
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  color: var(--ui-muted, #68707a);
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.06em;
-  line-height: 1;
-  text-transform: uppercase;
+  content: none !important;
 }
 
 .page-chip {
-  flex: 0 0 74px !important;
-  min-height: 56px !important;
-  padding: 7px 6px !important;
+  flex: 0 0 58px !important;
+  min-height: 48px !important;
+  padding: 5px 4px !important;
 }
 
 .page-chip b {
-  font-size: 19px !important;
+  font-size: 17px !important;
+  line-height: 1 !important;
+}
+
+.page-chip span {
+  font-size: 10px !important;
+  line-height: 1 !important;
 }
 
 .page-chip small {
+  font-size: 9px !important;
+  line-height: 1 !important;
   text-transform: uppercase;
 }
 
@@ -77,7 +88,11 @@
 }
 
 .album-actions {
-  grid-area: actions;
+  grid-area: pages;
+  justify-self: end;
+  align-self: end;
+  margin-right: 4px;
+  pointer-events: none;
 }
 
 .spread-actions {
@@ -85,28 +100,48 @@
 }
 
 .view-switch,
-.album-actions,
 .spread-actions {
-  align-content: start !important;
-  min-width: 0;
+  display: grid !important;
+  grid-auto-flow: column !important;
+  grid-template-rows: none !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
 }
 
-.view-switch::before {
-  content: 'Режим просмотра' !important;
+.album-actions {
+  display: grid !important;
+  grid-auto-flow: column !important;
+  grid-template-rows: none !important;
+  align-items: end !important;
+  gap: 4px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
 }
 
-.album-actions::before {
-  content: 'Текущая страница' !important;
-}
-
+.view-switch::before,
+.album-actions::before,
 .spread-actions::before {
-  content: 'Навигация и вид' !important;
+  content: none !important;
 }
 
 .view-switch > .small-button,
 .album-actions > .small-button,
 .spread-actions > .small-button {
+  grid-row: auto !important;
   white-space: nowrap;
+  min-height: 30px !important;
+}
+
+.album-actions > .small-button {
+  pointer-events: auto;
+  min-height: 24px !important;
+  padding: 0 7px !important;
+  font-size: 11px !important;
 }
 
 .view-switch > .small-button:nth-child(1),
@@ -115,86 +150,59 @@
 .album-actions > .small-button:nth-child(2),
 .album-actions > .small-button:nth-child(3),
 .spread-actions > .small-button:nth-child(1),
-.spread-actions > .small-button:nth-child(2) {
+.spread-actions > .small-button:nth-child(2),
+.spread-actions > .small-button:nth-child(3),
+.spread-actions > .small-button:nth-child(4) {
   font-size: 0 !important;
 }
 
-.view-switch > .small-button:nth-child(1)::after {
-  content: '1 страница';
-  font-size: 12px;
-}
-
-.view-switch > .small-button:nth-child(2)::after {
-  content: 'Разворот';
-  font-size: 12px;
-}
-
-.album-actions > .small-button:nth-child(1)::after {
-  content: '+ Страница';
-  font-size: 12px;
-}
-
-.album-actions > .small-button:nth-child(2)::after {
-  content: 'Копировать страницу';
-  font-size: 12px;
-}
-
-.album-actions > .small-button:nth-child(3)::after {
-  content: 'Удалить страницу';
-  font-size: 12px;
-}
-
-.spread-actions > .small-button:nth-child(1)::after {
-  content: '← Предыдущий разворот';
-  font-size: 12px;
-}
-
-.spread-actions > .small-button:nth-child(2)::after {
-  content: 'Следующий разворот →';
-  font-size: 12px;
-}
-
-.spread-actions > .small-button:nth-child(3) {
-  margin-left: 10px;
-  border-left-width: 3px !important;
-}
-
-.spread-actions > .small-button:nth-child(3),
-.spread-actions > .small-button:nth-child(4) {
-  min-width: 150px;
-}
+.view-switch > .small-button:nth-child(1)::after { content: '1 стр.'; font-size: 12px; }
+.view-switch > .small-button:nth-child(2)::after { content: 'Разворот'; font-size: 12px; }
+.album-actions > .small-button:nth-child(1)::after { content: '+'; font-size: 13px; font-weight: 900; }
+.album-actions > .small-button:nth-child(2)::after { content: 'Копия'; font-size: 11px; }
+.album-actions > .small-button:nth-child(3)::after { content: 'Удалить'; font-size: 11px; }
+.spread-actions > .small-button:nth-child(1)::after { content: '←'; font-size: 13px; }
+.spread-actions > .small-button:nth-child(2)::after { content: '→'; font-size: 13px; }
+.spread-actions > .small-button:nth-child(3)::after { content: 'Направляющие'; font-size: 12px; }
+.spread-actions > .small-button:nth-child(4)::after { content: 'Сетка'; font-size: 12px; }
 
 @media (max-width: 1360px) {
+  .album-bar {
+    grid-template-columns: auto 1fr !important;
+    grid-template-areas:
+      'head pages'
+      'view nav' !important;
+  }
+
+  .page-strip {
+    max-width: 100% !important;
+  }
+
+  .album-actions {
+    grid-area: pages;
+  }
+}
+
+@media (max-width: 760px) {
   .album-bar {
     grid-template-columns: 1fr !important;
     grid-template-areas:
       'head'
       'pages'
       'view'
-      'actions'
       'nav' !important;
   }
 
   .page-strip {
-    min-height: 86px;
+    max-width: 100% !important;
   }
 
-  .spread-actions > .small-button:nth-child(3) {
-    margin-left: 0;
-    border-left-width: 1px !important;
-  }
-}
-
-@media (max-width: 760px) {
   .view-switch,
-  .album-actions,
   .spread-actions {
     grid-auto-flow: row !important;
-    grid-template-columns: 1fr !important;
   }
 
   .view-switch > .small-button,
-  .album-actions > .small-button,
   .spread-actions > .small-button {
     width: 100%;
   }
