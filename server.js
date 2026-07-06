@@ -11,7 +11,7 @@ const distDir = resolve(process.cwd(), 'dist');
 const sessionSecret = process.env.SESSION_SECRET || 'collage-dev-secret-change-me';
 const databaseUrl = process.env.DATABASE_URL || '';
 const jsonLimitBytes = Number(process.env.JSON_LIMIT_BYTES || 60 * 1024 * 1024);
-const publicNoCacheFiles = new Set(['cloud-auth.js', 'cloud-auth.css', 'album-layers.js', 'album-layers.css']);
+const publicNoCacheFiles = new Set(['cloud-auth.js', 'cloud-auth.css', 'album-layers.js', 'album-layers.css', 'album-mode-fix.css']);
 
 let pool = null;
 let dbReadyPromise = null;
