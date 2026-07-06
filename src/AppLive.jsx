@@ -13,8 +13,9 @@ import {
   resizeRow,
 } from './editor/layout';
 
-const STORAGE_KEY = 'collage-creator-album-live-v6-page-frame-count';
+const STORAGE_KEY = 'collage-creator-album-live-v7-frame-drag-bounds';
 const LEGACY_KEYS = [
+  'collage-creator-album-live-v6-page-frame-count',
   'collage-creator-album-live-v5-sharp-preview',
   'collage-creator-album-live-v4-grid-layout',
   'collage-creator-album-live-v3',
@@ -191,11 +192,13 @@ function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhoto
   );
 }
 
-function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, onSelect, onPhotoMove, onFrameChange }) {
+function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, onSelect, onPhotoMove, onFrameChange }) {
   const [image, setImage] = useState(null);
   const groupRef = useRef(null);
+  const frameRectRef = useRef(null);
   const transformerRef = useRef(null);
   const rect = coverRect(image, frame, frame.photo);
+  const canDragFrame = !printMode && selected && !locked;
 
   useEffect(() => {
     let active = true;
@@ -211,21 +214,35 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
 
   useEffect(() => {
     const transformer = transformerRef.current;
-    const group = groupRef.current;
-    if (!transformer || !group) return;
-    transformer.nodes(selected && !printMode && !locked ? [group] : []);
+    const frameRect = frameRectRef.current;
+    if (!transformer || !frameRect) return;
+    transformer.nodes(selected && !printMode && !locked ? [frameRect] : []);
     transformer.getLayer()?.batchDraw();
   }, [selected, printMode, locked, frame.x, frame.y, frame.width, frame.height]);
 
+  function clampFrameNode(node) {
+    node.x(clamp(node.x(), 0, Math.max(0, canvas.width - frame.width)));
+    node.y(clamp(node.y(), 0, Math.max(0, canvas.height - frame.height)));
+  }
+
+  function commitFrameDrag(event) {
+    if (printMode || !selected || locked) return;
+    const node = event.target;
+    clampFrameNode(node);
+    onFrameChange(frame.id, { x: node.x(), y: node.y() });
+  }
+
   function commitTransform() {
-    if (printMode || !selected || locked || !groupRef.current) return;
-    const node = groupRef.current;
+    if (printMode || !selected || locked || !frameRectRef.current) return;
+    const node = frameRectRef.current;
     const patch = {
-      x: node.x(),
-      y: node.y(),
+      x: frame.x + node.x(),
+      y: frame.y + node.y(),
       width: frame.width * node.scaleX(),
       height: frame.height * node.scaleY(),
     };
+    node.x(0);
+    node.y(0);
     node.scaleX(1);
     node.scaleY(1);
     onFrameChange(frame.id, patch);
@@ -233,9 +250,22 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
 
   return (
     <>
-      <Group ref={groupRef} x={frame.x} y={frame.y} draggable={false} onMouseDown={onSelect} onTap={onSelect} onTransformEnd={commitTransform}>
+      <Group
+        ref={groupRef}
+        x={frame.x}
+        y={frame.y}
+        draggable={canDragFrame}
+        onMouseDown={onSelect}
+        onTap={onSelect}
+        onDragMove={(event) => {
+          if (!canDragFrame) return;
+          clampFrameNode(event.target);
+        }}
+        onDragEnd={commitFrameDrag}
+      >
         <Group clipX={0} clipY={0} clipWidth={frame.width} clipHeight={frame.height}>
           <Rect
+            ref={frameRectRef}
             x={0}
             y={0}
             width={frame.width}
@@ -244,10 +274,11 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
             stroke={selected && !printMode ? (locked ? '#2f7d52' : '#c27b4f') : borderColor}
             strokeWidth={selected && !printMode ? Math.max(5, borderWidth) : borderWidth}
             strokeScaleEnabled={false}
+            onTransformEnd={commitTransform}
           />
           <PhotoImage frame={frame} selected={selected} image={image} rect={rect} printMode={printMode} onSelect={onSelect} onPhotoMove={onPhotoMove} />
           {!frame.photo && !printMode && (
-            <Rect x={14} y={14} width={Math.max(0, frame.width - 28)} height={Math.max(0, frame.height - 28)} stroke="#d8c7b9" strokeWidth={2} strokeScaleEnabled={false} dash={[14, 10]} cornerRadius={12} />
+            <Rect x={14} y={14} width={Math.max(0, frame.width - 28)} height={Math.max(0, frame.height - 28)} stroke="#d8c7b9" strokeWidth={2} strokeScaleEnabled={false} dash={[14, 10]} cornerRadius={12} listening={false} />
           )}
         </Group>
       </Group>
@@ -266,9 +297,11 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
           anchorStroke="#c27b4f"
           anchorFill="#fff7ef"
           boundBoxFunc={(oldBox, newBox) => {
+            const pageLeft = pageOffsetX;
+            const pageRight = pageOffsetX + canvas.width;
             if (newBox.width < MIN_FRAME || newBox.height < MIN_FRAME) return oldBox;
-            if (newBox.x < 0 || newBox.y < 0) return oldBox;
-            if (newBox.x + newBox.width > canvas.width || newBox.y + newBox.height > canvas.height) return oldBox;
+            if (newBox.x < pageLeft || newBox.y < 0) return oldBox;
+            if (newBox.x + newBox.width > pageRight || newBox.y + newBox.height > canvas.height) return oldBox;
             return newBox;
           }}
         />
@@ -343,6 +376,7 @@ function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selecte
           borderColor={settings.borderColor}
           printMode={printMode}
           canvas={canvas}
+          pageOffsetX={x}
           onSelect={() => !printMode && onFrameSelect(page.id, frame.id)}
           onPhotoMove={(frameId, patch) => !printMode && onPhotoMove(page.id, frameId, patch)}
           onFrameChange={(frameId, patch) => !printMode && onFrameChange(page.id, frameId, patch)}
@@ -592,7 +626,7 @@ export default function App() {
   }
 
   function project() {
-    return { version: 'live-6-page-frame-count', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return { version: 'live-7-frame-drag-bounds', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
   }
 
   function save() {
@@ -750,7 +784,7 @@ export default function App() {
         </aside>
 
         <section className={`canvas-area ${isSpread ? 'album-mode' : ''}`}>
-          <div className="canvas-toolbar"><div><strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong><span>{locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна не перетаскиваются, только меняют размер за маркеры. Фото внутри можно двигать.'}</span><em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em></div><button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button><button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); }}>Очистить фото</button></div>
+          <div className="canvas-toolbar"><div><strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong><span>{locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span><em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em></div><button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button><button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); }}>Очистить фото</button></div>
 
           <div className={`stage-frame ${isSpread ? 'album-preview' : ''}`} style={{ width: stageDisplayWidth, height: stageDisplayHeight }} onDragOver={(event) => event.preventDefault()} onDrop={dropPhoto}>
             <div className="stage-scale-shell" style={{ width: stageRealWidth, height: canvas.height, transform: `scale(${previewScale})` }}>
@@ -765,9 +799,9 @@ export default function App() {
         </section>
 
         <aside className="inspector">
-          <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? (locked ? 'В сетке двигай зелёные разделители между окнами.' : 'Меняй размер рамки за маркеры. Фото внутри двигай мышкой.') : 'Выбери рамку на холсте'}</p></div></div>
+          <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? (locked ? 'В сетке двигай зелёные разделители между окнами.' : 'Двигай рамку внутри страницы или меняй размер за маркеры. Фото внутри двигай мышкой.') : 'Выбери рамку на холсте'}</p></div></div>
           <div className="inspector-block"><h3>Цвет и рамка</h3><label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label><label className="field"><span>Обводка внутри окна</span><input type="number" min="0" max="80" value={settings.borderWidth} onChange={(event) => updateSetting('borderWidth', clamp(event.target.value, 0, 80))} /></label></div>
-          {selectedFrame ? <><div className="inspector-block"><h3>Положение рамки</h3><div className="geometry-grid"><label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { x: event.target.value })} /></label><label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { y: event.target.value })} /></label><label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label><label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label></div><p className="hint">Режим: {locked ? 'сетка через layout, без угадывания соседей по координатам' : selectedFrame.photo ? 'фото внутри окна двигается, рамка меняется только за маркеры/цифры' : 'рамка меняет размер за маркеры, но не перетаскивается'}.</p></div><div className="inspector-block"><h3>Фото внутри окна</h3>{selectedFrame.photo ? <><p className="photo-name">{selectedFrame.photo.name}</p><label className="range-row"><span>Масштаб</span><input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} /><b>{selectedFrame.photo.zoom.toFixed(2)}</b></label><button className="button full" onClick={() => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 })}>Центрировать фото</button><button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))}>Убрать фото из окна</button></> : <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>}</div></> : <div className="empty-state small-empty"><p>Нажми на любое окно коллажа, чтобы настроить его.</p></div>}
+          {selectedFrame ? <><div className="inspector-block"><h3>Положение рамки</h3><div className="geometry-grid"><label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { x: event.target.value })} /></label><label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { y: event.target.value })} /></label><label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label><label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label></div><p className="hint">Режим: {locked ? 'сетка через layout, без угадывания соседей по координатам' : selectedFrame.photo ? 'фото внутри окна двигается, рамка двигается за свободную область/границу' : 'рамка двигается внутри страницы и меняет размер за маркеры'}.</p></div><div className="inspector-block"><h3>Фото внутри окна</h3>{selectedFrame.photo ? <><p className="photo-name">{selectedFrame.photo.name}</p><label className="range-row"><span>Масштаб</span><input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} /><b>{selectedFrame.photo.zoom.toFixed(2)}</b></label><button className="button full" onClick={() => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 })}>Центрировать фото</button><button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))}>Убрать фото из окна</button></> : <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>}</div></> : <div className="empty-state small-empty"><p>Нажми на любое окно коллажа, чтобы настроить его.</p></div>}
         </aside>
       </section>
 
