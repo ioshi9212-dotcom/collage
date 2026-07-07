@@ -515,6 +515,7 @@ export default function App() {
   const stageRef = useRef(null);
   const printPageRef = useRef(null);
   const printSpreadRef = useRef(null);
+  const printBookletRef = useRef(null);
   const jsonRef = useRef(null);
   const noticeTimerRef = useRef(null);
 
@@ -528,6 +529,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState('spread');
   const [bookletSheetsPerBlock, setBookletSheetsPerBlock] = useState(DEFAULT_SHEETS_PER_BLOCK);
   const [bookletSideId, setBookletSideId] = useState(null);
+  const [printBookletSideId, setPrintBookletSideId] = useState(null);
   const [notice, setNotice] = useState('');
   const [albumMode, setAlbumMode] = useState(() => localStorage.getItem(ALBUM_MODE_KEY) || 'collage');
 
@@ -567,6 +569,14 @@ export default function App() {
     }
     return findBookletSideForPage(bookletPlan, currentPageIndex + 1) ?? bookletPlan.sides[0];
   }, [bookletPlan, bookletSideId, currentPageIndex]);
+  const printBookletSide = useMemo(() => {
+    if (!bookletPlan.sides.length) return null;
+    if (printBookletSideId) {
+      const byId = bookletPlan.sides.find((side) => side.id === printBookletSideId);
+      if (byId) return byId;
+    }
+    return currentBookletSide ?? bookletPlan.sides[0];
+  }, [bookletPlan, printBookletSideId, currentBookletSide]);
   const visibleBookletPageNumbers = useMemo(() => {
     if (!currentBookletSide) return new Set();
     return new Set(currentBookletSide.slots.filter((slot) => !slot.isBlank && slot.pageNumber).map((slot) => slot.pageNumber));
@@ -1026,6 +1036,50 @@ export default function App() {
     }));
   }
 
+  function nextPaint() {
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }
+
+  function bookletSideFilename(sideData) {
+    if (!sideData) return 'booklet-side.png';
+    return `booklet-block-${pad(sideData.blockNumber)}-sheet-${pad(sideData.sheetNumber)}-${sideData.side}.png`;
+  }
+
+  async function exportBookletSide(sideData = currentBookletSide) {
+    if (!sideData) return show('Нет стороны брошюры для экспорта');
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    setPrintBookletSideId(sideData.id);
+    await nextPaint();
+    const uri = printBookletRef.current?.toDataURL({ pixelRatio: EXPORT_RATIO, mimeType: 'image/png' });
+    if (!uri) return show('Не получилось собрать PNG брошюры');
+    downloadDataUrl(bookletSideFilename(sideData), uri);
+    show(`Скачана сторона: ${sideData.title}`);
+  }
+
+  async function exportBookletAll() {
+    if (!bookletPlan.sides.length) return show('Нет сторон брошюры для экспорта');
+
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    show(`Готовлю PNG брошюры: ${bookletPlan.sides.length} сторон`);
+
+    for (const sideData of bookletPlan.sides) {
+      setPrintBookletSideId(sideData.id);
+      await nextPaint();
+      const uri = printBookletRef.current?.toDataURL({ pixelRatio: EXPORT_RATIO, mimeType: 'image/png' });
+      if (!uri) {
+        show(`Не получилось собрать: ${sideData.title}`);
+        return;
+      }
+      downloadDataUrl(bookletSideFilename(sideData), uri);
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+    }
+
+    setPrintBookletSideId(currentBookletSide?.id ?? null);
+    show(`Скачаны PNG брошюры: ${bookletPlan.sides.length} сторон`);
+  }
+
   const renderEntries = entries.map((entry, entryIndex) => (
     <PageLayer
       key={`${entry.page?.id ?? 'blank'}-${entry.pageIndex}-${entryIndex}`}
@@ -1121,6 +1175,8 @@ export default function App() {
             <button className="small-button" onClick={toggleBookletSheetSide} disabled={!currentBookletSide}>{currentBookletSide?.side === BOOKLET_SIDE_FRONT ? 'Оборот листа' : 'Лицевая листа'}</button>
             <button className="small-button" onClick={() => goBookletSide(1)} disabled={!currentBookletSide || bookletPlan.sides[bookletPlan.sides.length - 1]?.id === currentBookletSide.id}>сторона →</button>
             <span className="booklet-summary">{bookletPlan.blockCount} блок., пустых: {bookletPlan.blankPageCount}</span>
+            <button className="small-button accent" onClick={() => exportBookletSide()} disabled={!currentBookletSide}>PNG сторона</button>
+            <button className="small-button accent" onClick={exportBookletAll} disabled={!bookletPlan.sides.length}>PNG все стороны</button>
           </div>
         ) : (
           <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Включить сетку'}</button></div>
@@ -1168,7 +1224,7 @@ export default function App() {
             <div>
               <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${canvas.width * 2}×${canvas.height}px` : isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)} · ${canvas.width}×${canvas.height}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px`}</strong>
               <span>{isBooklet ? 'Просмотр физической стороны А4: слева и справа показаны страницы, которые будут напечатаны рядом.' : locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span>
-              <em>{isBooklet ? 'Это пока режим просмотра брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.'}</em>
+              <em>{isBooklet ? 'Это режим просмотра и PNG-экспорта брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.'}</em>
             </div>
             {!isBooklet && <button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button>}
             {!isBooklet && <button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button>}
@@ -1226,6 +1282,19 @@ export default function App() {
       <div className="export-stage-holder" aria-hidden="true">
         <Stage ref={printPageRef} width={canvas.width} height={canvas.height}><Layer><PageLayer page={currentPage} pageIndex={currentPageIndex} x={0} {...commonPageLayerProps} /></Layer></Stage>
         <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}><Layer><PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} {...commonPageLayerProps} /><PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} {...commonPageLayerProps} /></Layer></Stage>
+        <Stage ref={printBookletRef} width={canvas.width * 2} height={canvas.height}>
+          <Layer>
+            {(printBookletSide?.slots ?? []).map((slot, index) => (
+              <PageLayer
+                key={`print-booklet-${printBookletSide?.id ?? 'empty'}-${index}`}
+                page={slot.sourcePageIndex == null ? null : pages[slot.sourcePageIndex]}
+                pageIndex={slot.sourcePageIndex ?? -1}
+                x={index * canvas.width}
+                {...commonPageLayerProps}
+              />
+            ))}
+          </Layer>
+        </Stage>
       </div>
     </main>
   );

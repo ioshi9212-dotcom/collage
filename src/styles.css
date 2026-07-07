@@ -2138,3 +2138,16 @@ button.small-button {
 .booklet-stage {
   background: repeating-linear-gradient(45deg, rgba(47, 125, 82, 0.045), rgba(47, 125, 82, 0.045) 8px, rgba(255, 255, 255, 0.55) 8px, rgba(255, 255, 255, 0.55) 16px) !important;
 }
+
+/* ===== Patch 11: booklet PNG export controls ===== */
+.booklet-actions .small-button.accent {
+  background: #2f7d52 !important;
+  border-color: #2f7d52 !important;
+  color: #ffffff !important;
+}
+
+.booklet-actions .small-button.accent:disabled {
+  background: #eef4f0 !important;
+  border-color: #d7e3dc !important;
+  color: #93a39a !important;
+}
