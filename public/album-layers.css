@@ -66,28 +66,49 @@
   line-height: 1.25;
 }
 
-/* Replace original photo/frame sidebars when an album layer mode is active. */
+/* Layer modes: keep the original photo sidebar, replace only the right inspector. */
 body[data-album-mode='text'] .workspace > .sidebar,
-body[data-album-mode='text'] .workspace > .inspector,
 body[data-album-mode='drawings'] .workspace > .sidebar,
+body[data-album-mode='templates'] .workspace > .sidebar {
+  display: grid !important;
+}
+
+body[data-album-mode='text'] .workspace > .inspector,
 body[data-album-mode='drawings'] .workspace > .inspector,
-body[data-album-mode='templates'] .workspace > .sidebar,
 body[data-album-mode='templates'] .workspace > .inspector {
   display: none !important;
 }
 
-.album-mode-sidebar,
+.album-mode-sidebar {
+  display: none !important;
+}
+
 .album-mode-inspector {
   display: none;
 }
 
-body[data-album-mode='text'] .album-mode-sidebar,
+body[data-album-mode='collage'] .album-mode-inspector {
+  display: none !important;
+}
+
 body[data-album-mode='text'] .album-mode-inspector,
-body[data-album-mode='drawings'] .album-mode-sidebar,
 body[data-album-mode='drawings'] .album-mode-inspector,
-body[data-album-mode='templates'] .album-mode-sidebar,
 body[data-album-mode='templates'] .album-mode-inspector {
-  display: grid;
+  display: grid !important;
+}
+
+/* In text/draw/template mode the original Konva canvas is only a background. */
+body[data-album-mode='text'] .konvajs-content,
+body[data-album-mode='drawings'] .konvajs-content,
+body[data-album-mode='templates'] .konvajs-content {
+  pointer-events: none !important;
+}
+
+body[data-album-mode='text'] .canvas-toolbar .small-button,
+body[data-album-mode='drawings'] .canvas-toolbar .small-button,
+body[data-album-mode='templates'] .canvas-toolbar .small-button {
+  pointer-events: none;
+  opacity: 0.45;
 }
 
 .album-mode-sidebar,
