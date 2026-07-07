@@ -81,6 +81,13 @@ function pad(value) {
   return String(value).padStart(2, '0');
 }
 
+function moveArrayItem(items, fromIndex, toIndex) {
+  const next = [...items];
+  const [item] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, item);
+  return next;
+}
+
 function downloadDataUrl(filename, dataUrl) {
   const link = document.createElement('a');
   link.href = dataUrl;
@@ -570,6 +577,8 @@ export default function App() {
   const [printBookletSideId, setPrintBookletSideId] = useState(null);
   const [notice, setNotice] = useState('');
   const [albumMode, setAlbumMode] = useState(() => localStorage.getItem(ALBUM_MODE_KEY) || 'collage');
+  const [dragPageIndex, setDragPageIndex] = useState(null);
+  const [dragOverPageIndex, setDragOverPageIndex] = useState(null);
 
   useEffect(() => {
     const readAlbumMode = () => {
@@ -892,6 +901,82 @@ export default function App() {
 
 
 
+  function reorderExtraLayersByPageMove(fromIndex, toIndex, pageCount) {
+    if (fromIndex === toIndex) return;
+    const layers = readExtraLayers();
+    const pagesMap = layers?.pages ?? {};
+    const orderedLayerPages = Array.from({ length: pageCount }, (_, index) => pagesMap[String(index + 1)] ?? null);
+    const movedLayerPages = moveArrayItem(orderedLayerPages, fromIndex, toIndex);
+    const nextPagesMap = {};
+
+    movedLayerPages.forEach((pageLayers, index) => {
+      if (pageLayers) nextPagesMap[String(index + 1)] = pageLayers;
+    });
+
+    for (const [key, value] of Object.entries(pagesMap)) {
+      const numberKey = Number(key);
+      if (!Number.isInteger(numberKey) || numberKey < 1 || numberKey > pageCount) nextPagesMap[key] = value;
+    }
+
+    writeExtraLayers({ ...layers, pages: nextPagesMap });
+  }
+
+  function reorderPages(fromIndex, toIndex) {
+    const safeFrom = Number(fromIndex);
+    const safeTo = Number(toIndex);
+    if (!Number.isInteger(safeFrom) || !Number.isInteger(safeTo)) return;
+    if (safeFrom < 0 || safeTo < 0 || safeFrom >= pages.length || safeTo >= pages.length) return;
+    if (safeFrom === safeTo) {
+      selectPageByIndex(safeTo);
+      return;
+    }
+
+    reorderExtraLayersByPageMove(safeFrom, safeTo, pages.length);
+
+    const movedPage = pages[safeFrom];
+    setAlbum((current) => {
+      const nextPages = moveArrayItem(current.pages, safeFrom, safeTo);
+      return { ...current, pages: nextPages, currentPageId: movedPage?.id ?? current.currentPageId };
+    });
+
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    setDragPageIndex(null);
+    setDragOverPageIndex(null);
+
+    if (viewMode === 'booklet') {
+      const side = findBookletSideForPage(bookletPlan, safeTo + 1);
+      setBookletSideId(side?.id ?? null);
+    }
+
+    show(`Страница ${safeFrom + 1} перемещена на место ${safeTo + 1}`);
+  }
+
+  function startPageDrag(event, index) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-collage-page-index', String(index));
+    event.dataTransfer.setData('text/plain', String(index));
+    setDragPageIndex(index);
+    setDragOverPageIndex(index);
+  }
+
+  function dragOverPage(event, index) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverPageIndex(index);
+  }
+
+  function dropPage(event, index) {
+    event.preventDefault();
+    const raw = event.dataTransfer.getData('application/x-collage-page-index') || event.dataTransfer.getData('text/plain');
+    reorderPages(Number(raw), index);
+  }
+
+  function finishPageDrag() {
+    setDragPageIndex(null);
+    setDragOverPageIndex(null);
+  }
+
   function movePage(direction) {
     setAlbum((current) => {
       const index = current.pages.findIndex((page) => page.id === current.currentPageId);
@@ -968,7 +1053,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-16-page-rail',
+      version: 'live-17-page-drag',
       canvas,
       settings,
       library,
@@ -1291,10 +1376,16 @@ export default function App() {
                 <button
                   key={page.id}
                   type="button"
-                  className={`page-rail-card ${isCurrent ? 'current-page-rail-card' : ''} ${isOnStage ? 'stage-page-rail-card' : ''} ${isVisibleInBooklet ? 'booklet-visible-rail-card' : ''}`}
+                  className={`page-rail-card ${isCurrent ? 'current-page-rail-card' : ''} ${isOnStage ? 'stage-page-rail-card' : ''} ${isVisibleInBooklet ? 'booklet-visible-rail-card' : ''} ${dragPageIndex === index ? 'dragging-page-rail-card' : ''} ${dragOverPageIndex === index && dragPageIndex !== null && dragPageIndex !== index ? 'drag-over-page-rail-card' : ''}`}
+                  draggable
                   onClick={() => selectPageByIndex(index)}
+                  onDragStart={(event) => startPageDrag(event, index)}
+                  onDragOver={(event) => dragOverPage(event, index)}
+                  onDrop={(event) => dropPage(event, index)}
+                  onDragEnd={finishPageDrag}
+                  title="Перетащи вверх или вниз, чтобы изменить порядок страниц"
                 >
-                  <b>{pageNumber}</b>
+                  <div className="page-rail-card-top"><b>{pageNumber}</b><i className="page-rail-drag-handle" aria-hidden="true">⋮⋮</i></div>
                   <span>{metaText}</span>
                   <small>{pairText}</small>
                 </button>
