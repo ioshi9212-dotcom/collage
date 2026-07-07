@@ -2082,3 +2082,59 @@ button.small-button {
 .canvas-area .canvas-toolbar .small-button {
   flex: 0 0 auto !important;
 }
+
+/* ===== Patch 10: booklet preview mode ===== */
+.booklet-mode-bar {
+  border-color: rgba(47, 125, 82, 0.3) !important;
+}
+
+.booklet-actions {
+  align-items: stretch !important;
+}
+
+.booklet-sheets-control {
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6f66;
+}
+
+.booklet-sheets-control select {
+  min-height: 34px;
+  border: 1px solid #dfe8e2;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2723;
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.booklet-summary {
+  align-self: center;
+  padding: 8px 10px;
+  border: 1px solid #dfe8e2;
+  border-radius: 4px;
+  background: #f8fbf9;
+  color: #5d6f66;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.page-chip.booklet-visible-page {
+  border-color: #2f7d52 !important;
+  box-shadow: inset 0 0 0 2px rgba(47, 125, 82, 0.22) !important;
+}
+
+.booklet-canvas-area .canvas-toolbar strong {
+  color: #244c37;
+}
+
+.booklet-stage {
+  background: repeating-linear-gradient(45deg, rgba(47, 125, 82, 0.045), rgba(47, 125, 82, 0.045) 8px, rgba(255, 255, 255, 0.55) 8px, rgba(255, 255, 255, 0.55) 16px) !important;
+}

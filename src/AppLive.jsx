@@ -12,6 +12,16 @@ import {
   resizeColumn,
   resizeRow,
 } from './editor/layout';
+import {
+  BOOKLET_SIDE_BACK,
+  BOOKLET_SIDE_FRONT,
+  DEFAULT_SHEETS_PER_BLOCK,
+  buildBookletPlan,
+  clampBookletSheetsPerBlock,
+  findBookletSideForPage,
+  getAdjacentBookletSide,
+  getBookletSide,
+} from './editor/booklet';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const ALBUM_MODE_KEY = 'collage-album-editor-mode';
@@ -516,6 +526,8 @@ export default function App() {
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
   const [moveFrameWithPhotoId, setMoveFrameWithPhotoId] = useState(null);
   const [viewMode, setViewMode] = useState('spread');
+  const [bookletSheetsPerBlock, setBookletSheetsPerBlock] = useState(DEFAULT_SHEETS_PER_BLOCK);
+  const [bookletSideId, setBookletSideId] = useState(null);
   const [notice, setNotice] = useState('');
   const [albumMode, setAlbumMode] = useState(() => localStorage.getItem(ALBUM_MODE_KEY) || 'collage');
 
@@ -540,18 +552,42 @@ export default function App() {
   const currentPage = pages[currentPageIndex] ?? pages[0];
   const currentPageFrameCount = resolvePageFrameCount(currentPage, settings);
   const spreadStart = currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1;
+  const isBooklet = viewMode === 'booklet';
   const isSpread = viewMode === 'spread';
   const locked = settings.frameMode === 'locked';
-  const stageRealWidth = isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
-  const previewScale = scaleForPreview(stageRealWidth, canvas.height, isSpread);
+  const bookletPlan = useMemo(
+    () => buildBookletPlan({ pageCount: pages.length, sheetsPerBlock: bookletSheetsPerBlock }),
+    [pages.length, bookletSheetsPerBlock],
+  );
+  const currentBookletSide = useMemo(() => {
+    if (!bookletPlan.sides.length) return null;
+    if (bookletSideId) {
+      const byId = bookletPlan.sides.find((side) => side.id === bookletSideId);
+      if (byId) return byId;
+    }
+    return findBookletSideForPage(bookletPlan, currentPageIndex + 1) ?? bookletPlan.sides[0];
+  }, [bookletPlan, bookletSideId, currentPageIndex]);
+  const visibleBookletPageNumbers = useMemo(() => {
+    if (!currentBookletSide) return new Set();
+    return new Set(currentBookletSide.slots.filter((slot) => !slot.isBlank && slot.pageNumber).map((slot) => slot.pageNumber));
+  }, [currentBookletSide]);
+  const stageRealWidth = isBooklet ? canvas.width * 2 : isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
+  const previewScale = scaleForPreview(stageRealWidth, canvas.height, isSpread || isBooklet);
   const stageDisplayWidth = stageRealWidth * previewScale;
   const stageDisplayHeight = canvas.height * previewScale;
-  const entries = isSpread
-    ? [
-        { page: pages[spreadStart], pageIndex: spreadStart, x: 0 },
-        { page: pages[spreadStart + 1], pageIndex: spreadStart + 1, x: canvas.width + SPREAD_GAP },
-      ]
-    : [{ page: currentPage, pageIndex: currentPageIndex, x: 0 }];
+  const entries = isBooklet && currentBookletSide
+    ? currentBookletSide.slots.map((slot, index) => ({
+        page: slot.sourcePageIndex == null ? null : pages[slot.sourcePageIndex],
+        pageIndex: slot.sourcePageIndex ?? -1,
+        x: index * canvas.width,
+        bookletSlot: slot,
+      }))
+    : isSpread
+      ? [
+          { page: pages[spreadStart], pageIndex: spreadStart, x: 0 },
+          { page: pages[spreadStart + 1], pageIndex: spreadStart + 1, x: canvas.width + SPREAD_GAP },
+        ]
+      : [{ page: currentPage, pageIndex: currentPageIndex, x: 0 }];
 
   const selectedFrame = useMemo(() => currentPage?.frames.find((frame) => frame.id === selectedFrameId) ?? null, [currentPage, selectedFrameId]);
   const selectedPhoto = useMemo(() => library.find((photo) => photo.id === selectedPhotoId) ?? null, [library, selectedPhotoId]);
@@ -826,6 +862,58 @@ export default function App() {
     setMoveFrameWithPhotoId(null);
   }
 
+  function selectPageByIndex(index) {
+    const page = pages[index];
+    if (!page) return;
+    setAlbum((current) => ({ ...current, currentPageId: page.id }));
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    if (viewMode === 'booklet') {
+      const side = findBookletSideForPage(bookletPlan, index + 1);
+      setBookletSideId(side?.id ?? null);
+    }
+  }
+
+  function enterBookletMode() {
+    const side = findBookletSideForPage(bookletPlan, currentPageIndex + 1) ?? bookletPlan.sides[0];
+    setBookletSideId(side?.id ?? null);
+    setViewMode('booklet');
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+  }
+
+  function updateBookletSheetsPerBlock(value) {
+    const nextSheets = clampBookletSheetsPerBlock(value);
+    const nextPlan = buildBookletPlan({ pageCount: pages.length, sheetsPerBlock: nextSheets });
+    const side = findBookletSideForPage(nextPlan, currentPageIndex + 1) ?? nextPlan.sides[0];
+    setBookletSheetsPerBlock(nextSheets);
+    setBookletSideId(side?.id ?? null);
+  }
+
+  function openBookletSide(sideData) {
+    if (!sideData) return;
+    setBookletSideId(sideData.id);
+    const pageNumber = sideData.right.pageNumber ?? sideData.left.pageNumber;
+    const page = pageNumber ? pages[pageNumber - 1] : null;
+    if (page) setAlbum((current) => ({ ...current, currentPageId: page.id }));
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+  }
+
+  function goBookletSide(delta) {
+    openBookletSide(getAdjacentBookletSide(bookletPlan, currentBookletSide?.id, delta));
+  }
+
+  function toggleBookletSheetSide() {
+    if (!currentBookletSide) return;
+    const nextSide = currentBookletSide.side === BOOKLET_SIDE_FRONT ? BOOKLET_SIDE_BACK : BOOKLET_SIDE_FRONT;
+    openBookletSide(getBookletSide(bookletPlan, {
+      blockIndex: currentBookletSide.blockIndex,
+      sheetIndex: currentBookletSide.sheetIndex,
+      side: nextSide,
+    }));
+  }
+
 
 
   function project() {
@@ -837,6 +925,7 @@ export default function App() {
       pages,
       currentPageId: album.currentPageId,
       viewMode,
+      bookletSheetsPerBlock,
       extraLayers: readExtraLayers(),
       albumEditorMode: albumMode,
       savedAt: new Date().toISOString(),
@@ -881,7 +970,8 @@ export default function App() {
       setSettings(nextSettings);
       setLibrary(Array.isArray(data.library) ? data.library : []);
       setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
-      setViewMode(data.viewMode === 'single' ? 'single' : 'spread');
+      setViewMode(['single', 'spread', 'booklet'].includes(data.viewMode) ? data.viewMode : 'spread');
+      setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
       writeExtraLayers(data.extraLayers);
       setAlbumMode(applyAlbumEditorMode(data.albumEditorMode));
       setSelectedFrameId(null);
@@ -907,7 +997,8 @@ export default function App() {
         setSettings(nextSettings);
         setLibrary(Array.isArray(data.library) ? data.library : []);
         setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
-        setViewMode(data.viewMode === 'single' ? 'single' : 'spread');
+        setViewMode(['single', 'spread', 'booklet'].includes(data.viewMode) ? data.viewMode : 'spread');
+      setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
         writeExtraLayers(data.extraLayers);
         setAlbumMode(applyAlbumEditorMode(data.albumEditorMode));
         setSelectedFrameId(null);
@@ -935,16 +1026,16 @@ export default function App() {
     }));
   }
 
-  const renderEntries = entries.map((entry) => entry.page && (
+  const renderEntries = entries.map((entry, entryIndex) => (
     <PageLayer
-      key={`${entry.page.id}-${entry.pageIndex}`}
+      key={`${entry.page?.id ?? 'blank'}-${entry.pageIndex}-${entryIndex}`}
       page={entry.page}
       pageIndex={entry.pageIndex}
       x={entry.x}
       canvas={canvas}
       settings={settings}
       activePageId={album.currentPageId}
-      collagePreviewOnly={collagePreviewOnly}
+      collagePreviewOnly={collagePreviewOnly || isBooklet}
       selectedFrameId={selectedFrameId}
       moveFrameWithPhotoId={moveFrameWithPhotoId}
       onFrameSelect={selectFrame}
@@ -956,6 +1047,19 @@ export default function App() {
       onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
     />
   ));
+
+  const bookletLabels = isBooklet && currentBookletSide ? currentBookletSide.slots.map((slot, index) => (
+    <Text
+      key={`booklet-label-${index}-${slot.label}`}
+      x={index * canvas.width + 28}
+      y={24}
+      text={slot.isBlank ? 'пустая страница' : `стр. ${slot.pageNumber}`}
+      fontSize={34}
+      fontStyle="bold"
+      fill={slot.isBlank ? '#9aa7a0' : '#2f7d52'}
+      listening={false}
+    />
+  )) : null;
 
   const commonPageLayerProps = {
     canvas,
@@ -999,12 +1103,39 @@ export default function App() {
         <label className="field small-field"><span>Поля</span><input type="number" value={settings.padding} onChange={(event) => updateSetting('padding', clamp(event.target.value, 0, 300))} /></label>
       </section>
 
-      <section className="album-bar">
-        <div className="album-head"><strong>Страницы альбома</strong><span>{isSpread ? `Разворот ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1} из ${pages.length}`}</span></div>
-        <div className="view-switch"><button className={`small-button ${!isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Страница</button><button className={`small-button ${isSpread ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот / 2 страницы</button></div>
+      <section className={`album-bar ${isBooklet ? 'booklet-mode-bar' : ''}`}>
+        <div className="album-head">
+          <strong>{isBooklet ? 'Брошюра' : 'Страницы альбома'}</strong>
+          <span>{isBooklet ? (currentBookletSide?.title ?? 'Брошюра') : isSpread ? `Разворот ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1} из ${pages.length}`}</span>
+        </div>
+        <div className="view-switch">
+          <button className={`small-button ${viewMode === 'single' ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Страница</button>
+          <button className={`small-button ${viewMode === 'spread' ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот</button>
+          <button className={`small-button ${isBooklet ? 'active-mode' : ''}`} onClick={enterBookletMode}>Брошюра</button>
+        </div>
         <div className="album-actions"><button className="small-button" onClick={addPage}>+ Страница</button><button className="small-button" onClick={duplicatePage}>Копия</button><button className="small-button danger" onClick={deletePage}>Удалить</button></div>
-        <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Включить сетку'}</button></div>
-        <div className="page-strip">{pages.map((page, index) => <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''}`} onClick={() => { setAlbum((current) => ({ ...current, currentPageId: page.id })); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}><b>{index + 1}</b><span>{page.frames.filter((frame) => frame.photo).length}/{resolvePageFrameCount(page, settings)}</span><small>{index % 2 === 0 ? 'левая' : 'правая'}</small></button>)}</div>
+        {isBooklet ? (
+          <div className="spread-actions booklet-actions">
+            <label className="booklet-sheets-control"><span>Листов в блоке</span><select value={bookletSheetsPerBlock} onChange={(event) => updateBookletSheetsPerBlock(event.target.value)}>{[1, 2, 3, 4].map((count) => <option key={count} value={count}>{count} лист. / {count * 4} стр.</option>)}</select></label>
+            <button className="small-button" onClick={() => goBookletSide(-1)} disabled={!currentBookletSide || bookletPlan.sides[0]?.id === currentBookletSide.id}>← сторона</button>
+            <button className="small-button" onClick={toggleBookletSheetSide} disabled={!currentBookletSide}>{currentBookletSide?.side === BOOKLET_SIDE_FRONT ? 'Оборот листа' : 'Лицевая листа'}</button>
+            <button className="small-button" onClick={() => goBookletSide(1)} disabled={!currentBookletSide || bookletPlan.sides[bookletPlan.sides.length - 1]?.id === currentBookletSide.id}>сторона →</button>
+            <span className="booklet-summary">{bookletPlan.blockCount} блок., пустых: {bookletPlan.blankPageCount}</span>
+          </div>
+        ) : (
+          <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Включить сетку'}</button></div>
+        )}
+        <div className="page-strip">{pages.map((page, index) => {
+          const pageNumber = index + 1;
+          const isVisibleInBooklet = isBooklet && visibleBookletPageNumbers.has(pageNumber);
+          return (
+            <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''} ${isVisibleInBooklet ? 'booklet-visible-page' : ''}`} onClick={() => selectPageByIndex(index)}>
+              <b>{pageNumber}</b>
+              <span>{page.frames.filter((frame) => frame.photo).length}/{resolvePageFrameCount(page, settings)}</span>
+              <small>{isBooklet ? (bookletPlan.pageMap[String(pageNumber)]?.pairPageNumber ? `с ${bookletPlan.pageMap[String(pageNumber)].pairPageNumber}` : 'пусто') : index % 2 === 0 ? 'левая' : 'правая'}</small>
+            </button>
+          );
+        })}</div>
       </section>
 
       <section className="workspace three-columns">
@@ -1032,15 +1163,25 @@ export default function App() {
           })}</div>}
         </aside>
 
-        <section className={`canvas-area ${isSpread ? 'album-mode' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px` }}>
-          <div className="canvas-toolbar"><div><strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong><span>{locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span><em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em></div><button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button><button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button></div>
+        <section className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px` }}>
+          <div className="canvas-toolbar">
+            <div>
+              <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${canvas.width * 2}×${canvas.height}px` : isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)} · ${canvas.width}×${canvas.height}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px`}</strong>
+              <span>{isBooklet ? 'Просмотр физической стороны А4: слева и справа показаны страницы, которые будут напечатаны рядом.' : locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span>
+              <em>{isBooklet ? 'Это пока режим просмотра брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.'}</em>
+            </div>
+            {!isBooklet && <button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button>}
+            {!isBooklet && <button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button>}
+          </div>
 
-          <div className={`stage-frame ${isSpread ? 'album-preview' : ''}`} style={{ width: stageDisplayWidth, height: stageDisplayHeight }} onDragOver={(event) => event.preventDefault()} onDrop={dropPhoto}>
+          <div className={`stage-frame ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''}`} style={{ width: stageDisplayWidth, height: stageDisplayHeight }} onDragOver={(event) => { if (!isBooklet) event.preventDefault(); }} onDrop={isBooklet ? undefined : dropPhoto}>
             <div className="stage-scale-shell" style={{ width: stageRealWidth, height: canvas.height, transform: `scale(${previewScale})` }}>
               <Stage ref={stageRef} width={stageRealWidth} height={canvas.height} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); } }}>
                 <Layer>
                   {renderEntries}
+                  {bookletLabels}
                   {isSpread && !collagePreviewOnly && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}
+                  {isBooklet && <Line points={[canvas.width, 0, canvas.width, canvas.height]} stroke="#2f7d52" strokeWidth={4} dash={[28, 18]} opacity={0.7} listening={false} />}
                 </Layer>
               </Stage>
             </div>
