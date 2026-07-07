@@ -69,8 +69,8 @@ const DEFAULT_BOOKLET_PRINT_SETTINGS = {
   margin: 0,
 };
 
-const MAX_BOOKLET_PRINT_GAP = 260;
-const MAX_BOOKLET_PRINT_MARGIN = 260;
+const MAX_BOOKLET_PRINT_GAP = 300;
+const MAX_BOOKLET_PRINT_MARGIN = 300;
 const CROP_MARK_LENGTH = 56;
 
 
@@ -212,7 +212,7 @@ function buildBookletCsv(imageEntries) {
 function buildBookletManifestJson({ plan, canvas, sheetsPerBlock, printSettings, imageEntries }) {
   return JSON.stringify({
     type: 'collage-booklet-print-package',
-    version: 'live-21-booklet-print-package',
+    version: 'live-22-booklet-polish-safety',
     createdAt: new Date().toISOString(),
     pageCount: plan.pageCount,
     paddedPageCount: plan.paddedPageCount,
@@ -1066,6 +1066,13 @@ export default function App() {
   const previewScale = scaleForPreview(stageRealWidth, stageRealHeight, isSpread || isBooklet);
   const stageDisplayWidth = stageRealWidth * previewScale;
   const stageDisplayHeight = stageRealHeight * previewScale;
+  const bookletExportSummary = useMemo(() => ({
+    pages: pages.length,
+    blocks: bookletPlan.blockCount,
+    sheets: bookletPlan.blockCount * bookletSheetsPerBlock,
+    sides: bookletPlan.sides.length,
+    blanks: bookletPlan.blankPageCount,
+  }), [pages.length, bookletPlan, bookletSheetsPerBlock]);
   const entries = isBooklet && currentBookletSide
     ? currentBookletSide.slots.map((slot, index) => {
         const position = getBookletPagePosition(index, canvas, normalizedBookletPrintSettings);
@@ -1624,7 +1631,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-21-booklet-print-package',
+      version: 'live-22-booklet-polish-safety',
       canvas,
       settings,
       library,
@@ -1747,6 +1754,23 @@ export default function App() {
     return `booklet-block-${pad(sideData.blockNumber)}-sheet-${pad(sideData.sheetNumber)}-${sideData.side}.png`;
   }
 
+  function ensureBookletReadyForExport(exportLabel) {
+    if (!bookletPlan.sides.length) {
+      show(`Нет сторон брошюры для ${exportLabel}`);
+      return false;
+    }
+    if (bookletPlan.blankPageCount > 0) {
+      const proceed = window.confirm(
+        `До полного блока не хватает ${bookletPlan.blankPageCount} пуст. стр.\n\n` +
+        `Можно сначала нажать «Добавить пустые».\n` +
+        `Если продолжить сейчас, экспорт всё равно будет собран, но часть сторон будет с виртуально пустыми страницами.\n\n` +
+        `Продолжить ${exportLabel}?`
+      );
+      if (!proceed) return false;
+    }
+    return true;
+  }
+
   async function exportBookletSide(sideData = currentBookletSide) {
     if (!sideData) return show('Нет стороны брошюры для экспорта');
     setSelectedFrameId(null);
@@ -1760,7 +1784,7 @@ export default function App() {
   }
 
   async function exportBookletAll() {
-    if (!bookletPlan.sides.length) return show('Нет сторон брошюры для экспорта');
+    if (!ensureBookletReadyForExport('PNG всех сторон')) return;
 
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
@@ -1784,7 +1808,7 @@ export default function App() {
 
 
   async function exportBookletZip() {
-    if (!bookletPlan.sides.length) return show('Нет сторон брошюры для ZIP');
+    if (!ensureBookletReadyForExport('ZIP-пакета печати')) return;
 
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
@@ -1935,12 +1959,33 @@ export default function App() {
             <button className="small-button" onClick={() => goBookletSide(-1)} disabled={!currentBookletSide || bookletPlan.sides[0]?.id === currentBookletSide.id}>← сторона</button>
             <button className="small-button" onClick={toggleBookletSheetSide} disabled={!currentBookletSide}>{currentBookletSide?.side === BOOKLET_SIDE_FRONT ? 'Оборот листа' : 'Лицевая листа'}</button>
             <button className="small-button" onClick={() => goBookletSide(1)} disabled={!currentBookletSide || bookletPlan.sides[bookletPlan.sides.length - 1]?.id === currentBookletSide.id}>сторона →</button>
-            <span className="booklet-summary">{bookletPlan.blockCount} блок., пустых: {bookletPlan.blankPageCount}</span>
-            {bookletPlan.blankPageCount > 0 && <button className="small-button" onClick={addBlankPagesToBookletBlock}>Добавить пустые</button>}
-            {trailingBlankPageCount > 0 && <button className="small-button" onClick={removeTrailingBlankPages}>Убрать пустые</button>}
-            <button className="small-button accent" onClick={() => exportBookletSide()} disabled={!currentBookletSide}>PNG сторона</button>
-            <button className="small-button accent" onClick={exportBookletAll} disabled={!bookletPlan.sides.length}>PNG все стороны</button>
-            <button className="small-button accent" onClick={exportBookletZip} disabled={!bookletPlan.sides.length}>ZIP брошюра</button>
+
+            <div className="booklet-summary-grid">
+              <div className="booklet-summary-card">
+                <strong>Будет экспортировано</strong>
+                <span>{bookletExportSummary.blocks} блок. · {bookletExportSummary.sheets} лист. · {bookletExportSummary.sides} сторон</span>
+                <span>{bookletExportSummary.pages} стр. проекта · пустых: {bookletExportSummary.blanks}</span>
+              </div>
+              <div className="booklet-summary-card booklet-settings-card">
+                <strong>Параметры печати</strong>
+                <span>Сгиб: {normalizedBookletPrintSettings.showFoldLine ? 'да' : 'нет'} · Метки: {normalizedBookletPrintSettings.showCropMarks ? 'да' : 'нет'}</span>
+                <span>Зазор: {normalizedBookletPrintSettings.gap}px · Поля: {normalizedBookletPrintSettings.margin}px</span>
+              </div>
+            </div>
+
+            {bookletPlan.blankPageCount > 0 && (
+              <div className="booklet-warning">
+                <strong>Внимание:</strong> до полного блока не хватает {bookletPlan.blankPageCount} пуст. стр.
+                <div className="booklet-warning-actions">
+                  <button className="small-button" onClick={addBlankPagesToBookletBlock}>Добавить пустые</button>
+                </div>
+              </div>
+            )}
+
+            {trailingBlankPageCount > 0 && <button className="small-button" onClick={removeTrailingBlankPages}>Убрать пустые в конце</button>}
+            <button className="small-button accent soft-accent" onClick={() => exportBookletSide()} disabled={!currentBookletSide}>PNG текущей стороны</button>
+            <button className="small-button accent soft-accent" onClick={exportBookletAll} disabled={!bookletPlan.sides.length}>Скачать PNG всех сторон</button>
+            <button className="small-button accent primary-accent" onClick={exportBookletZip} disabled={!bookletPlan.sides.length}>Скачать пакет печати ZIP</button>
           </div>
         ) : (
           <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Включить сетку'}</button></div>
