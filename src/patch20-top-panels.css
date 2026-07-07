@@ -1,0 +1,121 @@
+/* Patch 20: compact top panels */
+
+:root {
+  --top-panel-compact-gap: 8px;
+  --top-field-input-width: 112px;
+  --top-field-select-width: 128px;
+  --top-field-page-size-width: 190px;
+}
+
+/* Keep the three top cards compact instead of stretching across the whole page */
+.topbar {
+  align-items: flex-start !important;
+}
+
+.topbar-actions,
+.settings-bar,
+.album-bar {
+  width: fit-content !important;
+  max-width: 100% !important;
+}
+
+/* File / export card */
+.topbar-actions {
+  justify-content: start !important;
+  align-self: flex-start !important;
+}
+
+/* Document settings card */
+.settings-bar {
+  grid-template-columns:
+    minmax(var(--top-field-page-size-width), max-content)
+    repeat(5, max-content) !important;
+  justify-content: start !important;
+  gap: var(--top-panel-compact-gap) 10px !important;
+  padding: 10px 12px !important;
+}
+
+.settings-bar > .field {
+  min-width: 0 !important;
+}
+
+.settings-bar > .field:nth-of-type(1) {
+  min-width: var(--top-field-page-size-width) !important;
+}
+
+.settings-bar > .field:nth-of-type(1) select {
+  width: var(--top-field-page-size-width) !important;
+  min-width: var(--top-field-page-size-width) !important;
+}
+
+.settings-bar > .field.small-field input,
+.settings-bar > .field.small-field select,
+.settings-bar > .field:nth-of-type(n + 2) input,
+.settings-bar > .field:nth-of-type(n + 2) select {
+  width: var(--top-field-input-width) !important;
+  min-width: var(--top-field-input-width) !important;
+  max-width: var(--top-field-input-width) !important;
+}
+
+.settings-bar > .field:nth-of-type(4) select {
+  width: var(--top-field-select-width) !important;
+  min-width: var(--top-field-select-width) !important;
+  max-width: var(--top-field-select-width) !important;
+}
+
+/* Album/pages/brochure row */
+.album-bar {
+  grid-template-columns: max-content max-content max-content max-content minmax(0, auto) !important;
+  justify-content: start !important;
+  gap: var(--top-panel-compact-gap) !important;
+  padding: 10px 12px !important;
+}
+
+.album-head {
+  min-width: 118px !important;
+}
+
+.view-switch,
+.album-actions,
+.spread-actions {
+  width: fit-content !important;
+  justify-content: start !important;
+  flex-wrap: wrap !important;
+}
+
+.view-switch .small-button,
+.album-actions .small-button,
+.spread-actions .small-button {
+  min-width: 0 !important;
+}
+
+.booklet-actions .booklet-sheets-control select {
+  width: 138px !important;
+}
+
+/* Make the small labels feel less oversized in the compact bars */
+.settings-bar .field span,
+.album-bar strong,
+.album-bar .album-head span {
+  line-height: 1.15;
+}
+
+/* Responsive fallback: let compact bars wrap cleanly instead of overflowing */
+@media (max-width: 1320px) {
+  .settings-bar,
+  .album-bar {
+    width: 100% !important;
+  }
+
+  .settings-bar {
+    grid-template-columns: repeat(auto-fit, minmax(112px, max-content)) !important;
+  }
+
+  .settings-bar > .field:nth-of-type(1) {
+    grid-column: 1 / -1 !important;
+  }
+
+  .album-bar {
+    grid-template-columns: 1fr !important;
+  }
+}
