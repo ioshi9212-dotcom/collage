@@ -11,6 +11,8 @@
     dragging: null,
   };
 
+  let lastLayersSnapshot = JSON.stringify(state.layers);
+
   function makeId() {
     return globalThis.crypto?.randomUUID?.() || `text_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   }
@@ -33,7 +35,28 @@
   }
 
   function saveLayers() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.layers));
+    lastLayersSnapshot = JSON.stringify(state.layers);
+    localStorage.setItem(STORAGE_KEY, lastLayersSnapshot);
+  }
+
+  function syncLayersFromStorage() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw || raw === lastLayersSnapshot) return false;
+      state.layers = normalizeLayers(JSON.parse(raw));
+      state.selectedTextId = null;
+      lastLayersSnapshot = JSON.stringify(state.layers);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function scheduleRender() {
+    render();
+    window.requestAnimationFrame?.(render);
+    window.setTimeout(render, 80);
+    window.setTimeout(render, 350);
   }
 
   function extractLayersFromCurrentProject() {
@@ -60,14 +83,14 @@
     state.layers = normalizeLayers(value);
     state.selectedTextId = null;
     saveLayers();
-    render();
+    scheduleRender();
   }
 
   function setAlbumMode(value) {
     state.mode = ['collage', 'text', 'drawings', 'templates'].includes(value) ? value : 'collage';
     localStorage.setItem(MODE_KEY, state.mode);
     document.body.dataset.albumMode = state.mode;
-    render();
+    scheduleRender();
   }
 
   globalThis.__collageAlbumLayers = {
@@ -79,6 +102,15 @@
 
   window.addEventListener('collage-album-layers-import', (event) => {
     importLayersFromProject(event.detail?.layers);
+  });
+
+  window.addEventListener('storage', (event) => {
+    if (event.key !== STORAGE_KEY && event.key !== MODE_KEY) return;
+    if (event.key === MODE_KEY) {
+      state.mode = localStorage.getItem(MODE_KEY) || 'collage';
+    }
+    if (event.key === STORAGE_KEY) syncLayersFromStorage();
+    scheduleRender();
   });
 
   function currentCanvas() {
@@ -156,7 +188,7 @@
       drawings: 'Рисунки пока пустые. Панели уже подготовлены.',
       templates: 'Шаблоны пока пустые. Панели уже подготовлены.',
     };
-    render();
+    scheduleRender();
     showNotice(messages[mode] || 'Режим переключён');
   }
 
@@ -177,7 +209,7 @@
     state.mode = 'text';
     localStorage.setItem(MODE_KEY, 'text');
     saveLayers();
-    render();
+    scheduleRender();
   }
 
   function updateSelected(patch, options = {}) {
@@ -612,6 +644,7 @@
   }
 
   function render() {
+    syncLayersFromStorage();
     document.body.dataset.albumMode = state.mode;
     renderTopPanel();
     renderSidePanels();
@@ -628,9 +661,7 @@
     render();
     setInterval(() => {
       if (isTypingInAlbumPanel()) return;
-      renderTopPanel();
-      renderSidePanels();
-      renderOverlay();
-    }, 1000);
+      render();
+    }, 500);
   });
 })();

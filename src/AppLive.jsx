@@ -468,6 +468,15 @@ function writeExtraLayers(value) {
 
   try {
     window.dispatchEvent(new CustomEvent('collage-album-layers-import', { detail: { layers } }));
+    window.requestAnimationFrame?.(() => {
+      window.dispatchEvent(new CustomEvent('collage-album-layers-import', { detail: { layers } }));
+    });
+    window.setTimeout?.(() => {
+      window.dispatchEvent(new CustomEvent('collage-album-layers-import', { detail: { layers } }));
+    }, 120);
+    window.setTimeout?.(() => {
+      window.dispatchEvent(new CustomEvent('collage-album-layers-import', { detail: { layers } }));
+    }, 450);
   } catch {
     // ignore event errors
   }
@@ -821,7 +830,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-13-project-layers-export-fix',
+      version: 'live-14-layer-import-render-fix',
       canvas,
       settings,
       library,
@@ -904,6 +913,8 @@ export default function App() {
         setSelectedFrameId(null);
         setSelectedPhotoId(null);
         setMoveFrameWithPhotoId(null);
+        window.requestAnimationFrame?.(() => writeExtraLayers(data.extraLayers));
+        window.setTimeout?.(() => writeExtraLayers(data.extraLayers), 250);
         show('JSON открыт');
       } catch {
         show('Файл не похож на проект');
