@@ -426,22 +426,30 @@ function normalizeExtraLayers(value) {
   };
 }
 
+function hasAnyExtraLayer(layers) {
+  const pages = layers?.pages;
+  if (!pages || typeof pages !== 'object') return false;
+  return Object.values(pages).some((items) => Array.isArray(items) && items.length > 0);
+}
+
 function readExtraLayers() {
-  try {
-    const bridgeLayers = globalThis.__collageAlbumLayers?.getLayers?.();
-    if (bridgeLayers?.pages) return normalizeExtraLayers(bridgeLayers);
-  } catch {
-    // ignore bridge errors
-  }
+  let localLayers = null;
 
   try {
     const raw = localStorage.getItem(ALBUM_LAYERS_KEY);
-    if (raw) return normalizeExtraLayers(JSON.parse(raw));
+    if (raw) localLayers = normalizeExtraLayers(JSON.parse(raw));
   } catch {
     // ignore broken local data
   }
 
-  return normalizeExtraLayers(null);
+  try {
+    const bridgeLayers = normalizeExtraLayers(globalThis.__collageAlbumLayers?.getLayers?.());
+    if (hasAnyExtraLayer(bridgeLayers) || !hasAnyExtraLayer(localLayers)) return bridgeLayers;
+  } catch {
+    // ignore bridge errors
+  }
+
+  return localLayers ?? normalizeExtraLayers(null);
 }
 
 function writeExtraLayers(value) {
@@ -813,7 +821,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-12-project-layers',
+      version: 'live-13-project-layers-export-fix',
       canvas,
       settings,
       library,
