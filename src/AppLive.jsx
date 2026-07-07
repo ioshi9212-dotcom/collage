@@ -109,6 +109,149 @@ function downloadDataUrl(filename, dataUrl) {
   link.remove();
 }
 
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  downloadDataUrl(filename, url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function dataUrlToBytes(dataUrl) {
+  const commaIndex = dataUrl.indexOf(',');
+  if (commaIndex < 0) return new Uint8Array();
+
+  const meta = dataUrl.slice(0, commaIndex);
+  const body = dataUrl.slice(commaIndex + 1);
+
+  if (meta.includes(';base64')) {
+    const binary = atob(body);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
+
+  return new TextEncoder().encode(decodeURIComponent(body));
+}
+
+let crc32Table = null;
+
+function getCrc32Table() {
+  if (crc32Table) return crc32Table;
+
+  crc32Table = new Uint32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let current = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      current = current & 1 ? 0xedb88320 ^ (current >>> 1) : current >>> 1;
+    }
+    crc32Table[index] = current >>> 0;
+  }
+
+  return crc32Table;
+}
+
+function crc32(bytes) {
+  const table = getCrc32Table();
+  let crc = 0xffffffff;
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc = table[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
+  }
+
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function writeUint16(target, offset, value) {
+  target[offset] = value & 0xff;
+  target[offset + 1] = (value >>> 8) & 0xff;
+}
+
+function writeUint32(target, offset, value) {
+  target[offset] = value & 0xff;
+  target[offset + 1] = (value >>> 8) & 0xff;
+  target[offset + 2] = (value >>> 16) & 0xff;
+  target[offset + 3] = (value >>> 24) & 0xff;
+}
+
+function getZipDateTime(date = new Date()) {
+  const year = Math.max(1980, date.getFullYear());
+  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return { dosDate, dosTime };
+}
+
+function createZipBlob(files) {
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const createdAt = new Date();
+  const { dosDate, dosTime } = getZipDateTime(createdAt);
+
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name);
+    const bytes = file.bytes instanceof Uint8Array ? file.bytes : new Uint8Array(file.bytes ?? []);
+    const checksum = crc32(bytes);
+    const size = bytes.length;
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+
+    writeUint32(localHeader, 0, 0x04034b50);
+    writeUint16(localHeader, 4, 20);
+    writeUint16(localHeader, 6, 0x0800);
+    writeUint16(localHeader, 8, 0);
+    writeUint16(localHeader, 10, dosTime);
+    writeUint16(localHeader, 12, dosDate);
+    writeUint32(localHeader, 14, checksum);
+    writeUint32(localHeader, 18, size);
+    writeUint32(localHeader, 22, size);
+    writeUint16(localHeader, 26, nameBytes.length);
+    writeUint16(localHeader, 28, 0);
+    localHeader.set(nameBytes, 30);
+
+    localParts.push(localHeader, bytes);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    writeUint32(centralHeader, 0, 0x02014b50);
+    writeUint16(centralHeader, 4, 20);
+    writeUint16(centralHeader, 6, 20);
+    writeUint16(centralHeader, 8, 0x0800);
+    writeUint16(centralHeader, 10, 0);
+    writeUint16(centralHeader, 12, dosTime);
+    writeUint16(centralHeader, 14, dosDate);
+    writeUint32(centralHeader, 16, checksum);
+    writeUint32(centralHeader, 20, size);
+    writeUint32(centralHeader, 24, size);
+    writeUint16(centralHeader, 28, nameBytes.length);
+    writeUint16(centralHeader, 30, 0);
+    writeUint16(centralHeader, 32, 0);
+    writeUint16(centralHeader, 34, 0);
+    writeUint16(centralHeader, 36, 0);
+    writeUint32(centralHeader, 38, 0);
+    writeUint32(centralHeader, 42, offset);
+    centralHeader.set(nameBytes, 46);
+
+    centralParts.push(centralHeader);
+    offset += localHeader.length + bytes.length;
+  }
+
+  const centralOffset = offset;
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const endRecord = new Uint8Array(22);
+
+  writeUint32(endRecord, 0, 0x06054b50);
+  writeUint16(endRecord, 4, 0);
+  writeUint16(endRecord, 6, 0);
+  writeUint16(endRecord, 8, files.length);
+  writeUint16(endRecord, 10, files.length);
+  writeUint32(endRecord, 12, centralSize);
+  writeUint32(endRecord, 16, centralOffset);
+  writeUint16(endRecord, 20, 0);
+
+  return new Blob([...localParts, ...centralParts, endRecord], { type: 'application/zip' });
+}
+
 function downloadText(filename, text) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }));
   downloadDataUrl(filename, url);
@@ -1315,7 +1458,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-19-booklet-print-settings',
+      version: 'live-20-booklet-zip-export',
       canvas,
       settings,
       library,
@@ -1473,6 +1616,37 @@ export default function App() {
     show(`Скачаны PNG брошюры: ${bookletPlan.sides.length} сторон`);
   }
 
+
+  async function exportBookletZip() {
+    if (!bookletPlan.sides.length) return show('Нет сторон брошюры для ZIP');
+
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    show(`Готовлю ZIP брошюры: ${bookletPlan.sides.length} сторон`);
+
+    const files = [];
+
+    for (const sideData of bookletPlan.sides) {
+      setPrintBookletSideId(sideData.id);
+      await nextPaint();
+      const uri = printBookletRef.current?.toDataURL({ pixelRatio: EXPORT_RATIO, mimeType: 'image/png' });
+      if (!uri) {
+        show(`Не получилось собрать: ${sideData.title}`);
+        return;
+      }
+
+      files.push({
+        name: `block-${pad(sideData.blockNumber)}/${bookletSideFilename(sideData)}`,
+        bytes: dataUrlToBytes(uri),
+      });
+    }
+
+    setPrintBookletSideId(currentBookletSide?.id ?? null);
+    const zip = createZipBlob(files);
+    downloadBlob(`booklet-${pages.length}-pages-${bookletSheetsPerBlock}-sheets-per-block.zip`, zip);
+    show(`Скачан ZIP брошюры: ${files.length} PNG`);
+  }
+
   const renderEntries = entries.map((entry, entryIndex) => (
     <React.Fragment key={`${entry.page?.id ?? 'blank'}-${entry.pageIndex}-${entryIndex}`}>
       <PageLayer
@@ -1582,6 +1756,7 @@ export default function App() {
             {trailingBlankPageCount > 0 && <button className="small-button" onClick={removeTrailingBlankPages}>Убрать пустые</button>}
             <button className="small-button accent" onClick={() => exportBookletSide()} disabled={!currentBookletSide}>PNG сторона</button>
             <button className="small-button accent" onClick={exportBookletAll} disabled={!bookletPlan.sides.length}>PNG все стороны</button>
+            <button className="small-button accent" onClick={exportBookletZip} disabled={!bookletPlan.sides.length}>ZIP брошюра</button>
           </div>
         ) : (
           <div className="spread-actions"><button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button><button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button><button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? 'Скрыть направляющие' : 'Показать направляющие'}</button><button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Включить сетку'}</button></div>
