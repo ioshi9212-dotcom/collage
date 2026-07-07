@@ -128,6 +128,7 @@ function countFramesInLayout(layout) {
 }
 
 function resolvePageFrameCount(page, fallbackSettings = DEFAULT_SETTINGS) {
+  if (page?.isBlankPage) return 0;
   const saved = Number(page?.frameCount);
   if (Number.isFinite(saved) && saved >= 1) return clamp(saved, 1, 9);
   const fromLayout = countFramesInLayout(page?.layout);
@@ -148,6 +149,17 @@ function createPage(canvas, settings, number, previousFrames = []) {
   const frameCount = clamp(Number(settings.frameCount) || DEFAULT_SETTINGS.frameCount, 1, 9);
   const built = buildGridLayout(canvas, { ...settings, frameCount }, previousFrames);
   return { id: makeId(), title: `Страница ${number}`, frameCount, layout: built.layout, frames: built.frames };
+}
+
+function createBlankPage(number, overrides = {}) {
+  return {
+    id: overrides.id ?? makeId(),
+    title: overrides.title ?? `Пустая страница ${number}`,
+    isBlankPage: true,
+    frameCount: 0,
+    layout: null,
+    frames: [],
+  };
 }
 
 function initialAlbum() {
@@ -391,8 +403,15 @@ function GridHandles({ layout, onColumnResize, onRowResize, onActivate }) {
 function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const safe = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
-  if (!page) {
-    return <Group x={x} y={0}><Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} /></Group>;
+  if (!page || page.isBlankPage) {
+    return (
+      <Group x={x} y={0}>
+        <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
+        {page?.isBlankPage && !printMode && !collagePreviewOnly && (
+          <Text x={42} y={42} text="Пустая страница" fontSize={34} fill="#b49a87" fontStyle="bold" opacity={0.75} listening={false} />
+        )}
+      </Group>
+    );
   }
   const orderedFrames = [...page.frames].sort((a, b) => (Number(a.zIndex) || 0) - (Number(b.zIndex) || 0));
   return (
@@ -628,6 +647,14 @@ export default function App() {
     if (!currentBookletSide) return new Set();
     return new Set(currentBookletSide.slots.filter((slot) => !slot.isBlank && slot.pageNumber).map((slot) => slot.pageNumber));
   }, [currentBookletSide]);
+  const trailingBlankPageCount = useMemo(() => {
+    let count = 0;
+    for (let index = pages.length - 1; index >= 0; index -= 1) {
+      if (!pages[index]?.isBlankPage) break;
+      count += 1;
+    }
+    return count;
+  }, [pages]);
   const stageRealWidth = isBooklet ? canvas.width * 2 : isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
   const previewScale = scaleForPreview(stageRealWidth, canvas.height, isSpread || isBooklet);
   const stageDisplayWidth = stageRealWidth * previewScale;
@@ -682,6 +709,7 @@ export default function App() {
       ...current,
       pages: current.pages.map((page) => {
         if (page.id !== pageId) return page;
+        if (page.isBlankPage) return page;
         const frameCount = explicitFrameCount ?? resolvePageFrameCount(page, nextSettings);
         const pageSettings = settingsForPage(nextSettings, page, frameCount);
         const built = buildGridLayout(nextCanvas, pageSettings, page.frames);
@@ -696,6 +724,7 @@ export default function App() {
     setAlbum((current) => ({
       ...current,
       pages: current.pages.map((page) => {
+        if (page.isBlankPage) return page;
         const frameCount = resolvePageFrameCount(page, nextSettings);
         const pageSettings = settingsForPage(nextSettings, page, frameCount);
         const built = buildGridLayout(nextCanvas, pageSettings, page.frames);
@@ -707,6 +736,10 @@ export default function App() {
   }
 
   function updateCurrentPageFrameCount(value) {
+    if (currentPage?.isBlankPage) {
+      show('Это пустая страница без фото-окон');
+      return;
+    }
     const frameCount = clamp(Number(value), 1, 9);
     const nextSettings = { ...settings, frameCount };
     setSettings(nextSettings);
@@ -821,39 +854,96 @@ export default function App() {
 
   function addPage() {
     const page = createPage(canvas, settings, pages.length + 1);
+    const index = pages.findIndex((item) => item.id === album.currentPageId);
+    const insertIndex = Math.max(0, index + 1);
+    shiftExtraLayersForPageInsert(insertIndex, pages.length);
     setAlbum((current) => {
-      const index = current.pages.findIndex((item) => item.id === current.currentPageId);
+      const currentIndex = current.pages.findIndex((item) => item.id === current.currentPageId);
       const next = [...current.pages];
-      next.splice(index + 1, 0, page);
+      next.splice(currentIndex + 1, 0, page);
       return { pages: next, currentPageId: page.id };
     });
     setViewMode('spread');
     setMoveFrameWithPhotoId(null);
   }
 
+  function addBlankPage() {
+    const page = createBlankPage(pages.length + 1);
+    const index = pages.findIndex((item) => item.id === album.currentPageId);
+    const insertIndex = Math.max(0, index + 1);
+    shiftExtraLayersForPageInsert(insertIndex, pages.length);
+    setAlbum((current) => {
+      const currentIndex = current.pages.findIndex((item) => item.id === current.currentPageId);
+      const next = [...current.pages];
+      next.splice(currentIndex + 1, 0, page);
+      return { pages: next, currentPageId: page.id };
+    });
+    setViewMode('spread');
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    show('Пустая страница добавлена');
+  }
 
+  function addBlankPagesToBookletBlock() {
+    const count = bookletPlan.blankPageCount;
+    if (!count) return show('Блок уже полный: пустые страницы не нужны');
+    const nextBlankPages = Array.from({ length: count }, (_, index) => createBlankPage(pages.length + index + 1));
+    setAlbum((current) => ({
+      ...current,
+      pages: [...current.pages, ...nextBlankPages],
+      currentPageId: nextBlankPages[0]?.id ?? current.currentPageId,
+    }));
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    show(`Добавлены пустые страницы: ${count}`);
+  }
+
+  function removeTrailingBlankPages() {
+    const next = [...pages];
+    let removed = 0;
+    while (next.length > 1 && next[next.length - 1]?.isBlankPage) {
+      next.pop();
+      removed += 1;
+    }
+    if (!removed) return show('В конце нет пустых страниц');
+    pruneExtraLayersForPageCount(next.length);
+    setAlbum((current) => ({
+      ...current,
+      pages: next,
+      currentPageId: next.some((page) => page.id === current.currentPageId) ? current.currentPageId : next[next.length - 1].id,
+    }));
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    show(`Убраны пустые страницы в конце: ${removed}`);
+  }
 
   function duplicatePage() {
     if (!currentPage) return;
-    const pageSettings = settingsForPage(settings, currentPage, currentPageFrameCount);
-    const page = createPage(canvas, pageSettings, pages.length + 1, currentPage.frames);
+    const index = pages.findIndex((item) => item.id === album.currentPageId);
+    const insertIndex = Math.max(0, index + 1);
+    const currentPageLayers = readExtraLayers()?.pages?.[String(currentPageIndex + 1)] ?? null;
+    const page = currentPage.isBlankPage
+      ? createBlankPage(pages.length + 1)
+      : createPage(canvas, settingsForPage(settings, currentPage, currentPageFrameCount), pages.length + 1, currentPage.frames);
+    shiftExtraLayersForPageInsert(insertIndex, pages.length, currentPageLayers);
     setAlbum((current) => {
-      const index = current.pages.findIndex((item) => item.id === current.currentPageId);
+      const currentIndex = current.pages.findIndex((item) => item.id === current.currentPageId);
       const next = [...current.pages];
-      next.splice(index + 1, 0, page);
+      next.splice(currentIndex + 1, 0, page);
       return { pages: next, currentPageId: page.id };
     });
+    setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
   }
 
-
-
   function deletePage() {
     if (pages.length <= 1) return show('Нельзя удалить единственную страницу');
+    const index = pages.findIndex((page) => page.id === album.currentPageId);
+    if (index >= 0) shiftExtraLayersForPageDelete(index, pages.length);
     setAlbum((current) => {
-      const index = current.pages.findIndex((page) => page.id === current.currentPageId);
+      const currentIndex = current.pages.findIndex((page) => page.id === current.currentPageId);
       const next = current.pages.filter((page) => page.id !== current.currentPageId);
-      return { pages: next, currentPageId: next[Math.min(index, next.length - 1)].id };
+      return { pages: next, currentPageId: next[Math.min(currentIndex, next.length - 1)].id };
     });
     setMoveFrameWithPhotoId(null);
   }
@@ -899,6 +989,69 @@ export default function App() {
     show('Теперь перетащи рамку: фото поедет вместе с ней.');
   }
 
+
+
+  function cloneLayerPage(pageLayers) {
+    if (!pageLayers) return null;
+    try {
+      return JSON.parse(JSON.stringify(pageLayers));
+    } catch {
+      return pageLayers;
+    }
+  }
+
+  function shiftExtraLayersForPageInsert(insertIndex, oldPageCount, insertedPageLayers = null) {
+    const layers = readExtraLayers();
+    const pagesMap = layers?.pages ?? {};
+    const insertPageNumber = insertIndex + 1;
+    const nextPagesMap = {};
+
+    for (const [key, value] of Object.entries(pagesMap)) {
+      const pageNumber = Number(key);
+      if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > oldPageCount) {
+        nextPagesMap[key] = value;
+        continue;
+      }
+      const nextPageNumber = pageNumber >= insertPageNumber ? pageNumber + 1 : pageNumber;
+      nextPagesMap[String(nextPageNumber)] = value;
+    }
+
+    if (insertedPageLayers) nextPagesMap[String(insertPageNumber)] = cloneLayerPage(insertedPageLayers);
+    writeExtraLayers({ ...layers, pages: nextPagesMap });
+  }
+
+  function shiftExtraLayersForPageDelete(deleteIndex, oldPageCount) {
+    const layers = readExtraLayers();
+    const pagesMap = layers?.pages ?? {};
+    const deletePageNumber = deleteIndex + 1;
+    const nextPagesMap = {};
+
+    for (const [key, value] of Object.entries(pagesMap)) {
+      const pageNumber = Number(key);
+      if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > oldPageCount) {
+        nextPagesMap[key] = value;
+        continue;
+      }
+      if (pageNumber === deletePageNumber) continue;
+      const nextPageNumber = pageNumber > deletePageNumber ? pageNumber - 1 : pageNumber;
+      nextPagesMap[String(nextPageNumber)] = value;
+    }
+
+    writeExtraLayers({ ...layers, pages: nextPagesMap });
+  }
+
+  function pruneExtraLayersForPageCount(pageCount) {
+    const layers = readExtraLayers();
+    const pagesMap = layers?.pages ?? {};
+    const nextPagesMap = {};
+
+    for (const [key, value] of Object.entries(pagesMap)) {
+      const pageNumber = Number(key);
+      if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber <= pageCount) nextPagesMap[key] = value;
+    }
+
+    writeExtraLayers({ ...layers, pages: nextPagesMap });
+  }
 
 
   function reorderExtraLayersByPageMove(fromIndex, toIndex, pageCount) {
@@ -1053,7 +1206,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-17-page-drag',
+      version: 'live-18-booklet-blank-pages',
       canvas,
       settings,
       library,
@@ -1080,6 +1233,9 @@ export default function App() {
   function normalizePages(data, nextCanvas, nextSettings) {
     if (Array.isArray(data.pages) && data.pages.length) {
       return data.pages.map((page, index) => {
+        if (page?.isBlankPage) {
+          return createBlankPage(index + 1, { id: page.id, title: page.title });
+        }
         const frames = Array.isArray(page.frames) ? page.frames.map((frame) => cleanFrame(frame, nextCanvas)) : [];
         const existingLayoutCount = countFramesInLayout(page.layout);
         const frameCount = clamp(Number(page.frameCount) || existingLayoutCount || frames.length || nextSettings.frameCount, 1, 9);
@@ -1279,7 +1435,7 @@ export default function App() {
         <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
         <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
         <label className="field small-field"><span>Высота px</span><input type="number" value={canvas.height} onChange={(event) => updateCanvas(canvas.width, event.target.value, 'custom')} /></label>
-        <label className="field small-field"><span>Фото-окон этой страницы</span><select value={currentPageFrameCount} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
+        <label className="field small-field"><span>Фото-окон этой страницы</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
         <label className="field small-field"><span>Зазор</span><input type="number" value={settings.gap} onChange={(event) => updateSetting('gap', clamp(event.target.value, 0, 200))} /></label>
         <label className="field small-field"><span>Поля</span><input type="number" value={settings.padding} onChange={(event) => updateSetting('padding', clamp(event.target.value, 0, 300))} /></label>
       </section>
@@ -1294,7 +1450,7 @@ export default function App() {
           <button className={`small-button ${viewMode === 'spread' ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот</button>
           <button className={`small-button ${isBooklet ? 'active-mode' : ''}`} onClick={enterBookletMode}>Брошюра</button>
         </div>
-        <div className="album-actions"><button className="small-button" onClick={addPage}>+ Страница</button><button className="small-button" onClick={duplicatePage}>Копия</button><button className="small-button danger" onClick={deletePage}>Удалить</button></div>
+        <div className="album-actions"><button className="small-button" onClick={addPage}>+ Страница</button><button className="small-button" onClick={addBlankPage}>+ Пустая</button><button className="small-button" onClick={duplicatePage}>Копия</button><button className="small-button danger" onClick={deletePage}>Удалить</button></div>
         {isBooklet ? (
           <div className="spread-actions booklet-actions">
             <label className="booklet-sheets-control"><span>Листов в блоке</span><select value={bookletSheetsPerBlock} onChange={(event) => updateBookletSheetsPerBlock(event.target.value)}>{[1, 2, 3, 4].map((count) => <option key={count} value={count}>{count} лист. / {count * 4} стр.</option>)}</select></label>
@@ -1302,6 +1458,8 @@ export default function App() {
             <button className="small-button" onClick={toggleBookletSheetSide} disabled={!currentBookletSide}>{currentBookletSide?.side === BOOKLET_SIDE_FRONT ? 'Оборот листа' : 'Лицевая листа'}</button>
             <button className="small-button" onClick={() => goBookletSide(1)} disabled={!currentBookletSide || bookletPlan.sides[bookletPlan.sides.length - 1]?.id === currentBookletSide.id}>сторона →</button>
             <span className="booklet-summary">{bookletPlan.blockCount} блок., пустых: {bookletPlan.blankPageCount}</span>
+            {bookletPlan.blankPageCount > 0 && <button className="small-button" onClick={addBlankPagesToBookletBlock}>Добавить пустые</button>}
+            {trailingBlankPageCount > 0 && <button className="small-button" onClick={removeTrailingBlankPages}>Убрать пустые</button>}
             <button className="small-button accent" onClick={() => exportBookletSide()} disabled={!currentBookletSide}>PNG сторона</button>
             <button className="small-button accent" onClick={exportBookletAll} disabled={!bookletPlan.sides.length}>PNG все стороны</button>
           </div>
@@ -1314,8 +1472,8 @@ export default function App() {
           return (
             <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''} ${isVisibleInBooklet ? 'booklet-visible-page' : ''}`} onClick={() => selectPageByIndex(index)}>
               <b>{pageNumber}</b>
-              <span>{page.frames.filter((frame) => frame.photo).length}/{resolvePageFrameCount(page, settings)}</span>
-              <small>{isBooklet ? (bookletPlan.pageMap[String(pageNumber)]?.pairPageNumber ? `с ${bookletPlan.pageMap[String(pageNumber)].pairPageNumber}` : 'пусто') : index % 2 === 0 ? 'левая' : 'правая'}</small>
+              <span>{page.isBlankPage ? 'пустая' : `${page.frames.filter((frame) => frame.photo).length}/${resolvePageFrameCount(page, settings)}`}</span>
+              <small>{isBooklet ? (bookletPlan.pageMap[String(pageNumber)]?.pairPageNumber ? `с ${bookletPlan.pageMap[String(pageNumber)].pairPageNumber}` : 'пусто') : page.isBlankPage ? 'белая' : index % 2 === 0 ? 'левая' : 'правая'}</small>
             </button>
           );
         })}</div>
@@ -1358,8 +1516,9 @@ export default function App() {
           <div className="page-rail-list">
             {pages.map((page, index) => {
               const pageNumber = index + 1;
+              const isBlankPage = Boolean(page.isBlankPage);
               const frameTotal = resolvePageFrameCount(page, settings);
-              const filledFrames = page.frames.filter((frame) => frame.photo).length;
+              const filledFrames = isBlankPage ? 0 : page.frames.filter((frame) => frame.photo).length;
               const bookletInfo = bookletPlan.pageMap[String(pageNumber)];
               const isCurrent = page.id === album.currentPageId;
               const isSpreadPage = isSpread && (index === spreadStart || index === spreadStart + 1);
@@ -1367,16 +1526,16 @@ export default function App() {
               const isOnStage = isBooklet ? isVisibleInBooklet : isSpread ? isSpreadPage : isCurrent;
               const metaText = isBooklet
                 ? (bookletInfo ? `${bookletInfo.sideLabel} · л.${bookletInfo.sheetNumber}` : 'не в блоке')
-                : `${filledFrames}/${frameTotal} фото`;
+                : (isBlankPage ? 'пустая' : `${filledFrames}/${frameTotal} фото`);
               const pairText = isBooklet
                 ? (bookletInfo?.pairPageNumber ? `рядом ${bookletInfo.pairPageNumber}` : 'рядом пусто')
-                : (index % 2 === 0 ? 'левая' : 'правая');
+                : (isBlankPage ? 'белая страница' : (index % 2 === 0 ? 'левая' : 'правая'));
 
               return (
                 <button
                   key={page.id}
                   type="button"
-                  className={`page-rail-card ${isCurrent ? 'current-page-rail-card' : ''} ${isOnStage ? 'stage-page-rail-card' : ''} ${isVisibleInBooklet ? 'booklet-visible-rail-card' : ''} ${dragPageIndex === index ? 'dragging-page-rail-card' : ''} ${dragOverPageIndex === index && dragPageIndex !== null && dragPageIndex !== index ? 'drag-over-page-rail-card' : ''}`}
+                  className={`page-rail-card ${isBlankPage ? 'blank-page-rail-card' : ''} ${isCurrent ? 'current-page-rail-card' : ''} ${isOnStage ? 'stage-page-rail-card' : ''} ${isVisibleInBooklet ? 'booklet-visible-rail-card' : ''} ${dragPageIndex === index ? 'dragging-page-rail-card' : ''} ${dragOverPageIndex === index && dragPageIndex !== null && dragPageIndex !== index ? 'drag-over-page-rail-card' : ''}`}
                   draggable
                   onClick={() => selectPageByIndex(index)}
                   onDragStart={(event) => startPageDrag(event, index)}
@@ -1395,7 +1554,13 @@ export default function App() {
 
           {isBooklet && bookletPlan.blankPageCount > 0 && (
             <div className="page-rail-note">
-              +{bookletPlan.blankPageCount} пуст. в конце блока
+              +{bookletPlan.blankPageCount} виртуал. пуст. при печати
+              <button type="button" onClick={addBlankPagesToBookletBlock}>добавить реально</button>
+            </div>
+          )}
+          {trailingBlankPageCount > 0 && (
+            <div className="page-rail-note soft-note">
+              В конце реальных пустых: {trailingBlankPageCount}
             </div>
           )}
         </aside>

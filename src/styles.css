@@ -2362,3 +2362,36 @@ body[data-album-mode='templates'] .three-columns {
   line-height: 1;
   text-transform: uppercase;
 }
+
+/* ===== Patch 15: real blank pages and booklet block padding ===== */
+.blank-page-rail-card {
+  background: #fbfaf7 !important;
+  border-style: dashed !important;
+  color: #8d7d70 !important;
+}
+
+.blank-page-rail-card b {
+  color: #8d7d70 !important;
+}
+
+.page-rail-note button {
+  margin-top: 8px;
+  width: 100%;
+  border: 1px solid rgba(47, 125, 82, 0.24);
+  background: #fffaf4;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-weight: 800;
+  color: #2f6d49;
+  cursor: pointer;
+}
+
+.page-rail-note button:hover {
+  border-color: rgba(47, 125, 82, 0.5);
+  background: #f6fbf5;
+}
+
+.page-rail-note.soft-note {
+  background: #faf8f4;
+  color: #8d7d70;
+}
