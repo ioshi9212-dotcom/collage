@@ -1032,7 +1032,7 @@ export default function App() {
           })}</div>}
         </aside>
 
-        <section className={`canvas-area ${isSpread ? 'album-mode' : ''}`}>
+        <section className={`canvas-area ${isSpread ? 'album-mode' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px` }}>
           <div className="canvas-toolbar"><div><strong>{isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1}`} · {canvas.width}×{canvas.height}px</strong><span>{locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span><em>PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.</em></div><button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button><button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button></div>
 
           <div className={`stage-frame ${isSpread ? 'album-preview' : ''}`} style={{ width: stageDisplayWidth, height: stageDisplayHeight }} onDragOver={(event) => event.preventDefault()} onDrop={dropPhoto}>
