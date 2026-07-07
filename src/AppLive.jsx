@@ -439,7 +439,11 @@ function normalizeExtraLayers(value) {
 function hasAnyExtraLayer(layers) {
   const pages = layers?.pages;
   if (!pages || typeof pages !== 'object') return false;
-  return Object.values(pages).some((items) => Array.isArray(items) && items.length > 0);
+  return Object.values(pages).some((page) => (
+    (Array.isArray(page?.texts) && page.texts.length > 0)
+    || (Array.isArray(page?.drawings) && page.drawings.length > 0)
+    || (Array.isArray(page?.templates) && page.templates.length > 0)
+  ));
 }
 
 function readExtraLayers() {
@@ -508,6 +512,40 @@ function applyAlbumEditorMode(value, fallback = 'collage') {
     // ignore bridge errors
   }
   return nextMode;
+}
+
+function textLayersForPage(extraLayers, pageIndex) {
+  const pageNumber = pageIndex + 1;
+  const page = extraLayers?.pages?.[String(pageNumber)];
+  return Array.isArray(page?.texts) ? page.texts : [];
+}
+
+function ExtraPageLayers({ extraLayers, pageIndex, x = 0 }) {
+  const texts = textLayersForPage(extraLayers, pageIndex);
+  if (!texts.length) return null;
+
+  return (
+    <Group x={x} y={0} listening={false}>
+      {texts.map((item) => {
+        const fontSize = Math.max(1, Number(item.fontSize) || 56);
+        return (
+          <Text
+            key={item.id ?? `${pageIndex}-${item.x}-${item.y}`}
+            x={Number(item.x) || 0}
+            y={Number(item.y) || 0}
+            width={Math.max(1, Number(item.width) || 500)}
+            text={String(item.text ?? '')}
+            fontSize={fontSize}
+            fontFamily="Arial, sans-serif"
+            lineHeight={1.18}
+            fill={item.color || '#1f2723'}
+            wrap="word"
+            listening={false}
+          />
+        );
+      })}
+    </Group>
+  );
 }
 
 
@@ -610,6 +648,8 @@ export default function App() {
     });
     return used;
   }, [pages]);
+
+  const extraLayers = readExtraLayers();
 
   function show(text) {
     setNotice(text);
@@ -928,7 +968,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-14-layer-import-render-fix',
+      version: 'live-15-booklet-text-export',
       canvas,
       settings,
       library,
@@ -1081,25 +1121,27 @@ export default function App() {
   }
 
   const renderEntries = entries.map((entry, entryIndex) => (
-    <PageLayer
-      key={`${entry.page?.id ?? 'blank'}-${entry.pageIndex}-${entryIndex}`}
-      page={entry.page}
-      pageIndex={entry.pageIndex}
-      x={entry.x}
-      canvas={canvas}
-      settings={settings}
-      activePageId={album.currentPageId}
-      collagePreviewOnly={collagePreviewOnly || isBooklet}
-      selectedFrameId={selectedFrameId}
-      moveFrameWithPhotoId={moveFrameWithPhotoId}
-      onFrameSelect={selectFrame}
-      onPhotoMove={updatePhoto}
-      onFrameChange={changeFrame}
-      onFrameDragFinish={() => setMoveFrameWithPhotoId(null)}
-      onColumnResize={resizeGridColumn}
-      onRowResize={resizeGridRow}
-      onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
-    />
+    <React.Fragment key={`${entry.page?.id ?? 'blank'}-${entry.pageIndex}-${entryIndex}`}>
+      <PageLayer
+        page={entry.page}
+        pageIndex={entry.pageIndex}
+        x={entry.x}
+        canvas={canvas}
+        settings={settings}
+        activePageId={album.currentPageId}
+        collagePreviewOnly={collagePreviewOnly || isBooklet}
+        selectedFrameId={selectedFrameId}
+        moveFrameWithPhotoId={moveFrameWithPhotoId}
+        onFrameSelect={selectFrame}
+        onPhotoMove={updatePhoto}
+        onFrameChange={changeFrame}
+        onFrameDragFinish={() => setMoveFrameWithPhotoId(null)}
+        onColumnResize={resizeGridColumn}
+        onRowResize={resizeGridRow}
+        onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
+      />
+      {isBooklet && <ExtraPageLayers extraLayers={extraLayers} pageIndex={entry.pageIndex} x={entry.x} />}
+    </React.Fragment>
   ));
 
   const bookletLabels = isBooklet && currentBookletSide ? currentBookletSide.slots.map((slot, index) => (
@@ -1284,15 +1326,20 @@ export default function App() {
         <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}><Layer><PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} {...commonPageLayerProps} /><PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} {...commonPageLayerProps} /></Layer></Stage>
         <Stage ref={printBookletRef} width={canvas.width * 2} height={canvas.height}>
           <Layer>
-            {(printBookletSide?.slots ?? []).map((slot, index) => (
-              <PageLayer
-                key={`print-booklet-${printBookletSide?.id ?? 'empty'}-${index}`}
-                page={slot.sourcePageIndex == null ? null : pages[slot.sourcePageIndex]}
-                pageIndex={slot.sourcePageIndex ?? -1}
-                x={index * canvas.width}
-                {...commonPageLayerProps}
-              />
-            ))}
+            {(printBookletSide?.slots ?? []).map((slot, index) => {
+              const pageIndex = slot.sourcePageIndex ?? -1;
+              return (
+                <React.Fragment key={`print-booklet-${printBookletSide?.id ?? 'empty'}-${index}`}>
+                  <PageLayer
+                    page={slot.sourcePageIndex == null ? null : pages[slot.sourcePageIndex]}
+                    pageIndex={pageIndex}
+                    x={index * canvas.width}
+                    {...commonPageLayerProps}
+                  />
+                  <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={index * canvas.width} />
+                </React.Fragment>
+              );
+            })}
           </Layer>
         </Stage>
       </div>
