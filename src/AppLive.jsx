@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 import {
   MIN_FRAME,
@@ -968,7 +968,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-15-booklet-text-export',
+      version: 'live-16-page-rail',
       canvas,
       settings,
       library,
@@ -1259,6 +1259,54 @@ export default function App() {
               </button>
             );
           })}</div>}
+        </aside>
+
+        <aside className={`page-rail ${isBooklet ? 'booklet-page-rail' : ''}`}>
+          <div className="panel-title compact">
+            <div>
+              <h2>Страницы</h2>
+              <p>{isBooklet ? 'Клик по странице откроет сторону листа, где она печатается.' : 'Клик по странице открывает её в текущем виде.'}</p>
+            </div>
+            <span>{pages.length}</span>
+          </div>
+
+          <div className="page-rail-list">
+            {pages.map((page, index) => {
+              const pageNumber = index + 1;
+              const frameTotal = resolvePageFrameCount(page, settings);
+              const filledFrames = page.frames.filter((frame) => frame.photo).length;
+              const bookletInfo = bookletPlan.pageMap[String(pageNumber)];
+              const isCurrent = page.id === album.currentPageId;
+              const isSpreadPage = isSpread && (index === spreadStart || index === spreadStart + 1);
+              const isVisibleInBooklet = isBooklet && visibleBookletPageNumbers.has(pageNumber);
+              const isOnStage = isBooklet ? isVisibleInBooklet : isSpread ? isSpreadPage : isCurrent;
+              const metaText = isBooklet
+                ? (bookletInfo ? `${bookletInfo.sideLabel} · л.${bookletInfo.sheetNumber}` : 'не в блоке')
+                : `${filledFrames}/${frameTotal} фото`;
+              const pairText = isBooklet
+                ? (bookletInfo?.pairPageNumber ? `рядом ${bookletInfo.pairPageNumber}` : 'рядом пусто')
+                : (index % 2 === 0 ? 'левая' : 'правая');
+
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  className={`page-rail-card ${isCurrent ? 'current-page-rail-card' : ''} ${isOnStage ? 'stage-page-rail-card' : ''} ${isVisibleInBooklet ? 'booklet-visible-rail-card' : ''}`}
+                  onClick={() => selectPageByIndex(index)}
+                >
+                  <b>{pageNumber}</b>
+                  <span>{metaText}</span>
+                  <small>{pairText}</small>
+                </button>
+              );
+            })}
+          </div>
+
+          {isBooklet && bookletPlan.blankPageCount > 0 && (
+            <div className="page-rail-note">
+              +{bookletPlan.blankPageCount} пуст. в конце блока
+            </div>
+          )}
         </aside>
 
         <section className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px` }}>
