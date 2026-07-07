@@ -52,22 +52,34 @@
     }
   }
 
-  const originalSetItem = localStorage.setItem.bind(localStorage);
-  localStorage.setItem = (key, value) => {
-    if (typeof key === 'string' && key.startsWith(PROJECT_PREFIX) && typeof value === 'string') {
-      try {
-        const data = JSON.parse(value);
-        if (data && Array.isArray(data.pages)) {
-          data.extraLayers = state.layers;
-          data.albumEditorMode = state.mode;
-          value = JSON.stringify(data);
-        }
-      } catch {
-        // pass original value
-      }
-    }
-    return originalSetItem(key, value);
+  function exportLayersForProject() {
+    return normalizeLayers(state.layers);
+  }
+
+  function importLayersFromProject(value) {
+    state.layers = normalizeLayers(value);
+    state.selectedTextId = null;
+    saveLayers();
+    render();
+  }
+
+  function setAlbumMode(value) {
+    state.mode = ['collage', 'text', 'drawings', 'templates'].includes(value) ? value : 'collage';
+    localStorage.setItem(MODE_KEY, state.mode);
+    document.body.dataset.albumMode = state.mode;
+    render();
+  }
+
+  globalThis.__collageAlbumLayers = {
+    getLayers: exportLayersForProject,
+    setLayers: importLayersFromProject,
+    getMode: () => state.mode,
+    setMode: setAlbumMode,
   };
+
+  window.addEventListener('collage-album-layers-import', (event) => {
+    importLayersFromProject(event.detail?.layers);
+  });
 
   function currentCanvas() {
     const strong = document.querySelector('.canvas-toolbar strong')?.textContent || '';

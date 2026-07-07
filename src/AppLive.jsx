@@ -15,6 +15,7 @@ import {
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const ALBUM_MODE_KEY = 'collage-album-editor-mode';
+const ALBUM_LAYERS_KEY = 'collage-album-extra-layers-v1';
 const LEGACY_KEYS = [
   'collage-creator-album-live-v10-layer-move-photo',
   'collage-creator-album-live-v9-photo-usage-highlight',
@@ -418,6 +419,71 @@ function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selecte
   );
 }
 
+function normalizeExtraLayers(value) {
+  return {
+    version: 1,
+    pages: value?.pages && typeof value.pages === 'object' ? value.pages : {},
+  };
+}
+
+function readExtraLayers() {
+  try {
+    const bridgeLayers = globalThis.__collageAlbumLayers?.getLayers?.();
+    if (bridgeLayers?.pages) return normalizeExtraLayers(bridgeLayers);
+  } catch {
+    // ignore bridge errors
+  }
+
+  try {
+    const raw = localStorage.getItem(ALBUM_LAYERS_KEY);
+    if (raw) return normalizeExtraLayers(JSON.parse(raw));
+  } catch {
+    // ignore broken local data
+  }
+
+  return normalizeExtraLayers(null);
+}
+
+function writeExtraLayers(value) {
+  const layers = normalizeExtraLayers(value);
+  try {
+    localStorage.setItem(ALBUM_LAYERS_KEY, JSON.stringify(layers));
+  } catch {
+    // ignore localStorage quota/errors
+  }
+
+  try {
+    globalThis.__collageAlbumLayers?.setLayers?.(layers);
+  } catch {
+    // ignore bridge errors
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent('collage-album-layers-import', { detail: { layers } }));
+  } catch {
+    // ignore event errors
+  }
+
+  return layers;
+}
+
+function applyAlbumEditorMode(value, fallback = 'collage') {
+  const nextMode = ['collage', 'text', 'drawings', 'templates'].includes(value) ? value : fallback;
+  try {
+    localStorage.setItem(ALBUM_MODE_KEY, nextMode);
+  } catch {
+    // ignore localStorage errors
+  }
+  if (document.body?.dataset) document.body.dataset.albumMode = nextMode;
+  try {
+    globalThis.__collageAlbumLayers?.setMode?.(nextMode);
+  } catch {
+    // ignore bridge errors
+  }
+  return nextMode;
+}
+
+
 export default function App() {
   const stageRef = useRef(null);
   const printPageRef = useRef(null);
@@ -746,7 +812,18 @@ export default function App() {
 
 
   function project() {
-    return { version: 'live-11-preserve-mode-layout', canvas, settings, library, pages, currentPageId: album.currentPageId, viewMode, savedAt: new Date().toISOString() };
+    return {
+      version: 'live-12-project-layers',
+      canvas,
+      settings,
+      library,
+      pages,
+      currentPageId: album.currentPageId,
+      viewMode,
+      extraLayers: readExtraLayers(),
+      albumEditorMode: albumMode,
+      savedAt: new Date().toISOString(),
+    };
   }
 
   function save() {
@@ -788,6 +865,8 @@ export default function App() {
       setLibrary(Array.isArray(data.library) ? data.library : []);
       setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
       setViewMode(data.viewMode === 'single' ? 'single' : 'spread');
+      writeExtraLayers(data.extraLayers);
+      setAlbumMode(applyAlbumEditorMode(data.albumEditorMode));
       setSelectedFrameId(null);
       setSelectedPhotoId(null);
       setMoveFrameWithPhotoId(null);
@@ -810,8 +889,10 @@ export default function App() {
         setCanvas(nextCanvas);
         setSettings(nextSettings);
         setLibrary(Array.isArray(data.library) ? data.library : []);
-        setAlbum({ pages: nextPages, currentPageId: nextPages[0].id });
+        setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
         setViewMode(data.viewMode === 'single' ? 'single' : 'spread');
+        writeExtraLayers(data.extraLayers);
+        setAlbumMode(applyAlbumEditorMode(data.albumEditorMode));
         setSelectedFrameId(null);
         setSelectedPhotoId(null);
         setMoveFrameWithPhotoId(null);
