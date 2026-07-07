@@ -135,6 +135,172 @@ function dataUrlToBytes(dataUrl) {
   return new TextEncoder().encode(decodeURIComponent(body));
 }
 
+function textToBytes(text) {
+  return new TextEncoder().encode(String(text ?? ''));
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function bookletSlotLabel(slot) {
+  return slot?.isBlank ? 'пусто' : String(slot?.pageNumber ?? slot?.label ?? 'пусто');
+}
+
+function buildBookletPrintRows(imageEntries) {
+  return imageEntries.map(({ name, sideData }) => ({
+    block: sideData.blockNumber,
+    sheet: sideData.sheetNumber,
+    side: sideData.side,
+    sideLabel: sideData.sideLabel,
+    title: sideData.title,
+    left: bookletSlotLabel(sideData.left),
+    right: bookletSlotLabel(sideData.right),
+    file: name,
+  }));
+}
+
+function buildBookletReadme({ plan, canvas, sheetsPerBlock, printSettings, imageEntries }) {
+  const rows = buildBookletPrintRows(imageEntries);
+  const lines = [
+    'Пакет печати брошюры',
+    '',
+    `Страниц в проекте: ${plan.pageCount}`,
+    `Страниц после добивки блока: ${plan.paddedPageCount}`,
+    `Виртуальных пустых страниц: ${plan.blankPageCount}`,
+    `Листов в блоке: ${sheetsPerBlock}`,
+    `Страниц в блоке: ${plan.pagesPerBlock}`,
+    `Блоков: ${plan.blockCount}`,
+    `Размер страницы: ${canvas.width}×${canvas.height}px`,
+    `Сгиб: ${printSettings.showFoldLine ? 'да' : 'нет'}`,
+    `Метки реза: ${printSettings.showCropMarks ? 'да' : 'нет'}`,
+    `Зазор: ${printSettings.gap}px`,
+    `Поля: ${printSettings.margin}px`,
+    '',
+    'Порядок файлов:',
+    '',
+  ];
+
+  for (const row of rows) {
+    lines.push(`${row.title}: [${row.left}][${row.right}] → ${row.file}`);
+  }
+
+  lines.push('', 'Подсказка:', 'front = лицевая сторона листа', 'back = оборотная сторона листа');
+  lines.push('', 'print-preview.html — контрольный просмотр. Для точной печати используй PNG-файлы из папок block-XX.');
+
+  return `${lines.join('
+')}
+`;
+}
+
+function buildBookletCsv(imageEntries) {
+  const rows = buildBookletPrintRows(imageEntries);
+  const lines = ['block;sheet;side;side_label;left_page;right_page;file'];
+  for (const row of rows) {
+    lines.push([row.block, row.sheet, row.side, row.sideLabel, row.left, row.right, row.file].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';'));
+  }
+  return `${lines.join('
+')}
+`;
+}
+
+function buildBookletManifestJson({ plan, canvas, sheetsPerBlock, printSettings, imageEntries }) {
+  return JSON.stringify({
+    type: 'collage-booklet-print-package',
+    version: 'live-21-booklet-print-package',
+    createdAt: new Date().toISOString(),
+    pageCount: plan.pageCount,
+    paddedPageCount: plan.paddedPageCount,
+    blankPageCount: plan.blankPageCount,
+    sheetsPerBlock,
+    pagesPerBlock: plan.pagesPerBlock,
+    blockCount: plan.blockCount,
+    canvas,
+    exportRatio: EXPORT_RATIO,
+    printSettings,
+    files: imageEntries.map(({ name, sideData }) => ({
+      file: name,
+      blockNumber: sideData.blockNumber,
+      sheetNumber: sideData.sheetNumber,
+      side: sideData.side,
+      sideLabel: sideData.sideLabel,
+      title: sideData.title,
+      left: {
+        pageNumber: sideData.left.pageNumber,
+        isBlank: sideData.left.isBlank,
+        label: bookletSlotLabel(sideData.left),
+      },
+      right: {
+        pageNumber: sideData.right.pageNumber,
+        isBlank: sideData.right.isBlank,
+        label: bookletSlotLabel(sideData.right),
+      },
+    })),
+  }, null, 2);
+}
+
+function buildBookletPreviewHtml({ plan, canvas, sheetsPerBlock, printSettings, imageEntries }) {
+  const rows = buildBookletPrintRows(imageEntries);
+  const sideCards = rows.map((row) => `
+    <section class="sheet-side">
+      <h2>${escapeHtml(row.title)}</h2>
+      <p class="pair">[${escapeHtml(row.left)}][${escapeHtml(row.right)}]</p>
+      <p class="file">${escapeHtml(row.file)}</p>
+      <img src="${escapeHtml(row.file)}" alt="${escapeHtml(row.title)}">
+    </section>
+  `).join('
+');
+
+  return `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Пакет печати брошюры</title>
+  <style>
+    body { margin: 0; padding: 24px; font-family: Arial, sans-serif; background: #f4f1ea; color: #1f2723; }
+    .intro, .sheet-side { max-width: 1100px; margin: 0 auto 24px; background: white; border: 1px solid #d8d1c4; border-radius: 14px; padding: 18px; box-sizing: border-box; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    h2 { margin: 0 0 8px; font-size: 18px; }
+    p { margin: 6px 0; }
+    .pair { font-size: 18px; font-weight: 700; }
+    .file { color: #667; font-size: 13px; }
+    img { display: block; width: 100%; height: auto; margin-top: 12px; border: 1px solid #ddd6c9; background: white; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+    th, td { border-bottom: 1px solid #e8e1d4; padding: 6px 8px; text-align: left; }
+    @media print {
+      body { padding: 0; background: white; }
+      .intro { display: none; }
+      .sheet-side { border: 0; border-radius: 0; margin: 0; padding: 0; max-width: none; break-after: page; page-break-after: always; }
+      .sheet-side h2, .sheet-side .pair, .sheet-side .file { display: none; }
+      img { border: 0; margin: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <section class="intro">
+    <h1>Пакет печати брошюры</h1>
+    <p>Это контрольный просмотр архива. Для точной печати используй PNG-файлы из папок <b>block-XX</b>.</p>
+    <p>Страниц: ${plan.pageCount}. Добивка: ${plan.paddedPageCount}. Листов в блоке: ${sheetsPerBlock}. Блоков: ${plan.blockCount}.</p>
+    <p>Размер страницы: ${canvas.width}×${canvas.height}px. Сгиб: ${printSettings.showFoldLine ? 'да' : 'нет'}. Метки реза: ${printSettings.showCropMarks ? 'да' : 'нет'}. Зазор: ${printSettings.gap}px. Поля: ${printSettings.margin}px.</p>
+    <table>
+      <thead><tr><th>Блок</th><th>Лист</th><th>Сторона</th><th>Пары</th><th>Файл</th></tr></thead>
+      <tbody>
+        ${rows.map((row) => `<tr><td>${row.block}</td><td>${row.sheet}</td><td>${escapeHtml(row.sideLabel)}</td><td>[${escapeHtml(row.left)}][${escapeHtml(row.right)}]</td><td>${escapeHtml(row.file)}</td></tr>`).join('
+        ')}
+      </tbody>
+    </table>
+  </section>
+  ${sideCards}
+</body>
+</html>`;
+}
+
 let crc32Table = null;
 
 function getCrc32Table() {
@@ -1458,7 +1624,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-20-booklet-zip-export',
+      version: 'live-21-booklet-print-package',
       canvas,
       settings,
       library,
@@ -1625,6 +1791,7 @@ export default function App() {
     show(`Готовлю ZIP брошюры: ${bookletPlan.sides.length} сторон`);
 
     const files = [];
+    const imageEntries = [];
 
     for (const sideData of bookletPlan.sides) {
       setPrintBookletSideId(sideData.id);
@@ -1635,16 +1802,33 @@ export default function App() {
         return;
       }
 
+      const name = `block-${pad(sideData.blockNumber)}/${bookletSideFilename(sideData)}`;
+      imageEntries.push({ name, sideData });
       files.push({
-        name: `block-${pad(sideData.blockNumber)}/${bookletSideFilename(sideData)}`,
+        name,
         bytes: dataUrlToBytes(uri),
       });
     }
 
+    const packageData = {
+      plan: bookletPlan,
+      canvas,
+      sheetsPerBlock: bookletSheetsPerBlock,
+      printSettings: normalizedBookletPrintSettings,
+      imageEntries,
+    };
+
+    files.unshift(
+      { name: 'README_PRINT_ORDER.txt', bytes: textToBytes(buildBookletReadme(packageData)) },
+      { name: 'print-order.csv', bytes: textToBytes(buildBookletCsv(imageEntries)) },
+      { name: 'booklet-manifest.json', bytes: textToBytes(buildBookletManifestJson(packageData)) },
+      { name: 'print-preview.html', bytes: textToBytes(buildBookletPreviewHtml(packageData)) },
+    );
+
     setPrintBookletSideId(currentBookletSide?.id ?? null);
     const zip = createZipBlob(files);
-    downloadBlob(`booklet-${pages.length}-pages-${bookletSheetsPerBlock}-sheets-per-block.zip`, zip);
-    show(`Скачан ZIP брошюры: ${files.length} PNG`);
+    downloadBlob(`booklet-print-package-${pages.length}-pages-${bookletSheetsPerBlock}-sheets.zip`, zip);
+    show(`Скачан ZIP: ${imageEntries.length} PNG + схема печати`);
   }
 
   const renderEntries = entries.map((entry, entryIndex) => (
