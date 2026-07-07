@@ -14,6 +14,7 @@ import {
 } from './editor/layout';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
+const ALBUM_MODE_KEY = 'collage-album-editor-mode';
 const LEGACY_KEYS = [
   'collage-creator-album-live-v10-layer-move-photo',
   'collage-creator-album-live-v9-photo-usage-highlight',
@@ -196,13 +197,13 @@ function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhoto
   );
 }
 
-function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish }) {
+function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, collagePreviewOnly = false, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish }) {
   const [image, setImage] = useState(null);
   const groupRef = useRef(null);
   const frameRectRef = useRef(null);
   const transformerRef = useRef(null);
   const rect = coverRect(image, frame, frame.photo);
-  const canDragFrame = !printMode && selected && !locked;
+  const canDragFrame = !collagePreviewOnly && !printMode && selected && !locked;
 
   useEffect(() => {
     let active = true;
@@ -220,9 +221,20 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
     const transformer = transformerRef.current;
     const frameRect = frameRectRef.current;
     if (!transformer || !frameRect) return;
-    transformer.nodes(selected && !printMode && !locked ? [frameRect] : []);
+    transformer.nodes(selected && !collagePreviewOnly && !printMode && !locked ? [frameRect] : []);
     transformer.getLayer()?.batchDraw();
-  }, [selected, printMode, locked, frame.x, frame.y, frame.width, frame.height]);
+  }, [selected, collagePreviewOnly, printMode, locked, frame.x, frame.y, frame.width, frame.height]);
+
+  if (collagePreviewOnly) {
+    if (!frame.photo || !rect) return null;
+    return (
+      <Group x={frame.x} y={frame.y} listening={false}>
+        <Group clipX={0} clipY={0} clipWidth={frame.width} clipHeight={frame.height}>
+          <KonvaImage image={image} x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
+        </Group>
+      </Group>
+    );
+  }
 
   function clampFrameNode(node) {
     node.x(clamp(node.x(), 0, Math.max(0, canvas.width - frame.width)));
@@ -230,7 +242,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   }
 
   function commitFrameDrag(event) {
-    if (printMode || !selected || locked) return;
+    if (collagePreviewOnly || printMode || !selected || locked) return;
     const node = event.target;
     clampFrameNode(node);
     onFrameChange(frame.id, { x: node.x(), y: node.y() });
@@ -238,7 +250,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   }
 
   function commitTransform() {
-    if (printMode || !selected || locked || !frameRectRef.current) return;
+    if (collagePreviewOnly || printMode || !selected || locked || !frameRectRef.current) return;
     const node = frameRectRef.current;
     const patch = {
       x: frame.x + node.x(),
@@ -358,7 +370,7 @@ function GridHandles({ layout, onColumnResize, onRowResize, onActivate }) {
   );
 }
 
-function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
+function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const safe = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
   if (!page) {
@@ -368,32 +380,33 @@ function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selecte
   return (
     <Group x={x} y={0}>
       <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
-      {!printMode && settings.showGuides && (
+      {!collagePreviewOnly && !printMode && settings.showGuides && (
         <>
           <Rect x={safe} y={safe} width={Math.max(0, canvas.width - safe * 2)} height={Math.max(0, canvas.height - safe * 2)} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={2} strokeScaleEnabled={false} dash={[18, 14]} listening={false} />
           <Text x={safe + 16} y={safe + 16} text={locked ? 'сетка: двигай разделители' : 'поля / безопасная зона'} fontSize={28} fill={locked ? '#2f7d52' : '#c27b4f'} opacity={0.62} listening={false} />
         </>
       )}
-      {!printMode && <Text x={28} y={24} text={`Стр. ${pageIndex + 1}`} fontSize={34} fill={page.id === activePageId ? (locked ? '#2f7d52' : '#c27b4f') : '#b49a87'} fontStyle="bold" listening={false} />}
+      {!collagePreviewOnly && !printMode && <Text x={28} y={24} text={`Стр. ${pageIndex + 1}`} fontSize={34} fill={page.id === activePageId ? (locked ? '#2f7d52' : '#c27b4f') : '#b49a87'} fontStyle="bold" listening={false} />}
       {orderedFrames.map((frame) => (
         <CollageFrame
           key={frame.id}
           frame={frame}
-          selected={!printMode && page.id === activePageId && frame.id === selectedFrameId}
+          selected={!collagePreviewOnly && !printMode && page.id === activePageId && frame.id === selectedFrameId}
           locked={locked}
           borderWidth={settings.borderWidth}
           borderColor={settings.borderColor}
           printMode={printMode}
           canvas={canvas}
           pageOffsetX={x}
-          moveFrameWithPhoto={!printMode && frame.id === moveFrameWithPhotoId}
-          onSelect={() => !printMode && onFrameSelect(page.id, frame.id)}
-          onPhotoMove={(frameId, patch) => !printMode && onPhotoMove(page.id, frameId, patch)}
-          onFrameChange={(frameId, patch) => !printMode && onFrameChange(page.id, frameId, patch)}
-          onFrameDragFinish={() => !printMode && onFrameDragFinish?.(frame.id)}
+          moveFrameWithPhoto={!collagePreviewOnly && !printMode && frame.id === moveFrameWithPhotoId}
+          onSelect={() => !collagePreviewOnly && !printMode && onFrameSelect(page.id, frame.id)}
+          onPhotoMove={(frameId, patch) => !collagePreviewOnly && !printMode && onPhotoMove(page.id, frameId, patch)}
+          onFrameChange={(frameId, patch) => !collagePreviewOnly && !printMode && onFrameChange(page.id, frameId, patch)}
+          onFrameDragFinish={() => !collagePreviewOnly && !printMode && onFrameDragFinish?.(frame.id)}
+          collagePreviewOnly={collagePreviewOnly}
         />
       ))}
-      {!printMode && locked && (
+      {!collagePreviewOnly && !printMode && locked && (
         <GridHandles
           layout={page.layout}
           onActivate={() => onActivatePage(page.id)}
@@ -421,6 +434,23 @@ export default function App() {
   const [moveFrameWithPhotoId, setMoveFrameWithPhotoId] = useState(null);
   const [viewMode, setViewMode] = useState('spread');
   const [notice, setNotice] = useState('');
+  const [albumMode, setAlbumMode] = useState(() => localStorage.getItem(ALBUM_MODE_KEY) || 'collage');
+
+  useEffect(() => {
+    const readAlbumMode = () => {
+      const next = document.body?.dataset?.albumMode || localStorage.getItem(ALBUM_MODE_KEY) || 'collage';
+      setAlbumMode((current) => (current === next ? current : next));
+    };
+    readAlbumMode();
+    const timer = window.setInterval(readAlbumMode, 250);
+    window.addEventListener('storage', readAlbumMode);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('storage', readAlbumMode);
+    };
+  }, []);
+
+  const collagePreviewOnly = albumMode !== 'collage';
 
   const pages = album.pages;
   const currentPageIndex = Math.max(0, pages.findIndex((page) => page.id === album.currentPageId));
@@ -814,6 +844,7 @@ export default function App() {
       canvas={canvas}
       settings={settings}
       activePageId={album.currentPageId}
+      collagePreviewOnly={collagePreviewOnly}
       selectedFrameId={selectedFrameId}
       moveFrameWithPhotoId={moveFrameWithPhotoId}
       onFrameSelect={selectFrame}
@@ -909,7 +940,7 @@ export default function App() {
               <Stage ref={stageRef} width={stageRealWidth} height={canvas.height} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); } }}>
                 <Layer>
                   {renderEntries}
-                  {isSpread && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}
+                  {isSpread && !collagePreviewOnly && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}
                 </Layer>
               </Stage>
             </div>
