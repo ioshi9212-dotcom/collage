@@ -62,6 +62,18 @@ const DEFAULT_SETTINGS = {
   frameMode: 'free',
 };
 
+const DEFAULT_BOOKLET_PRINT_SETTINGS = {
+  showFoldLine: true,
+  showCropMarks: false,
+  gap: 0,
+  margin: 0,
+};
+
+const MAX_BOOKLET_PRINT_GAP = 260;
+const MAX_BOOKLET_PRINT_MARGIN = 260;
+const CROP_MARK_LENGTH = 56;
+
+
 const PRESETS = [
   { id: 'a5-portrait', label: 'A5 вертикальный', width: 1480, height: 2100 },
   { id: 'a5-landscape', label: 'A5 горизонтальный', width: 2100, height: 1480 },
@@ -121,6 +133,82 @@ function scaleForPreview(width, height, isSpread) {
   const maxHeight = 620;
   return Math.min(1, maxWidth / width, maxHeight / height);
 }
+
+function normalizeBookletPrintSettings(value = {}) {
+  return {
+    showFoldLine: value.showFoldLine !== false,
+    showCropMarks: Boolean(value.showCropMarks),
+    gap: Math.round(clamp(value.gap ?? DEFAULT_BOOKLET_PRINT_SETTINGS.gap, 0, MAX_BOOKLET_PRINT_GAP)),
+    margin: Math.round(clamp(value.margin ?? DEFAULT_BOOKLET_PRINT_SETTINGS.margin, 0, MAX_BOOKLET_PRINT_MARGIN)),
+  };
+}
+
+function getBookletSheetSize(canvas, printSettings) {
+  const normalized = normalizeBookletPrintSettings(printSettings);
+  return {
+    width: canvas.width * 2 + normalized.gap + normalized.margin * 2,
+    height: canvas.height + normalized.margin * 2,
+  };
+}
+
+function getBookletPagePosition(pageSlotIndex, canvas, printSettings) {
+  const normalized = normalizeBookletPrintSettings(printSettings);
+  return {
+    x: normalized.margin + pageSlotIndex * (canvas.width + normalized.gap),
+    y: normalized.margin,
+  };
+}
+
+function BookletSheetBackground({ canvas, printSettings }) {
+  const size = getBookletSheetSize(canvas, printSettings);
+  return <Rect x={0} y={0} width={size.width} height={size.height} fill="#ffffff" listening={false} />;
+}
+
+function CropMark({ x, y, horizontalDirection, verticalDirection }) {
+  return (
+    <>
+      <Line points={[x, y, x + horizontalDirection * CROP_MARK_LENGTH, y]} stroke="#222222" strokeWidth={2} listening={false} />
+      <Line points={[x, y, x, y + verticalDirection * CROP_MARK_LENGTH]} stroke="#222222" strokeWidth={2} listening={false} />
+    </>
+  );
+}
+
+function BookletPrintGuides({ canvas, printSettings, preview = false }) {
+  const normalized = normalizeBookletPrintSettings(printSettings);
+  const sheet = getBookletSheetSize(canvas, normalized);
+  const leftPage = getBookletPagePosition(0, canvas, normalized);
+  const rightPage = getBookletPagePosition(1, canvas, normalized);
+  const foldX = normalized.margin + canvas.width + normalized.gap / 2;
+  const pages = [leftPage, rightPage];
+
+  return (
+    <Group listening={false}>
+      {normalized.showFoldLine && (
+        <Line
+          points={[foldX, 0, foldX, sheet.height]}
+          stroke={preview ? '#2f7d52' : '#9ca39d'}
+          strokeWidth={preview ? 4 : 2}
+          dash={[28, 18]}
+          opacity={preview ? 0.7 : 0.85}
+          listening={false}
+        />
+      )}
+      {normalized.showCropMarks && pages.flatMap((page, pageIndex) => {
+        const left = page.x;
+        const right = page.x + canvas.width;
+        const top = page.y;
+        const bottom = page.y + canvas.height;
+        return [
+          <CropMark key={`crop-${pageIndex}-tl`} x={left} y={top} horizontalDirection={1} verticalDirection={1} />,
+          <CropMark key={`crop-${pageIndex}-tr`} x={right} y={top} horizontalDirection={-1} verticalDirection={1} />,
+          <CropMark key={`crop-${pageIndex}-bl`} x={left} y={bottom} horizontalDirection={1} verticalDirection={-1} />,
+          <CropMark key={`crop-${pageIndex}-br`} x={right} y={bottom} horizontalDirection={-1} verticalDirection={-1} />,
+        ];
+      })}
+    </Group>
+  );
+}
+
 
 function countFramesInLayout(layout) {
   if (!layout?.rows) return 0;
@@ -400,12 +488,12 @@ function GridHandles({ layout, onColumnResize, onRowResize, onActivate }) {
   );
 }
 
-function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
+function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const safe = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
   if (!page || page.isBlankPage) {
     return (
-      <Group x={x} y={0}>
+      <Group x={x} y={y}>
         <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
         {page?.isBlankPage && !printMode && !collagePreviewOnly && (
           <Text x={42} y={42} text="Пустая страница" fontSize={34} fill="#b49a87" fontStyle="bold" opacity={0.75} listening={false} />
@@ -415,7 +503,7 @@ function PageLayer({ page, pageIndex, x, canvas, settings, activePageId, selecte
   }
   const orderedFrames = [...page.frames].sort((a, b) => (Number(a.zIndex) || 0) - (Number(b.zIndex) || 0));
   return (
-    <Group x={x} y={0}>
+    <Group x={x} y={y}>
       <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
       {!collagePreviewOnly && !printMode && settings.showGuides && (
         <>
@@ -546,12 +634,12 @@ function textLayersForPage(extraLayers, pageIndex) {
   return Array.isArray(page?.texts) ? page.texts : [];
 }
 
-function ExtraPageLayers({ extraLayers, pageIndex, x = 0 }) {
+function ExtraPageLayers({ extraLayers, pageIndex, x = 0, y = 0 }) {
   const texts = textLayersForPage(extraLayers, pageIndex);
   if (!texts.length) return null;
 
   return (
-    <Group x={x} y={0} listening={false}>
+    <Group x={x} y={y} listening={false}>
       {texts.map((item) => {
         const fontSize = Math.max(1, Number(item.fontSize) || 56);
         return (
@@ -592,6 +680,7 @@ export default function App() {
   const [moveFrameWithPhotoId, setMoveFrameWithPhotoId] = useState(null);
   const [viewMode, setViewMode] = useState('spread');
   const [bookletSheetsPerBlock, setBookletSheetsPerBlock] = useState(DEFAULT_SHEETS_PER_BLOCK);
+  const [bookletPrintSettings, setBookletPrintSettings] = useState(DEFAULT_BOOKLET_PRINT_SETTINGS);
   const [bookletSideId, setBookletSideId] = useState(null);
   const [printBookletSideId, setPrintBookletSideId] = useState(null);
   const [notice, setNotice] = useState('');
@@ -655,17 +744,30 @@ export default function App() {
     }
     return count;
   }, [pages]);
-  const stageRealWidth = isBooklet ? canvas.width * 2 : isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
-  const previewScale = scaleForPreview(stageRealWidth, canvas.height, isSpread || isBooklet);
+  const normalizedBookletPrintSettings = useMemo(
+    () => normalizeBookletPrintSettings(bookletPrintSettings),
+    [bookletPrintSettings],
+  );
+  const bookletSheetSize = useMemo(
+    () => getBookletSheetSize(canvas, normalizedBookletPrintSettings),
+    [canvas, normalizedBookletPrintSettings],
+  );
+  const stageRealWidth = isBooklet ? bookletSheetSize.width : isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
+  const stageRealHeight = isBooklet ? bookletSheetSize.height : canvas.height;
+  const previewScale = scaleForPreview(stageRealWidth, stageRealHeight, isSpread || isBooklet);
   const stageDisplayWidth = stageRealWidth * previewScale;
-  const stageDisplayHeight = canvas.height * previewScale;
+  const stageDisplayHeight = stageRealHeight * previewScale;
   const entries = isBooklet && currentBookletSide
-    ? currentBookletSide.slots.map((slot, index) => ({
-        page: slot.sourcePageIndex == null ? null : pages[slot.sourcePageIndex],
-        pageIndex: slot.sourcePageIndex ?? -1,
-        x: index * canvas.width,
-        bookletSlot: slot,
-      }))
+    ? currentBookletSide.slots.map((slot, index) => {
+        const position = getBookletPagePosition(index, canvas, normalizedBookletPrintSettings);
+        return {
+          page: slot.sourcePageIndex == null ? null : pages[slot.sourcePageIndex],
+          pageIndex: slot.sourcePageIndex ?? -1,
+          x: position.x,
+          y: position.y,
+          bookletSlot: slot,
+        };
+      })
     : isSpread
       ? [
           { page: pages[spreadStart], pageIndex: spreadStart, x: 0 },
@@ -1178,6 +1280,13 @@ export default function App() {
     setBookletSideId(side?.id ?? null);
   }
 
+  function updateBookletPrintSetting(key, value) {
+    setBookletPrintSettings((current) => normalizeBookletPrintSettings({
+      ...current,
+      [key]: value,
+    }));
+  }
+
   function openBookletSide(sideData) {
     if (!sideData) return;
     setBookletSideId(sideData.id);
@@ -1206,7 +1315,7 @@ export default function App() {
 
   function project() {
     return {
-      version: 'live-18-booklet-blank-pages',
+      version: 'live-19-booklet-print-settings',
       canvas,
       settings,
       library,
@@ -1214,6 +1323,7 @@ export default function App() {
       currentPageId: album.currentPageId,
       viewMode,
       bookletSheetsPerBlock,
+      bookletPrintSettings: normalizedBookletPrintSettings,
       extraLayers: readExtraLayers(),
       albumEditorMode: albumMode,
       savedAt: new Date().toISOString(),
@@ -1263,6 +1373,7 @@ export default function App() {
       setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
       setViewMode(['single', 'spread', 'booklet'].includes(data.viewMode) ? data.viewMode : 'spread');
       setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
+      setBookletPrintSettings(normalizeBookletPrintSettings(data.bookletPrintSettings));
       writeExtraLayers(data.extraLayers);
       setAlbumMode(applyAlbumEditorMode(data.albumEditorMode));
       setSelectedFrameId(null);
@@ -1289,7 +1400,8 @@ export default function App() {
         setLibrary(Array.isArray(data.library) ? data.library : []);
         setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
         setViewMode(['single', 'spread', 'booklet'].includes(data.viewMode) ? data.viewMode : 'spread');
-      setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
+        setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
+        setBookletPrintSettings(normalizeBookletPrintSettings(data.bookletPrintSettings));
         writeExtraLayers(data.extraLayers);
         setAlbumMode(applyAlbumEditorMode(data.albumEditorMode));
         setSelectedFrameId(null);
@@ -1367,6 +1479,7 @@ export default function App() {
         page={entry.page}
         pageIndex={entry.pageIndex}
         x={entry.x}
+        y={entry.y ?? 0}
         canvas={canvas}
         settings={settings}
         activePageId={album.currentPageId}
@@ -1381,22 +1494,25 @@ export default function App() {
         onRowResize={resizeGridRow}
         onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
       />
-      {isBooklet && <ExtraPageLayers extraLayers={extraLayers} pageIndex={entry.pageIndex} x={entry.x} />}
+      {isBooklet && <ExtraPageLayers extraLayers={extraLayers} pageIndex={entry.pageIndex} x={entry.x} y={entry.y ?? 0} />}
     </React.Fragment>
   ));
 
-  const bookletLabels = isBooklet && currentBookletSide ? currentBookletSide.slots.map((slot, index) => (
-    <Text
-      key={`booklet-label-${index}-${slot.label}`}
-      x={index * canvas.width + 28}
-      y={24}
-      text={slot.isBlank ? 'пустая страница' : `стр. ${slot.pageNumber}`}
-      fontSize={34}
-      fontStyle="bold"
-      fill={slot.isBlank ? '#9aa7a0' : '#2f7d52'}
-      listening={false}
-    />
-  )) : null;
+  const bookletLabels = isBooklet && currentBookletSide ? currentBookletSide.slots.map((slot, index) => {
+    const position = getBookletPagePosition(index, canvas, normalizedBookletPrintSettings);
+    return (
+      <Text
+        key={`booklet-label-${index}-${slot.label}`}
+        x={position.x + 28}
+        y={position.y + 24}
+        text={slot.isBlank ? 'пустая страница' : `стр. ${slot.pageNumber}`}
+        fontSize={34}
+        fontStyle="bold"
+        fill={slot.isBlank ? '#9aa7a0' : '#2f7d52'}
+        listening={false}
+      />
+    );
+  }) : null;
 
   const commonPageLayerProps = {
     canvas,
@@ -1454,6 +1570,10 @@ export default function App() {
         {isBooklet ? (
           <div className="spread-actions booklet-actions">
             <label className="booklet-sheets-control"><span>Листов в блоке</span><select value={bookletSheetsPerBlock} onChange={(event) => updateBookletSheetsPerBlock(event.target.value)}>{[1, 2, 3, 4].map((count) => <option key={count} value={count}>{count} лист. / {count * 4} стр.</option>)}</select></label>
+            <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.showFoldLine} onChange={(event) => updateBookletPrintSetting('showFoldLine', event.target.checked)} /><span>Сгиб</span></label>
+            <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.showCropMarks} onChange={(event) => updateBookletPrintSetting('showCropMarks', event.target.checked)} /><span>Метки реза</span></label>
+            <label className="booklet-sheets-control booklet-number-control"><span>Зазор px</span><input type="number" min="0" max={MAX_BOOKLET_PRINT_GAP} value={normalizedBookletPrintSettings.gap} onChange={(event) => updateBookletPrintSetting('gap', event.target.value)} /></label>
+            <label className="booklet-sheets-control booklet-number-control"><span>Поля px</span><input type="number" min="0" max={MAX_BOOKLET_PRINT_MARGIN} value={normalizedBookletPrintSettings.margin} onChange={(event) => updateBookletPrintSetting('margin', event.target.value)} /></label>
             <button className="small-button" onClick={() => goBookletSide(-1)} disabled={!currentBookletSide || bookletPlan.sides[0]?.id === currentBookletSide.id}>← сторона</button>
             <button className="small-button" onClick={toggleBookletSheetSide} disabled={!currentBookletSide}>{currentBookletSide?.side === BOOKLET_SIDE_FRONT ? 'Оборот листа' : 'Лицевая листа'}</button>
             <button className="small-button" onClick={() => goBookletSide(1)} disabled={!currentBookletSide || bookletPlan.sides[bookletPlan.sides.length - 1]?.id === currentBookletSide.id}>сторона →</button>
@@ -1568,7 +1688,7 @@ export default function App() {
         <section className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px` }}>
           <div className="canvas-toolbar">
             <div>
-              <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${canvas.width * 2}×${canvas.height}px` : isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)} · ${canvas.width}×${canvas.height}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px`}</strong>
+              <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${stageRealWidth}×${stageRealHeight}px` : isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)} · ${canvas.width}×${canvas.height}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px`}</strong>
               <span>{isBooklet ? 'Просмотр физической стороны А4: слева и справа показаны страницы, которые будут напечатаны рядом.' : locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span>
               <em>{isBooklet ? 'Это режим просмотра и PNG-экспорта брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.'}</em>
             </div>
@@ -1577,13 +1697,14 @@ export default function App() {
           </div>
 
           <div className={`stage-frame ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''}`} style={{ width: stageDisplayWidth, height: stageDisplayHeight }} onDragOver={(event) => { if (!isBooklet) event.preventDefault(); }} onDrop={isBooklet ? undefined : dropPhoto}>
-            <div className="stage-scale-shell" style={{ width: stageRealWidth, height: canvas.height, transform: `scale(${previewScale})` }}>
-              <Stage ref={stageRef} width={stageRealWidth} height={canvas.height} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); } }}>
+            <div className="stage-scale-shell" style={{ width: stageRealWidth, height: stageRealHeight, transform: `scale(${previewScale})` }}>
+              <Stage ref={stageRef} width={stageRealWidth} height={stageRealHeight} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); } }}>
                 <Layer>
+                  {isBooklet && <BookletSheetBackground canvas={canvas} printSettings={normalizedBookletPrintSettings} />}
                   {renderEntries}
                   {bookletLabels}
                   {isSpread && !collagePreviewOnly && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}
-                  {isBooklet && <Line points={[canvas.width, 0, canvas.width, canvas.height]} stroke="#2f7d52" strokeWidth={4} dash={[28, 18]} opacity={0.7} listening={false} />}
+                  {isBooklet && <BookletPrintGuides canvas={canvas} printSettings={normalizedBookletPrintSettings} preview />}
                 </Layer>
               </Stage>
             </div>
@@ -1628,22 +1749,26 @@ export default function App() {
       <div className="export-stage-holder" aria-hidden="true">
         <Stage ref={printPageRef} width={canvas.width} height={canvas.height}><Layer><PageLayer page={currentPage} pageIndex={currentPageIndex} x={0} {...commonPageLayerProps} /></Layer></Stage>
         <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}><Layer><PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} {...commonPageLayerProps} /><PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} {...commonPageLayerProps} /></Layer></Stage>
-        <Stage ref={printBookletRef} width={canvas.width * 2} height={canvas.height}>
+        <Stage ref={printBookletRef} width={bookletSheetSize.width} height={bookletSheetSize.height}>
           <Layer>
+            <BookletSheetBackground canvas={canvas} printSettings={normalizedBookletPrintSettings} />
             {(printBookletSide?.slots ?? []).map((slot, index) => {
               const pageIndex = slot.sourcePageIndex ?? -1;
+              const position = getBookletPagePosition(index, canvas, normalizedBookletPrintSettings);
               return (
                 <React.Fragment key={`print-booklet-${printBookletSide?.id ?? 'empty'}-${index}`}>
                   <PageLayer
                     page={slot.sourcePageIndex == null ? null : pages[slot.sourcePageIndex]}
                     pageIndex={pageIndex}
-                    x={index * canvas.width}
+                    x={position.x}
+                    y={position.y}
                     {...commonPageLayerProps}
                   />
-                  <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={index * canvas.width} />
+                  <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={position.x} y={position.y} />
                 </React.Fragment>
               );
             })}
+            <BookletPrintGuides canvas={canvas} printSettings={normalizedBookletPrintSettings} />
           </Layer>
         </Stage>
       </div>

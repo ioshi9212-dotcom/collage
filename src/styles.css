@@ -2395,3 +2395,54 @@ body[data-album-mode='templates'] .three-columns {
   background: #faf8f4;
   color: #8d7d70;
 }
+
+/* ===== Patch 16: booklet print settings ===== */
+.booklet-actions {
+  flex-wrap: wrap !important;
+}
+
+.booklet-sheets-control input {
+  min-height: 34px;
+  border: 1px solid #dfe8e2;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2723;
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.booklet-number-control {
+  min-width: 96px !important;
+}
+
+.booklet-number-control input {
+  width: 96px;
+  padding: 0 8px;
+}
+
+.booklet-print-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  align-self: end;
+  border: 1px solid #dfe8e2;
+  border-radius: 4px;
+  background: #ffffff;
+  padding: 0 10px;
+  color: #244c37;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.booklet-print-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: #2f7d52;
+}
+
+.booklet-stage .konvajs-content {
+  background: #ffffff;
+}
