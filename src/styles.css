@@ -2031,3 +2031,20 @@ button.small-button {
   color: #9b3030 !important;
 }
 
+/* ===== Patch 07: canvas viewport should match the scaled canvas, not the logical full-size canvas ===== */
+.stage-frame {
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.stage-scale-shell {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  transform-origin: top left !important;
+}
+
+.stage-frame .konvajs-content {
+  display: block !important;
+}

@@ -491,7 +491,7 @@
   function ensureOverlay() {
     const shell = document.querySelector('.stage-scale-shell');
     if (!shell) return null;
-    shell.style.position = shell.style.position || 'relative';
+    shell.style.position = 'absolute';
     let overlay = shell.querySelector('.album-layer-overlay');
     if (!overlay) {
       overlay = document.createElement('div');
