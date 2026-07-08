@@ -2529,3 +2529,38 @@ body[data-album-mode='templates'] .three-columns {
     min-width: 100%;
   }
 }
+
+/* ===== Patch 21: four-column layout for layer modes after page rail ===== */
+body[data-album-mode='text'] .three-columns,
+body[data-album-mode='drawings'] .three-columns,
+body[data-album-mode='templates'] .three-columns {
+  grid-template-columns: 220px 92px max-content 250px !important;
+}
+
+body[data-album-mode='text'] .album-mode-sidebar,
+body[data-album-mode='drawings'] .album-mode-sidebar,
+body[data-album-mode='templates'] .album-mode-sidebar {
+  max-height: calc(100vh - 205px);
+  overflow: auto;
+}
+
+body[data-album-mode='text'] .album-mode-inspector,
+body[data-album-mode='drawings'] .album-mode-inspector,
+body[data-album-mode='templates'] .album-mode-inspector {
+  max-height: calc(100vh - 205px);
+  overflow: auto;
+}
+
+@media (max-width: 1180px) {
+  body[data-album-mode='text'] .three-columns,
+  body[data-album-mode='drawings'] .three-columns,
+  body[data-album-mode='templates'] .three-columns {
+    grid-template-columns: 210px 86px max-content !important;
+  }
+
+  body[data-album-mode='text'] .album-mode-inspector,
+  body[data-album-mode='drawings'] .album-mode-inspector,
+  body[data-album-mode='templates'] .album-mode-inspector {
+    display: none !important;
+  }
+}

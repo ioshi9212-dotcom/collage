@@ -313,3 +313,22 @@ body[data-album-mode='templates'] .canvas-toolbar .small-button {
     width: auto;
   }
 }
+
+/* ===== Patch 21: text mode uses text editor panels, not the photo sidebar ===== */
+body[data-album-mode='text'] .workspace > .sidebar,
+body[data-album-mode='drawings'] .workspace > .sidebar,
+body[data-album-mode='templates'] .workspace > .sidebar {
+  display: none !important;
+}
+
+body[data-album-mode='text'] .album-mode-sidebar,
+body[data-album-mode='drawings'] .album-mode-sidebar,
+body[data-album-mode='templates'] .album-mode-sidebar {
+  display: grid !important;
+}
+
+body[data-album-mode='text'] .album-mode-inspector,
+body[data-album-mode='drawings'] .album-mode-inspector,
+body[data-album-mode='templates'] .album-mode-inspector {
+  display: grid !important;
+}

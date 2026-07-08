@@ -252,6 +252,7 @@
   function ensureModePanels() {
     const workspace = document.querySelector('.workspace');
     const canvasArea = document.querySelector('.canvas-area');
+    const pageRail = workspace?.querySelector(':scope > .page-rail');
     if (!workspace || !canvasArea) return { left: null, right: null };
 
     let left = workspace.querySelector(':scope > .album-mode-sidebar');
@@ -260,7 +261,11 @@
     if (!left) {
       left = document.createElement('aside');
       left.className = 'album-mode-sidebar';
-      workspace.insertBefore(left, canvasArea);
+    }
+
+    const leftAnchor = pageRail || canvasArea;
+    if (left.nextElementSibling !== leftAnchor) {
+      workspace.insertBefore(left, leftAnchor);
     }
 
     if (!right) {
