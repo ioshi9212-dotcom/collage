@@ -1962,8 +1962,8 @@ export default function App() {
               <span className="control-label">Навигация</span>
               <button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← Разворот</button>
               <button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>Разворот →</button>
-              <button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>'Направляющие'</button>
-              <button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>'Сетка окон'</button>
+              <button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>Направляющие</button>
+              <button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>Сетка окон</button>
             </div>
           )}
         </div>

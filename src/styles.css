@@ -1428,48 +1428,6 @@ select {
   background: rgba(255,255,255,0.6) !important;
 }
 
-
-/* Toggle cleanup: make guide/grid buttons read as switches, not stuck action buttons. */
-.spread-actions > .small-button:nth-child(3),
-.spread-actions > .small-button:nth-child(4) {
-  min-width: 104px !important;
-  position: relative;
-}
-
-.spread-actions > .small-button:nth-child(3)::after,
-.spread-actions > .small-button:nth-child(4)::after {
-  font-size: 12px !important;
-}
-
-.spread-actions > .small-button:nth-child(3).active-mode::after {
-  content: '✓ Направляющие' !important;
-}
-
-.spread-actions > .small-button:nth-child(3):not(.active-mode)::after {
-  content: 'Направляющие' !important;
-}
-
-.spread-actions > .small-button:nth-child(4).active-mode::after {
-  content: '✓ Сетка' !important;
-}
-
-.spread-actions > .small-button:nth-child(4):not(.active-mode)::after {
-  content: 'Сетка' !important;
-}
-
-.spread-actions > .small-button.active-mode {
-  border-color: #25282d !important;
-  background: #25282d !important;
-  color: #ffffff !important;
-}
-
-.spread-actions > .small-button:not(.active-mode) {
-  border-color: rgba(35, 38, 43, 0.18) !important;
-  background: #ffffff !important;
-  color: #25282d !important;
-}
-
-
 /* Theme pass: remove beige UI and keep eucalyptus green as the main accent. */
 :root {
   --eucalyptus: #4f8f74;
@@ -2475,4 +2433,29 @@ body[data-album-mode='templates'] .three-columns {
   .album-mode-inspector {
     display: none !important;
   }
+}
+
+/* Clean full build 05: guide/grid buttons are real buttons, no pseudo labels */
+.spread-actions > .small-button::before,
+.spread-actions > .small-button::after,
+.spread-actions > .small-button:nth-child(n)::before,
+.spread-actions > .small-button:nth-child(n)::after {
+  content: none !important;
+  display: none !important;
+}
+
+.spread-actions > .small-button {
+  position: static !important;
+}
+
+.spread-actions > .small-button.active-mode {
+  border-color: var(--ui-green-dark, #2f7d52) !important;
+  background: var(--ui-green, #4f8f74) !important;
+  color: #ffffff !important;
+}
+
+.spread-actions > .small-button:not(.active-mode) {
+  border-color: var(--ui-card-border, rgba(63, 44, 34, 0.1)) !important;
+  background: #ffffff !important;
+  color: var(--ui-text, #2d2825) !important;
 }
