@@ -1640,15 +1640,38 @@ export default function App() {
     };
   }
 
-  function save() {
+  function saveLocalProject({ notify = true, throwOnError = false } = {}) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(project()));
-      show('Альбом сохранён');
+      const data = project();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      if (notify) show('Альбом сохранён');
+      return data;
     } catch (error) {
       console.error(error);
-      show('Не удалось сохранить: проект слишком большой. Скачай JSON или очисти лишние фото.');
+      if (notify) show('Не удалось сохранить: проект слишком большой. Скачай JSON или очисти лишние фото.');
+      if (throwOnError) throw error;
+      return null;
     }
   }
+
+  function save() {
+    saveLocalProject();
+  }
+
+  useEffect(() => {
+    const bridge = {
+      getProject: () => project(),
+      saveLocal: () => saveLocalProject({ notify: false, throwOnError: true }),
+    };
+
+    window.__collageApp = { ...(window.__collageApp || {}), ...bridge };
+
+    return () => {
+      if (window.__collageApp?.getProject === bridge.getProject) delete window.__collageApp.getProject;
+      if (window.__collageApp?.saveLocal === bridge.saveLocal) delete window.__collageApp.saveLocal;
+      if (window.__collageApp && Object.keys(window.__collageApp).length === 0) delete window.__collageApp;
+    };
+  }, [canvas, settings, library, pages, album.currentPageId, viewMode, bookletSheetsPerBlock, normalizedBookletPrintSettings, albumMode]);
 
   function normalizePages(data, nextCanvas, nextSettings) {
     if (Array.isArray(data.pages) && data.pages.length) {
