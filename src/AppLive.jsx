@@ -2091,9 +2091,9 @@ export default function App() {
                   onDragOver={(event) => dragOverPage(event, index)}
                   onDrop={(event) => dropPage(event, index)}
                   onDragEnd={finishPageDrag}
-                  title="Перетащи вверх или вниз, чтобы изменить порядок страниц"
+                  title="Перетащи карточку вверх или вниз, чтобы изменить порядок страниц"
                 >
-                  <div className="page-rail-card-top"><b>{pageNumber}</b><i className="page-rail-drag-handle" aria-hidden="true">⋮⋮</i></div>
+                  <div className="page-rail-card-top"><b>{pageNumber}</b></div>
                   <span>{metaText}</span>
                   <small>{pairText}</small>
                 </button>
