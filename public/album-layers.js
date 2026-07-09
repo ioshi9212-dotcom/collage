@@ -3,6 +3,29 @@
   const MODE_KEY = 'collage-album-editor-mode';
   const PROJECT_PREFIX = 'collage-creator-album';
   const SPREAD_GAP = 90;
+  const DEFAULT_FONT_ID = 'manrope';
+  const DEFAULT_TEXT_PRESET_ID = 'body';
+  const TEXT_FONTS = [
+    { id: 'system', label: 'Обычный', family: 'Arial, sans-serif' },
+    { id: 'manrope', label: 'Мягкий обычный', family: "'Manrope', Arial, sans-serif" },
+    { id: 'montserrat', label: 'Современный', family: "'Montserrat', Arial, sans-serif" },
+    { id: 'rubik', label: 'Аккуратный', family: "'Rubik', Arial, sans-serif" },
+    { id: 'lora', label: 'Книжный', family: "'Lora', Georgia, serif" },
+    { id: 'playfair', label: 'Красивый заголовок', family: "'Playfair Display', Georgia, serif" },
+    { id: 'cormorant', label: 'Элегантный', family: "'Cormorant Garamond', Georgia, serif" },
+    { id: 'oswald', label: 'Строгий заголовок', family: "'Oswald', Arial, sans-serif" },
+    { id: 'marck', label: 'Рукописный', family: "'Marck Script', cursive" },
+    { id: 'caveat', label: 'Живая подпись', family: "'Caveat', cursive" },
+    { id: 'bad-script', label: 'Нежная подпись', family: "'Bad Script', cursive" },
+  ];
+  const TEXT_PRESETS = [
+    { id: 'body', label: 'Обычный', text: 'Новый текст', fontId: 'manrope', fontSize: 56, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.18, color: '#1f2723' },
+    { id: 'title', label: 'Заголовок', text: 'Заголовок', fontId: 'playfair', fontSize: 96, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.05, color: '#1f2723' },
+    { id: 'soft-title', label: 'Нежный', text: 'Нежный заголовок', fontId: 'cormorant', fontSize: 92, fontWeight: 600, fontStyle: 'normal', lineHeight: 1.06, color: '#2a312e' },
+    { id: 'strict', label: 'Строгий', text: 'Строгий текст', fontId: 'oswald', fontSize: 72, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.08, color: '#1f2723' },
+    { id: 'script', label: 'Рукописный', text: 'Рукописная подпись', fontId: 'marck', fontSize: 88, fontWeight: 400, fontStyle: 'normal', lineHeight: 1.1, color: '#1f2723' },
+    { id: 'signature', label: 'Подпись', text: 'Тёплая подпись', fontId: 'caveat', fontSize: 92, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.0, color: '#1f2723' },
+  ];
 
   const state = {
     mode: localStorage.getItem(MODE_KEY) || 'collage',
@@ -15,6 +38,62 @@
 
   function makeId() {
     return globalThis.crypto?.randomUUID?.() || `text_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+
+  function fontById(id) {
+    return TEXT_FONTS.find((font) => font.id === id) || TEXT_FONTS.find((font) => font.id === DEFAULT_FONT_ID) || TEXT_FONTS[0];
+  }
+
+  function presetById(id) {
+    return TEXT_PRESETS.find((preset) => preset.id === id) || TEXT_PRESETS.find((preset) => preset.id === DEFAULT_TEXT_PRESET_ID) || TEXT_PRESETS[0];
+  }
+
+  function fontFamilyForItem(item) {
+    if (item?.fontFamily) return item.fontFamily;
+    return fontById(item?.fontId).family;
+  }
+
+  function fontLabelForItem(item) {
+    return fontById(item?.fontId).label;
+  }
+
+  function normalizedTextStyle(item) {
+    const fontWeight = Number(item?.fontWeight) || 500;
+    const fontStyle = item?.fontStyle === 'italic' ? 'italic' : 'normal';
+    const lineHeight = Number(item?.lineHeight) || 1.18;
+    return { fontWeight, fontStyle, lineHeight };
+  }
+
+  function createTextItem(presetId = DEFAULT_TEXT_PRESET_ID) {
+    const canvas = currentCanvas();
+    const preset = presetById(presetId);
+    return {
+      id: makeId(),
+      x: Math.round(canvas.width * 0.12),
+      y: Math.round(canvas.height * 0.12),
+      width: Math.min(720, Math.round(canvas.width * 0.62)),
+      text: preset.text,
+      fontId: preset.fontId,
+      fontFamily: fontById(preset.fontId).family,
+      fontSize: preset.fontSize,
+      fontWeight: preset.fontWeight,
+      fontStyle: preset.fontStyle,
+      lineHeight: preset.lineHeight,
+      color: preset.color,
+    };
+  }
+
+  function applyTextPreset(item, presetId) {
+    const preset = presetById(presetId);
+    Object.assign(item, {
+      fontId: preset.fontId,
+      fontFamily: fontById(preset.fontId).family,
+      fontSize: preset.fontSize,
+      fontWeight: preset.fontWeight,
+      fontStyle: preset.fontStyle,
+      lineHeight: preset.lineHeight,
+      color: item.color || preset.color,
+    });
   }
 
   function loadLayers() {
@@ -192,18 +271,9 @@
     showNotice(messages[mode] || 'Режим переключён');
   }
 
-  function addText() {
-    const canvas = currentCanvas();
+  function addText(presetId = DEFAULT_TEXT_PRESET_ID) {
     const pageNumber = activePageNumber();
-    const item = {
-      id: makeId(),
-      x: Math.round(canvas.width * 0.12),
-      y: Math.round(canvas.height * 0.12),
-      width: Math.min(680, Math.round(canvas.width * 0.62)),
-      text: 'Новый текст',
-      fontSize: 56,
-      color: '#1f2723',
-    };
+    const item = createTextItem(presetId);
     pageTexts(pageNumber).push(item);
     state.selectedTextId = item.id;
     state.mode = 'text';
@@ -320,7 +390,12 @@
     const actions = document.createElement('div');
     actions.className = 'album-mode-actions';
     if (state.mode === 'text') {
-      actions.append(actionButton('+ Текст', addText, 'primary'), actionButton('PNG вида + текст', exportCurrentViewWithText));
+      actions.append(
+        actionButton('+ Текст', () => addText('body'), 'primary'),
+        actionButton('+ Заголовок', () => addText('title')),
+        actionButton('+ Подпись', () => addText('signature')),
+        actionButton('PNG вида + текст', exportCurrentViewWithText)
+      );
     } else if (state.mode === 'drawings') {
       actions.append(actionButton('+ Рисунок', () => showNotice('Рисунки пока пустые. Потом добавим библиотеку.')));
     } else if (state.mode === 'templates') {
@@ -395,6 +470,19 @@
     return node;
   }
 
+  function select(value, options, onInput) {
+    const node = document.createElement('select');
+    options.forEach((option) => {
+      const item = document.createElement('option');
+      item.value = option.value;
+      item.textContent = option.label;
+      node.append(item);
+    });
+    node.value = value ?? options[0]?.value ?? '';
+    node.addEventListener('change', () => onInput(node.value));
+    return node;
+  }
+
   function textarea(value, onInput) {
     const node = document.createElement('textarea');
     node.value = value ?? '';
@@ -424,7 +512,7 @@
       const name = document.createElement('strong');
       name.textContent = item.text?.trim() || `Текст ${index + 1}`;
       const meta = document.createElement('small');
-      meta.textContent = `x ${Math.round(item.x || 0)}, y ${Math.round(item.y || 0)} · ${Math.round(item.fontSize || 56)} px`;
+      meta.textContent = `${fontLabelForItem(item)} · ${Math.round(item.fontSize || 56)} px · x ${Math.round(item.x || 0)}, y ${Math.round(item.y || 0)}`;
       card.append(name, meta);
       card.addEventListener('click', () => {
         state.selectedTextId = item.id;
@@ -448,6 +536,46 @@
     const textArea = textarea(selected.text, (value) => updateSelected({ text: value }));
     const sizeInput = input('number', selected.fontSize, (value) => updateSelected({ fontSize: clampNumber(value, 12, 220) }));
     const colorInput = input('color', selected.color || '#1f2723', (value) => updateSelected({ color: value }));
+    const fontSelect = select(selected.fontId || DEFAULT_FONT_ID, TEXT_FONTS.map((font) => ({ value: font.id, label: font.label })), (value) => updateSelected({ fontId: value, fontFamily: fontById(value).family }, { renderPanels: true }));
+    const weightSelect = select(String(selected.fontWeight || 500), [
+      { value: '400', label: 'Обычный' },
+      { value: '500', label: 'Средний' },
+      { value: '600', label: 'Полужирный' },
+      { value: '700', label: 'Жирный' },
+      { value: '800', label: 'Очень жирный' },
+    ], (value) => updateSelected({ fontWeight: Number(value) }));
+    const styleSelect = select(selected.fontStyle || 'normal', [
+      { value: 'normal', label: 'Прямой' },
+      { value: 'italic', label: 'Курсив' },
+    ], (value) => updateSelected({ fontStyle: value }));
+    const lineHeightInput = input('number', selected.lineHeight || 1.18, (value) => updateSelected({ lineHeight: clampNumber(value, 0.8, 2.2) }));
+    lineHeightInput.step = '0.02';
+
+    const styleGrid = document.createElement('div');
+    styleGrid.className = 'album-style-grid';
+    TEXT_PRESETS.forEach((preset) => {
+      const chip = actionButton(preset.label, () => {
+        const item = selectedItem();
+        if (!item) return;
+        applyTextPreset(item, preset.id);
+        saveLayers();
+        render();
+      }, 'album-style-chip');
+      chip.style.fontFamily = fontById(preset.fontId).family;
+      chip.classList.toggle('active', selected.fontId === preset.fontId && Math.round(Number(selected.fontSize || 0)) === Math.round(Number(preset.fontSize || 0)));
+      styleGrid.append(chip);
+    });
+
+    const preview = document.createElement('div');
+    preview.className = 'album-font-preview';
+    preview.style.fontFamily = fontFamilyForItem(selected);
+    preview.style.fontWeight = String(selected.fontWeight || 500);
+    preview.style.fontStyle = selected.fontStyle || 'normal';
+    const previewTitle = document.createElement('strong');
+    previewTitle.textContent = selected.text?.trim()?.slice(0, 40) || 'Пример текста';
+    const previewNote = document.createElement('small');
+    previewNote.textContent = `Шрифт: ${fontLabelForItem(selected)}`;
+    preview.append(previewTitle, previewNote);
 
     const geometry = document.createElement('div');
     geometry.className = 'album-geometry-grid';
@@ -460,6 +588,8 @@
 
     right.append(
       block('Содержание', [editField('Текст', textArea)]),
+      block('Готовые стили', [styleGrid]),
+      block('Шрифт', [editField('Гарнитура', fontSelect), editField('Насыщенность', weightSelect), editField('Начертание', styleSelect), editField('Интервал строк', lineHeightInput), preview]),
       block('Внешний вид', [editField('Цвет', colorInput), geometry]),
       block(null, [actionButton('Удалить текст', deleteSelected, 'danger')])
     );
@@ -522,6 +652,11 @@
         div.style.left = `${x + Number(item.x || 0)}px`;
         div.style.top = `${Number(item.y || 0)}px`;
         div.style.width = `${Number(item.width || 500)}px`;
+        const textStyle = normalizedTextStyle(item);
+        div.style.fontFamily = fontFamilyForItem(item);
+        div.style.fontWeight = String(textStyle.fontWeight);
+        div.style.fontStyle = textStyle.fontStyle;
+        div.style.lineHeight = String(textStyle.lineHeight);
         div.style.fontSize = `${Number(item.fontSize || 56)}px`;
         div.style.color = item.color || '#1f2723';
         div.dataset.id = item.id;
@@ -588,7 +723,7 @@
     if (shouldRenderPanels) renderSidePanels();
   }
 
-  function exportCurrentViewWithText() {
+  async function exportCurrentViewWithText() {
     const shell = document.querySelector('.stage-scale-shell');
     const stageCanvas = shell?.querySelector('.konvajs-content canvas');
     if (!shell || !stageCanvas) return showNotice('Не нашла холст для экспорта');
@@ -598,12 +733,18 @@
     const output = document.createElement('canvas');
     output.width = stageCanvas.width;
     output.height = stageCanvas.height;
+    try {
+      await document.fonts?.ready;
+    } catch {
+      // ignore font loading errors, browser fallbacks will be used
+    }
+
     const ctx = output.getContext('2d');
     ctx.drawImage(stageCanvas, 0, 0);
 
     visiblePages().forEach(({ pageNumber, x }) => {
       pageTexts(pageNumber).forEach((item) => {
-        drawWrappedText(ctx, item.text || '', (x + Number(item.x || 0)) * ratio, Number(item.y || 0) * ratio, Number(item.width || 500) * ratio, Number(item.fontSize || 56) * ratio, item.color || '#1f2723');
+        drawWrappedText(ctx, item, (x + Number(item.x || 0)) * ratio, Number(item.y || 0) * ratio, Number(item.width || 500) * ratio, Number(item.fontSize || 56) * ratio);
       });
     });
 

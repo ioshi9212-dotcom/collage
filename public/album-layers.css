@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Bad+Script&family=Caveat:wght@400;700&family=Cormorant+Garamond:wght@400;500;600;700&family=Lora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Marck+Script&family=Montserrat:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Rubik:wght@400;500;600;700&display=swap');
+
 :root {
   --album-green: #4f8f74;
   --album-green-dark: #3f7560;
@@ -231,7 +233,8 @@ body[data-album-mode='templates'] .canvas-toolbar .small-button {
 }
 
 .album-edit-field textarea,
-.album-edit-field input {
+.album-edit-field input,
+.album-edit-field select {
   min-height: 34px;
   border: 1px solid var(--album-line);
   border-radius: 4px;
@@ -245,6 +248,51 @@ body[data-album-mode='templates'] .canvas-toolbar .small-button {
 .album-edit-field textarea {
   min-height: 118px;
   resize: vertical;
+}
+
+.album-style-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.album-style-chip {
+  min-height: 34px;
+  border: 1px solid var(--album-line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--album-text);
+  padding: 6px 8px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.album-style-chip:hover,
+.album-style-chip.active {
+  border-color: var(--album-green);
+  background: var(--album-soft);
+}
+
+.album-font-preview {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--album-line);
+  border-radius: 7px;
+  background: #fff;
+  padding: 10px;
+}
+
+.album-font-preview strong {
+  color: var(--album-text);
+  font-size: 24px;
+  line-height: 1.08;
+}
+
+.album-font-preview small {
+  color: var(--album-muted);
+  font-size: 11px;
 }
 
 .album-geometry-grid {
@@ -269,7 +317,7 @@ body[data-album-mode='templates'] .canvas-toolbar .small-button {
   border-radius: 4px;
   background: transparent;
   color: #1f2723;
-  font-family: Arial, sans-serif;
+  font-family: var(--album-selected-font, Arial, sans-serif);
   line-height: 1.18;
   white-space: pre-wrap;
   word-break: break-word;

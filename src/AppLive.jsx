@@ -937,6 +937,30 @@ function textLayersForPage(extraLayers, pageIndex) {
   return Array.isArray(page?.texts) ? page.texts : [];
 }
 
+const TEXT_FONT_FAMILIES = {
+  system: 'Arial, sans-serif',
+  manrope: "'Manrope', Arial, sans-serif",
+  montserrat: "'Montserrat', Arial, sans-serif",
+  rubik: "'Rubik', Arial, sans-serif",
+  lora: "'Lora', Georgia, serif",
+  playfair: "'Playfair Display', Georgia, serif",
+  cormorant: "'Cormorant Garamond', Georgia, serif",
+  oswald: "'Oswald', Arial, sans-serif",
+  marck: "'Marck Script', cursive",
+  caveat: "'Caveat', cursive",
+  'bad-script': "'Bad Script', cursive",
+};
+
+function textFontFamily(item) {
+  return item?.fontFamily || TEXT_FONT_FAMILIES[item?.fontId] || TEXT_FONT_FAMILIES.manrope;
+}
+
+function textFontStyle(item) {
+  const style = item?.fontStyle === 'italic' ? 'italic' : 'normal';
+  const weight = Number(item?.fontWeight) || 500;
+  return `${style} ${weight}`;
+}
+
 function ExtraPageLayers({ extraLayers, pageIndex, x = 0, y = 0 }) {
   const texts = textLayersForPage(extraLayers, pageIndex);
   if (!texts.length) return null;
@@ -953,8 +977,9 @@ function ExtraPageLayers({ extraLayers, pageIndex, x = 0, y = 0 }) {
             width={Math.max(1, Number(item.width) || 500)}
             text={String(item.text ?? '')}
             fontSize={fontSize}
-            fontFamily="Arial, sans-serif"
-            lineHeight={1.18}
+            fontFamily={textFontFamily(item)}
+            fontStyle={textFontStyle(item)}
+            lineHeight={Number(item.lineHeight) || 1.18}
             fill={item.color || '#1f2723'}
             wrap="word"
             listening={false}
@@ -1746,10 +1771,19 @@ export default function App() {
     event.target.value = '';
   }
 
+  async function waitForFonts() {
+    try {
+      await document.fonts?.ready;
+    } catch {
+      // Browser font loading API is optional. If it fails, export with fallbacks.
+    }
+  }
+
   function exportPng(stageRefToExport, filename, message) {
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    requestAnimationFrame(() => requestAnimationFrame(async () => {
+      await waitForFonts();
       const uri = stageRefToExport.current?.toDataURL({ pixelRatio: EXPORT_RATIO, mimeType: 'image/png' });
       if (!uri) return show('Не получилось собрать PNG');
       downloadDataUrl(filename, uri);
@@ -1758,7 +1792,10 @@ export default function App() {
   }
 
   function nextPaint() {
-    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(async () => {
+      await waitForFonts();
+      resolve();
+    })));
   }
 
   function bookletSideFilename(sideData) {
