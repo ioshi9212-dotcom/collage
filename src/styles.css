@@ -2222,240 +2222,245 @@ body[data-album-mode='templates'] .album-mode-inspector {
   }
 }
 
-/* Clean full build 04: workspace scale and layout polish */
+/* Clean top layout: document/file/page controls. No pseudo labels, no nth-child button names. */
+
 .app-shell {
-  width: min(1760px, calc(100vw - 20px)) !important;
-  padding: 12px 10px 28px !important;
+  width: min(1580px, calc(100vw - 24px));
+  padding: 16px 12px 30px;
 }
 
 .topbar {
-  display: grid !important;
-  grid-template-columns: minmax(260px, 1fr) max-content !important;
-  align-items: start !important;
-  gap: 12px !important;
-  margin-bottom: 10px !important;
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(520px, max-content);
+  align-items: start;
+  gap: 14px;
+  margin-bottom: 10px;
 }
 
-h1 {
-  font-size: clamp(32px, 3vw, 42px) !important;
+.topbar > div:first-child {
+  min-width: 0;
 }
 
 .eyebrow {
-  margin-bottom: 3px !important;
-  font-size: 11px !important;
+  margin-bottom: 2px;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(34px, 3vw, 44px);
+  line-height: 0.95;
 }
 
 .topbar-actions {
-  max-width: none !important;
-  align-self: start !important;
+  justify-self: end;
+  width: fit-content;
+  max-width: 100%;
+  padding: 11px 12px;
+  border-radius: 8px;
 }
 
-.document-panel,
-.clean-control-panel {
-  max-width: calc(100vw - 32px) !important;
+.topbar-actions .section-title {
+  margin-bottom: 8px;
+}
+
+.topbar-actions .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.topbar-actions .button {
+  min-height: 34px;
+  padding-inline: 13px;
+  white-space: nowrap;
 }
 
 .document-panel {
-  margin-bottom: 8px !important;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 8px;
+  padding: 11px 12px;
+  border-radius: 8px;
+}
+
+.document-panel .section-title {
+  margin-bottom: 8px;
 }
 
 .document-grid {
-  grid-template-columns: 260px 100px 100px 92px 92px 92px !important;
-  gap: 7px !important;
+  display: grid;
+  grid-template-columns: 255px 96px 96px 92px 86px 86px;
+  align-items: end;
+  gap: 8px;
+}
+
+.document-grid .field {
+  min-width: 0;
+}
+
+.document-grid .field span {
+  margin-bottom: 4px;
+  font-size: 10px;
+  line-height: 1.1;
 }
 
 .document-grid .field input,
 .document-grid .field select {
-  min-height: 32px !important;
+  min-height: 32px;
+  height: 32px;
+  padding: 0 10px;
 }
 
 .clean-control-panel {
-  gap: 8px !important;
-  margin-bottom: 8px !important;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
 }
 
 .control-row {
-  align-items: center !important;
-  gap: 6px 8px !important;
-}
-
-.control-label {
-  min-height: 30px !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .album-head {
-  min-width: 128px !important;
+  min-width: 140px;
+  padding-right: 8px;
+  border-right: 1px solid rgba(63, 44, 34, 0.08);
+}
+
+.album-head strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.album-head span {
+  display: block;
+  max-width: 145px;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control-label {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  margin-left: 2px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #9b8172;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.album-actions,
+.view-switch,
+.spread-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
 }
 
 .small-button {
-  min-height: 30px !important;
-  padding: 0 9px !important;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-.button {
-  min-height: 32px !important;
-}
-
-.workspace.three-columns,
-.three-columns {
-  grid-template-columns: 190px 78px max-content 220px !important;
-  justify-content: center !important;
-  align-items: start !important;
-  gap: 10px !important;
-}
-
-.sidebar {
-  width: 190px !important;
-}
-
-.page-rail {
-  width: 78px !important;
-  padding: 8px !important;
-}
-
-.inspector {
-  width: 220px !important;
-  padding: 10px !important;
-}
-
-.album-mode-sidebar {
-  width: 190px !important;
-}
-
-.album-mode-inspector {
-  width: 220px !important;
-}
-
-.canvas-area {
-  padding: 10px !important;
-}
-
-.canvas-toolbar {
-  gap: 8px !important;
-  margin-bottom: 8px !important;
-}
-
-.canvas-toolbar strong {
-  font-size: 14px !important;
-}
-
-.canvas-toolbar span,
-.canvas-toolbar em {
-  font-size: 12px !important;
-  line-height: 1.35 !important;
-}
-
-/* The scaled Konva shell used to create false internal scrollbars because
-   the browser measured its real 1480/2100 size before transform.
-   The shell now occupies the scaled preview box, so the page scroll handles overflow. */
-.stage-frame {
-  display: grid !important;
-  place-items: start center !important;
-  min-height: 0 !important;
-  max-height: none !important;
-  overflow: hidden !important;
-  padding: 9px !important;
-}
-
-.stage-scale-shell {
-  width: 100% !important;
-  height: 100% !important;
-}
-
-.stage-frame .konvajs-content {
-  box-shadow: 0 14px 28px rgba(31, 45, 39, 0.13) !important;
-}
-
-.page-rail-card {
-  min-height: 66px !important;
-  padding: 7px 6px !important;
-}
-
-.page-rail-card-top {
-  justify-content: flex-start !important;
-}
-
-.page-rail-card b {
-  font-size: 20px !important;
-}
-
-.page-rail-card span,
-.page-rail-card small {
-  font-size: 9.5px !important;
-}
-
-.booklet-control-grid {
-  max-width: min(100%, 1260px) !important;
-}
-
-.booklet-export-buttons .primary-accent {
-  min-width: 180px !important;
-}
-
-/* In text/drawing/template modes: editor panel | pages | canvas | settings */
-body[data-album-mode='text'] .three-columns,
-body[data-album-mode='drawings'] .three-columns,
-body[data-album-mode='templates'] .three-columns {
-  grid-template-columns: 190px 78px max-content 220px !important;
-}
-
-@media (max-width: 1320px) {
-  .topbar {
-    grid-template-columns: 1fr !important;
-  }
-
-  .topbar-actions,
-  .document-panel,
-  .clean-control-panel {
-    width: 100% !important;
-  }
-
-  .document-grid {
-    grid-template-columns: repeat(auto-fit, minmax(92px, max-content)) !important;
-  }
-
-  .document-grid .wide-field {
-    grid-column: 1 / -1 !important;
-    max-width: 260px !important;
-  }
-}
-
-@media (max-width: 1180px) {
-  .workspace.three-columns,
-  .three-columns,
-  body[data-album-mode='text'] .three-columns,
-  body[data-album-mode='drawings'] .three-columns,
-  body[data-album-mode='templates'] .three-columns {
-    grid-template-columns: 180px 72px max-content !important;
-  }
-
-  .inspector,
-  .album-mode-inspector {
-    display: none !important;
-  }
-}
-
-/* Clean full build 05: guide/grid buttons are real buttons, no pseudo labels */
 .spread-actions > .small-button::before,
 .spread-actions > .small-button::after,
 .spread-actions > .small-button:nth-child(n)::before,
-.spread-actions > .small-button:nth-child(n)::after {
+.spread-actions > .small-button:nth-child(n)::after,
+.album-actions > .small-button::before,
+.album-actions > .small-button::after,
+.view-switch > .small-button::before,
+.view-switch > .small-button::after {
   content: none !important;
   display: none !important;
 }
 
-.spread-actions > .small-button {
-  position: static !important;
+.spread-actions > .small-button,
+.album-actions > .small-button,
+.view-switch > .small-button {
+  position: static;
+  font-size: 12px;
 }
 
-.spread-actions > .small-button.active-mode {
-  border-color: var(--ui-green-dark, #2f7d52) !important;
-  background: var(--ui-green, #4f8f74) !important;
-  color: #ffffff !important;
+.spread-actions > .small-button.active-mode,
+.view-switch > .small-button.active-mode {
+  border-color: var(--ui-green-dark, #2f7d52);
+  background: var(--ui-green, #4f8f74);
+  color: #ffffff;
 }
 
-.spread-actions > .small-button:not(.active-mode) {
-  border-color: var(--ui-card-border, rgba(63, 44, 34, 0.1)) !important;
-  background: #ffffff !important;
-  color: var(--ui-text, #2d2825) !important;
+.spread-actions > .small-button:not(.active-mode),
+.view-switch > .small-button:not(.active-mode),
+.album-actions > .small-button:not(.danger) {
+  border-color: var(--ui-card-border, rgba(63, 44, 34, 0.1));
+  background: #ffffff;
+}
+
+.mode-strip {
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 8px;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.mode-strip button {
+  min-height: 31px;
+  padding-inline: 12px;
+}
+
+@media (max-width: 1320px) {
+  .topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-actions {
+    justify-self: start;
+  }
+
+  .document-grid {
+    grid-template-columns: 255px repeat(3, 96px);
+  }
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    width: min(100%, calc(100vw - 12px));
+    padding: 10px 6px 24px;
+  }
+
+  .document-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .document-grid .wide-field {
+    grid-column: 1 / -1;
+  }
+
+  .clean-control-panel,
+  .document-panel,
+  .topbar-actions,
+  .mode-strip {
+    width: 100%;
+  }
 }
