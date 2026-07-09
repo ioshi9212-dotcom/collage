@@ -8,10 +8,17 @@ const { Pool } = pg;
 const port = Number(process.env.PORT || 3000);
 const host = '0.0.0.0';
 const distDir = resolve(process.cwd(), 'dist');
-const sessionSecret = process.env.SESSION_SECRET || 'collage-dev-secret-change-me';
+const isProduction = process.env.NODE_ENV === 'production';
+const sessionSecret = process.env.SESSION_SECRET || '';
 const databaseUrl = process.env.DATABASE_URL || '';
 const jsonLimitBytes = Number(process.env.JSON_LIMIT_BYTES || 60 * 1024 * 1024);
 const publicNoCacheFiles = new Set(['cloud-auth.js', 'cloud-auth.css', 'album-layers.js', 'album-layers.css']);
+
+if (isProduction && !sessionSecret) {
+  throw new Error('SESSION_SECRET is required in production');
+}
+
+const effectiveSessionSecret = sessionSecret || 'collage-dev-secret-change-me';
 
 let pool = null;
 let dbReadyPromise = null;
@@ -19,9 +26,14 @@ let dbReadyPromise = null;
 if (databaseUrl) {
   pool = new Pool({
     connectionString: databaseUrl,
-    ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false },
+    ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: process.env.PGSSL_REJECT_UNAUTHORIZED === 'true' },
   });
 }
+
+const authAttempts = new Map();
+const AUTH_WINDOW_MS = Number(process.env.AUTH_WINDOW_MS || 15 * 60 * 1000);
+const AUTH_MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS || 20);
+const AUTH_BLOCK_MS = Number(process.env.AUTH_BLOCK_MS || 15 * 60 * 1000);
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -60,21 +72,24 @@ function sendFile(response, filePath) {
   response.writeHead(200, {
     'Content-Type': mimeTypes[extension] || 'application/octet-stream',
     'Cache-Control': cacheControlFor(filePath),
+    'X-Content-Type-Options': 'nosniff',
   });
-
   createReadStream(filePath).pipe(response);
 }
 
 function safeJoin(baseDir, requestedPath) {
-  const decodedPath = decodeURIComponent(requestedPath.split('?')[0]);
+  let decodedPath = '';
+  try {
+    decodedPath = decodeURIComponent(requestedPath.split('?')[0]);
+  } catch {
+    return null;
+  }
+
   const cleanPath = normalize(decodedPath).replace(/^[/\\]+/, '');
   const resolvedPath = resolve(join(baseDir, cleanPath));
   const baseWithSep = baseDir.endsWith(sep) ? baseDir : `${baseDir}${sep}`;
 
-  if (resolvedPath !== baseDir && !resolvedPath.startsWith(baseWithSep)) {
-    return null;
-  }
-
+  if (resolvedPath !== baseDir && !resolvedPath.startsWith(baseWithSep)) return null;
   return resolvedPath;
 }
 
@@ -97,11 +112,15 @@ function base64url(value) {
 }
 
 function sign(value) {
-  return createHmac('sha256', sessionSecret).update(value).digest('base64url');
+  return createHmac('sha256', effectiveSessionSecret).update(value).digest('base64url');
 }
 
 function makeToken(user) {
-  const payload = base64url(JSON.stringify({ id: user.id, email: user.email, exp: Date.now() + 30 * 24 * 60 * 60 * 1000 }));
+  const payload = base64url(JSON.stringify({
+    id: user.id,
+    email: user.email,
+    exp: Date.now() + 30 * 24 * 60 * 60 * 1000,
+  }));
   return `${payload}.${sign(payload)}`;
 }
 
@@ -109,6 +128,7 @@ function readToken(request) {
   const cookies = parseCookies(request.headers.cookie || '');
   const token = cookies.collage_session;
   if (!token || !token.includes('.')) return null;
+
   const [payload, signature] = token.split('.');
   const expected = sign(payload);
 
@@ -125,12 +145,13 @@ function readToken(request) {
 }
 
 function sessionCookie(token) {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  const secure = isProduction ? '; Secure' : '';
   return `collage_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}${secure}`;
 }
 
 function clearSessionCookie() {
-  return 'collage_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0';
+  const secure = isProduction ? '; Secure' : '';
+  return `collage_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
 }
 
 function hashPassword(password) {
@@ -177,6 +198,7 @@ function readBody(request) {
   return new Promise((resolveBody, rejectBody) => {
     let body = '';
     let size = 0;
+
     request.on('data', (chunk) => {
       size += chunk.length;
       if (size > jsonLimitBytes) {
@@ -186,6 +208,7 @@ function readBody(request) {
       }
       body += chunk;
     });
+
     request.on('end', () => {
       if (!body) return resolveBody({});
       try {
@@ -194,6 +217,7 @@ function readBody(request) {
         rejectBody(new Error('Invalid JSON'));
       }
     });
+
     request.on('error', rejectBody);
   });
 }
@@ -203,10 +227,56 @@ function normalizeEmail(email) {
 }
 
 function validateAuthInput(email, password) {
-  if (!email || !email.includes('@')) return 'Введите нормальный email';
-  if (!password || String(password).length < 6) return 'Пароль минимум 6 символов';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Введите нормальный email';
+  if (!password || String(password).length < 8) return 'Пароль минимум 8 символов';
+  if (String(password).length > 200) return 'Пароль слишком длинный';
   return '';
 }
+
+function clientIp(request) {
+  const forwarded = String(request.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || request.socket?.remoteAddress || 'unknown';
+}
+
+function authRateKey(request, email) {
+  return `${clientIp(request)}:${email || 'unknown'}`;
+}
+
+function checkAuthRateLimit(request, email) {
+  const now = Date.now();
+  const key = authRateKey(request, email);
+  const current = authAttempts.get(key);
+
+  if (current?.blockedUntil && current.blockedUntil > now) return false;
+
+  if (!current || now - current.firstAt > AUTH_WINDOW_MS) {
+    authAttempts.set(key, { firstAt: now, count: 1, blockedUntil: 0 });
+    return true;
+  }
+
+  current.count += 1;
+  if (current.count > AUTH_MAX_ATTEMPTS) {
+    current.blockedUntil = now + AUTH_BLOCK_MS;
+    return false;
+  }
+
+  return true;
+}
+
+function clearAuthRateLimit(request, email) {
+  authAttempts.delete(authRateKey(request, email));
+}
+
+function cleanupAuthAttempts() {
+  const now = Date.now();
+  for (const [key, value] of authAttempts.entries()) {
+    if ((value.blockedUntil && value.blockedUntil < now) || now - value.firstAt > AUTH_WINDOW_MS + AUTH_BLOCK_MS) {
+      authAttempts.delete(key);
+    }
+  }
+}
+
+setInterval(cleanupAuthAttempts, 10 * 60 * 1000).unref?.();
 
 async function requireUser(request, response) {
   const user = readToken(request);
@@ -219,7 +289,10 @@ async function requireUser(request, response) {
 
 async function handleApi(request, response) {
   if (!pool) {
-    sendJson(response, 503, { error: 'database_not_configured', message: 'DATABASE_URL is not configured' });
+    sendJson(response, 503, {
+      error: 'database_not_configured',
+      message: 'DATABASE_URL is not configured',
+    });
     return true;
   }
 
@@ -249,8 +322,14 @@ async function handleApi(request, response) {
     const email = normalizeEmail(body.email);
     const password = String(body.password || '');
     const error = validateAuthInput(email, password);
+
     if (error) {
       sendJson(response, 400, { error });
+      return true;
+    }
+
+    if (!checkAuthRateLimit(request, email)) {
+      sendJson(response, 429, { error: 'Слишком много попыток. Попробуй позже.' });
       return true;
     }
 
@@ -261,6 +340,7 @@ async function handleApi(request, response) {
           [email, hashPassword(password)]
         );
         const user = created.rows[0];
+        clearAuthRateLimit(request, email);
         sendJson(response, 200, { user }, { 'Set-Cookie': sessionCookie(makeToken(user)) });
       } catch (dbError) {
         if (dbError?.code === '23505') {
@@ -278,7 +358,9 @@ async function handleApi(request, response) {
       sendJson(response, 401, { error: 'Неверный email или пароль' });
       return true;
     }
+
     const user = { id: row.id, email: row.email };
+    clearAuthRateLimit(request, email);
     sendJson(response, 200, { user }, { 'Set-Cookie': sessionCookie(makeToken(user)) });
     return true;
   }
@@ -357,7 +439,10 @@ const server = createServer(async (request, response) => {
     }
   } catch (error) {
     console.error(error);
-    sendJson(response, 500, { error: 'server_error', message: error.message || 'Server error' });
+    sendJson(response, 500, {
+      error: 'server_error',
+      message: isProduction ? 'Server error' : error.message || 'Server error',
+    });
     return;
   }
 

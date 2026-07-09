@@ -37,9 +37,7 @@
       ...options,
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(friendlyApiError(payload));
-    }
+    if (!response.ok) throw new Error(friendlyApiError(payload));
     return payload;
   }
 
@@ -51,7 +49,12 @@
   function formatDate(value) {
     if (!value) return '';
     try {
-      return new Date(value).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return new Date(value).toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
     } catch {
       return '';
     }
@@ -88,9 +91,16 @@
   }
 
   function clickLocalSave() {
-    const buttons = Array.from(document.querySelectorAll('button'));
-    const saveButton = buttons.find((button) => button.textContent.trim() === 'Сохранить');
-    if (saveButton) saveButton.click();
+    // Было: поиск первой кнопки с текстом “Сохранить” по всему документу.
+    // Это ломко, потому что в cloud-панели тоже есть “Сохранить”.
+    // Теперь кликаем только кнопку сохранения в верхнем файловом блоке редактора.
+    const candidates = Array.from(document.querySelectorAll('.file-panel .file-actions button, .topbar-actions.file-panel button'));
+    const saveButton = candidates.find((button) => button.textContent.trim() === 'Сохранить');
+    if (saveButton) {
+      saveButton.click();
+      return true;
+    }
+    return false;
   }
 
   function guessTitle(data) {
@@ -155,7 +165,7 @@
 
     try {
       clickLocalSave();
-      await new Promise((resolve) => setTimeout(resolve, 160));
+      await new Promise((resolve) => setTimeout(resolve, 180));
       const localProject = getLatestLocalProject();
       if (!localProject?.data) throw new Error('Сначала создай или сохрани проект локально');
 
@@ -225,7 +235,7 @@
       ]),
       el('label', { class: 'cloud-auth-field' }, [
         el('span', { text: 'Пароль' }),
-        el('input', { class: 'cloud-password', type: 'password', autocomplete: 'current-password', placeholder: 'минимум 6 символов' }),
+        el('input', { class: 'cloud-password', type: 'password', autocomplete: 'current-password', placeholder: 'минимум 8 символов' }),
       ]),
       el('div', { class: 'cloud-auth-row' }, [
         el('button', { class: 'cloud-auth-button primary', type: 'button', onclick: () => auth('login'), text: 'Войти' }),
@@ -245,7 +255,7 @@
         el('input', { class: 'cloud-project-title', type: 'text', value: currentTitle, placeholder: 'Например: Альбом для печати' }),
       ]),
       el('div', { class: 'cloud-auth-row' }, [
-        el('button', { class: 'cloud-auth-button primary', type: 'button', disabled: state.busy ? 'disabled' : null, onclick: saveCloud, text: currentId ? 'Сохранить' : 'Сохранить' }),
+        el('button', { class: 'cloud-auth-button primary', type: 'button', disabled: state.busy ? 'disabled' : null, onclick: saveCloud, text: 'Сохранить' }),
         el('button', { class: 'cloud-auth-button', type: 'button', disabled: state.busy ? 'disabled' : null, onclick: saveAsNew, text: 'Как новый' }),
         el('button', { class: 'cloud-auth-button', type: 'button', onclick: () => loadProjects(), text: 'Обновить' }),
       ]),
