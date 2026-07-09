@@ -9,16 +9,20 @@ const port = Number(process.env.PORT || 3000);
 const host = '0.0.0.0';
 const distDir = resolve(process.cwd(), 'dist');
 const isProduction = process.env.NODE_ENV === 'production';
-const sessionSecret = process.env.SESSION_SECRET || '';
+const configuredSessionSecret = process.env.SESSION_SECRET || '';
 const databaseUrl = process.env.DATABASE_URL || '';
 const jsonLimitBytes = Number(process.env.JSON_LIMIT_BYTES || 60 * 1024 * 1024);
 const publicNoCacheFiles = new Set(['cloud-auth.js', 'cloud-auth.css', 'album-layers.js', 'album-layers.css']);
 
-if (isProduction && !sessionSecret) {
-  throw new Error('SESSION_SECRET is required in production');
+// In production, SESSION_SECRET is strongly recommended.
+// Do not crash the whole Railway service when it is missing: use an ephemeral
+// per-boot secret instead. Existing sessions will be logged out after restart,
+// but the site stays online and no hardcoded shared production secret is used.
+if (isProduction && !configuredSessionSecret) {
+  console.warn('WARNING: SESSION_SECRET is missing. Using an ephemeral per-boot session secret. Add SESSION_SECRET in Railway Variables for stable logins.');
 }
 
-const effectiveSessionSecret = sessionSecret || 'collage-dev-secret-change-me';
+const effectiveSessionSecret = configuredSessionSecret || (isProduction ? randomBytes(32).toString('hex') : 'collage-dev-secret-change-me');
 
 let pool = null;
 let dbReadyPromise = null;
