@@ -3,6 +3,7 @@
   const LEGACY_PREFIX = 'collage-creator-album';
   const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
   const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';
+  const MAX_CLOUD_PROJECT_BYTES = 50 * 1024 * 1024;
 
   const state = {
     user: null,
@@ -28,6 +29,16 @@
       return 'База не подключена: в Railway у сервиса нет DATABASE_URL. Добавь Postgres к этому проекту и сделай Redeploy.';
     }
     return payload?.message || payload?.error || 'Ошибка запроса';
+  }
+
+  function byteLength(text) {
+    return new Blob([String(text ?? '')]).size;
+  }
+
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes)) return '';
+    if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} КБ`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
   }
 
   async function api(path, options = {}) {
@@ -90,17 +101,16 @@
     return parsed[0] || null;
   }
 
-  function clickLocalSave() {
-    // Было: поиск первой кнопки с текстом “Сохранить” по всему документу.
-    // Это ломко, потому что в cloud-панели тоже есть “Сохранить”.
-    // Теперь кликаем только кнопку сохранения в верхнем файловом блоке редактора.
-    const candidates = Array.from(document.querySelectorAll('.file-panel .file-actions button, .topbar-actions.file-panel button'));
-    const saveButton = candidates.find((button) => button.textContent.trim() === 'Сохранить');
-    if (saveButton) {
-      saveButton.click();
-      return true;
+  function getEditorProject() {
+    const bridge = window.__collageApp;
+    if (bridge && typeof bridge.getProject === 'function') {
+      const data = bridge.getProject();
+      if (data && typeof data === 'object') return { source: 'bridge', data };
     }
-    return false;
+
+    const localProject = getLatestLocalProject();
+    if (localProject?.data) return { source: 'localStorage', data: localProject.data };
+    return null;
   }
 
   function guessTitle(data) {
@@ -164,25 +174,34 @@
     render();
 
     try {
-      clickLocalSave();
-      await new Promise((resolve) => setTimeout(resolve, 180));
-      const localProject = getLatestLocalProject();
-      if (!localProject?.data) throw new Error('Сначала создай или сохрани проект локально');
+      const editorProject = getEditorProject();
+      if (!editorProject?.data) throw new Error('Сначала сохрани проект локально');
+
+      if (editorProject.source === 'localStorage' && !window.__collageApp?.getProject) {
+        setStatus('Сохраняю последний локальный проект…');
+      }
 
       const titleInput = document.querySelector('.cloud-project-title');
-      const title = (titleInput?.value || guessTitle(localProject.data)).trim() || 'Без названия';
+      const title = (titleInput?.value || guessTitle(editorProject.data)).trim() || 'Без названия';
       const existingId = localStorage.getItem(CURRENT_PROJECT_ID_KEY);
       const url = existingId ? `/api/projects/${existingId}` : '/api/projects';
       const method = existingId ? 'PUT' : 'POST';
+      const payload = JSON.stringify({ title, data: editorProject.data });
+      const payloadBytes = byteLength(payload);
+
+      if (payloadBytes > MAX_CLOUD_PROJECT_BYTES) {
+        throw new Error(`Проект слишком большой для облака: ${formatBytes(payloadBytes)}. Очисти лишние фото или скачай JSON.`);
+      }
+
       const result = await api(url, {
         method,
-        body: JSON.stringify({ title, data: localProject.data }),
+        body: payload,
       });
 
       localStorage.setItem(CURRENT_PROJECT_ID_KEY, result.project.id);
       localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, result.project.title);
       await loadProjects(false);
-      setStatus('Сохранено в аккаунт');
+      setStatus(editorProject.source === 'bridge' ? 'Сохранено в аккаунт' : 'Сохранено в аккаунт из локального сохранения');
     } catch (error) {
       setStatus(error.message);
     } finally {
