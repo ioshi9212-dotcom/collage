@@ -3,6 +3,7 @@
   const LEGACY_PREFIX = 'collage-creator-album';
   const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
   const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';
+  const MAX_CLOUD_PROJECT_BYTES = 50 * 1024 * 1024;
 
   const state = {
     user: null,
@@ -28,6 +29,16 @@
       return 'База не подключена: в Railway у сервиса нет DATABASE_URL. Добавь Postgres к этому проекту и сделай Redeploy.';
     }
     return payload?.message || payload?.error || 'Ошибка запроса';
+  }
+
+  function byteLength(text) {
+    return new Blob([String(text ?? '')]).size;
+  }
+
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes)) return '';
+    if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} КБ`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
   }
 
   async function api(path, options = {}) {
@@ -175,9 +186,16 @@
       const existingId = localStorage.getItem(CURRENT_PROJECT_ID_KEY);
       const url = existingId ? `/api/projects/${existingId}` : '/api/projects';
       const method = existingId ? 'PUT' : 'POST';
+      const payload = JSON.stringify({ title, data: editorProject.data });
+      const payloadBytes = byteLength(payload);
+
+      if (payloadBytes > MAX_CLOUD_PROJECT_BYTES) {
+        throw new Error(`Проект слишком большой для облака: ${formatBytes(payloadBytes)}. Очисти лишние фото или скачай JSON.`);
+      }
+
       const result = await api(url, {
         method,
-        body: JSON.stringify({ title, data: editorProject.data }),
+        body: payload,
       });
 
       localStorage.setItem(CURRENT_PROJECT_ID_KEY, result.project.id);
