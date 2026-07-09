@@ -432,8 +432,8 @@ function loadImage(src) {
 }
 
 function scaleForPreview(width, height, isSpread) {
-  const maxWidth = isSpread ? 980 : 760;
-  const maxHeight = 620;
+  const maxWidth = isSpread ? 1220 : 880;
+  const maxHeight = 720;
   return Math.min(1, maxWidth / width, maxHeight / height);
 }
 
@@ -1960,10 +1960,10 @@ export default function App() {
           {!isBooklet && (
             <div className="spread-actions control-group">
               <span className="control-label">Навигация</span>
-              <button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← разворот</button>
-              <button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>разворот →</button>
-              <button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>{settings.showGuides ? '✓ Направляющие' : 'Направляющие'}</button>
-              <button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка: разделители' : 'Сетка'}</button>
+              <button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← Разворот</button>
+              <button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>Разворот →</button>
+              <button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>'Направляющие'</button>
+              <button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>'Сетка окон'</button>
             </div>
           )}
         </div>
