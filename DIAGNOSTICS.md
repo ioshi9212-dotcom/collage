@@ -61,7 +61,7 @@ npm install
 npm run build
 ```
 
-Первая проверка ветки после добавления workflow прошла успешно. После последней маленькой правки `cloud-auth.js` GitHub пока не отдал новый status-check через API, поэтому её нужно перепроверить в UI GitHub Actions или следующим run.
+Проверка ветки после добавления workflow прошла успешно. После последующих правок GitHub API не всегда отдаёт status-check для каждого head-коммита, поэтому перед merge нужно посмотреть актуальный check в GitHub UI.
 
 ## Почему выбран `src/styles.css`, а не `src/topbar.css`
 
