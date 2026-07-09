@@ -1640,17 +1640,16 @@ export default function App() {
     };
   }
 
-  function saveLocalProject({ notify = true, throwOnError = false } = {}) {
+  function saveLocalProject({ silent = false } = {}) {
+    const data = project();
     try {
-      const data = project();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      if (notify) show('Альбом сохранён');
-      return data;
+      if (!silent) show('Альбом сохранён');
+      return { ok: true, data };
     } catch (error) {
       console.error(error);
-      if (notify) show('Не удалось сохранить: проект слишком большой. Скачай JSON или очисти лишние фото.');
-      if (throwOnError) throw error;
-      return null;
+      if (!silent) show('Не удалось сохранить: проект слишком большой. Скачай JSON или очисти лишние фото.');
+      return { ok: false, error };
     }
   }
 
@@ -1659,17 +1658,13 @@ export default function App() {
   }
 
   useEffect(() => {
-    const bridge = {
+    window.__collageApp = {
       getProject: () => project(),
-      saveLocal: () => saveLocalProject({ notify: false, throwOnError: true }),
+      saveLocal: () => saveLocalProject({ silent: true }),
     };
 
-    window.__collageApp = { ...(window.__collageApp || {}), ...bridge };
-
     return () => {
-      if (window.__collageApp?.getProject === bridge.getProject) delete window.__collageApp.getProject;
-      if (window.__collageApp?.saveLocal === bridge.saveLocal) delete window.__collageApp.saveLocal;
-      if (window.__collageApp && Object.keys(window.__collageApp).length === 0) delete window.__collageApp;
+      if (window.__collageApp?.getProject) delete window.__collageApp;
     };
   }, [canvas, settings, library, pages, album.currentPageId, viewMode, bookletSheetsPerBlock, normalizedBookletPrintSettings, albumMode]);
 
@@ -1937,6 +1932,18 @@ export default function App() {
           <h1>Collage Creator</h1>
         </div>
 
+        <section className="document-panel top-control-card">
+          <div className="section-title">Документ</div>
+          <div className="document-grid">
+            <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+            <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
+            <label className="field small-field"><span>Высота px</span><input type="number" value={canvas.height} onChange={(event) => updateCanvas(canvas.width, event.target.value, 'custom')} /></label>
+            <label className="field small-field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
+            <label className="field small-field"><span>Зазор</span><input type="number" value={settings.gap} onChange={(event) => updateSetting('gap', clamp(event.target.value, 0, 200))} /></label>
+            <label className="field small-field"><span>Поля</span><input type="number" value={settings.padding} onChange={(event) => updateSetting('padding', clamp(event.target.value, 0, 300))} /></label>
+          </div>
+        </section>
+
         <section className="topbar-actions file-panel">
           <div className="section-title">Файл / экспорт</div>
           <div className="file-actions">
@@ -1952,18 +1959,6 @@ export default function App() {
       </header>
 
       {notice && <div className="notice">{notice}</div>}
-
-      <section className="document-panel top-control-card">
-        <div className="section-title">Документ</div>
-        <div className="document-grid">
-          <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
-          <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
-          <label className="field small-field"><span>Высота px</span><input type="number" value={canvas.height} onChange={(event) => updateCanvas(canvas.width, event.target.value, 'custom')} /></label>
-          <label className="field small-field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
-          <label className="field small-field"><span>Зазор</span><input type="number" value={settings.gap} onChange={(event) => updateSetting('gap', clamp(event.target.value, 0, 200))} /></label>
-          <label className="field small-field"><span>Поля</span><input type="number" value={settings.padding} onChange={(event) => updateSetting('padding', clamp(event.target.value, 0, 300))} /></label>
-        </div>
-      </section>
 
       <section className={`album-bar clean-control-panel top-control-card ${isBooklet ? 'booklet-mode-bar' : ''}`}>
         <div className="control-row primary-control-row">

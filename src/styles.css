@@ -977,3 +977,241 @@ body[data-album-mode='templates'] .album-mode-inspector {
   .document-grid { grid-template-columns: 1fr; }
   .stage-frame { height: 54vh; min-height: 320px; }
 }
+
+/* Final editor layout: one CSS owner, no topbar.css overrides. */
+.app-shell {
+  width: min(1500px, calc(100vw - 24px));
+}
+
+.topbar,
+.app-topbar {
+  display: grid;
+  grid-template-columns: minmax(185px, 225px) minmax(560px, 760px) minmax(390px, 520px);
+  align-items: start;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+
+.brand-block {
+  align-self: start;
+  padding-top: 4px;
+}
+
+.file-panel,
+.topbar-actions.file-panel,
+.document-panel,
+.settings-bar.document-panel {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.topbar-actions.file-panel {
+  display: block;
+  justify-self: stretch;
+}
+
+.file-actions {
+  justify-content: flex-start;
+}
+
+.document-grid {
+  grid-template-columns: minmax(210px, 1.2fr) 78px 78px 72px 64px 64px;
+  gap: 7px;
+}
+
+.clean-control-panel,
+.album-bar.clean-control-panel {
+  width: 100%;
+  max-width: none;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+.control-row,
+.primary-control-row {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.album-head,
+.album-actions.control-group,
+.view-switch.control-group,
+.spread-actions.control-group {
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-surface);
+  box-shadow: 0 12px 28px rgba(31, 45, 39, 0.05);
+  padding: 8px 9px;
+}
+
+.album-head {
+  min-width: 150px;
+  border-right: 1px solid var(--ui-line);
+}
+
+.album-head span {
+  max-width: 180px;
+}
+
+.album-actions.control-group,
+.view-switch.control-group,
+.spread-actions.control-group {
+  align-content: start;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.control-label {
+  flex: 0 0 100%;
+  margin-bottom: 2px;
+}
+
+.page-strip,
+.page-chip {
+  display: none;
+}
+
+.workspace.three-columns,
+.three-columns,
+body[data-album-mode='text'] .three-columns,
+body[data-album-mode='drawings'] .three-columns,
+body[data-album-mode='templates'] .three-columns {
+  display: grid !important;
+  grid-template-columns: 220px max-content 250px !important;
+  grid-template-areas:
+    "photos pages inspector"
+    "photos canvas inspector" !important;
+  justify-content: center;
+  align-items: start;
+  gap: 8px 10px;
+}
+
+.workspace > .sidebar { grid-area: photos; }
+.workspace > .page-rail { grid-area: pages; }
+.workspace > .canvas-area { grid-area: canvas; }
+.workspace > .inspector { grid-area: inspector; }
+
+.page-rail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-height: none;
+  min-height: 64px;
+  overflow: hidden;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.page-rail .panel-title.compact {
+  min-width: 94px;
+  margin: 0;
+}
+
+.page-rail .panel-title.compact h2 {
+  font-size: 13px;
+}
+
+.page-rail .panel-title.compact p {
+  display: none;
+}
+
+.page-rail-list {
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1px 2px 5px;
+}
+
+.page-rail-card {
+  flex: 0 0 68px;
+  width: 68px;
+  min-height: 54px;
+  padding: 6px;
+}
+
+.page-rail-card b {
+  font-size: 18px;
+}
+
+.page-rail-note {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+.canvas-area {
+  justify-self: center;
+}
+
+.canvas-toolbar {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.canvas-toolbar span,
+.canvas-toolbar em {
+  display: none;
+}
+
+@media (max-width: 1320px) {
+  .topbar,
+  .app-topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-block,
+  .document-panel,
+  .file-panel,
+  .topbar-actions.file-panel {
+    justify-self: stretch;
+  }
+
+  .document-grid {
+    grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(76px, 92px));
+  }
+}
+
+@media (max-width: 1180px) {
+  .workspace.three-columns,
+  .three-columns,
+  body[data-album-mode='text'] .three-columns,
+  body[data-album-mode='drawings'] .three-columns,
+  body[data-album-mode='templates'] .three-columns {
+    grid-template-columns: 210px max-content !important;
+    grid-template-areas:
+      "photos pages"
+      "photos canvas" !important;
+  }
+
+  .inspector,
+  .album-mode-inspector {
+    display: none !important;
+  }
+}
+
+@media (max-width: 980px) {
+  .workspace.three-columns,
+  .three-columns,
+  body[data-album-mode='text'] .three-columns,
+  body[data-album-mode='drawings'] .three-columns,
+  body[data-album-mode='templates'] .three-columns {
+    display: flex !important;
+    flex-direction: column;
+  }
+
+  .page-rail {
+    width: 100%;
+  }
+}
