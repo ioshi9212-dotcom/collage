@@ -1908,23 +1908,30 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div><p className="eyebrow">Редактор альбома</p><h1>Collage Creator</h1></div>
-        <div className="topbar-actions">
-          <button className="button" onClick={save}>Сохранить</button>
-          <button className="button" onClick={loadSaved}>Открыть</button>
-          <button className="button" onClick={() => downloadText('collage-album-project.json', JSON.stringify(project(), null, 2))}>Скачать JSON</button>
-          <button className="button" onClick={() => jsonRef.current?.click()}>Загрузить JSON</button>
-          <input ref={jsonRef} className="hidden-input" type="file" accept="application/json" onChange={importJson} />
-          <button className="button accent" onClick={() => exportPng(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.png`, 'Скачана страница')}>PNG страницы</button>
-          <button className="button accent" onClick={() => exportPng(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.png`, 'Скачан разворот')}>PNG разворота</button>
+      <header className="topbar app-topbar">
+        <div className="brand-block">
+          <p className="eyebrow">Редактор альбома</p>
+          <h1>Collage Creator</h1>
         </div>
+
+        <section className="topbar-actions file-panel">
+          <div className="section-title">Файл / экспорт</div>
+          <div className="file-actions">
+            <button className="button" onClick={save}>Сохранить</button>
+            <button className="button" onClick={loadSaved}>Открыть</button>
+            <button className="button" onClick={() => downloadText('collage-album-project.json', JSON.stringify(project(), null, 2))}>Скачать JSON</button>
+            <button className="button" onClick={() => jsonRef.current?.click()}>Загрузить JSON</button>
+            <input ref={jsonRef} className="hidden-input" type="file" accept="application/json" onChange={importJson} />
+            <button className="button accent" onClick={() => exportPng(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.png`, 'Скачана страница')}>PNG страницы</button>
+            <button className="button accent" onClick={() => exportPng(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.png`, 'Скачан разворот')}>PNG разворота</button>
+          </div>
+        </section>
       </header>
 
       {notice && <div className="notice">{notice}</div>}
 
-      <section className="settings-bar document-panel">
-        <div className="panel-kicker">Документ</div>
+      <section className="document-panel top-control-card">
+        <div className="section-title">Документ</div>
         <div className="document-grid">
           <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
           <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
@@ -1935,7 +1942,7 @@ export default function App() {
         </div>
       </section>
 
-      <section className={`album-bar clean-control-panel ${isBooklet ? 'booklet-mode-bar' : ''}`}>
+      <section className={`album-bar clean-control-panel top-control-card ${isBooklet ? 'booklet-mode-bar' : ''}`}>
         <div className="control-row primary-control-row">
           <div className="album-head">
             <strong>{isBooklet ? 'Брошюра' : 'Страницы альбома'}</strong>

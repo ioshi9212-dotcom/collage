@@ -1,0 +1,24 @@
+Clean full build 07 — top rebuilt in JSX and CSS
+
+Base:
+- uploaded collage-main (14)
+
+Scope:
+- only the top/header controls
+- workspace/canvas logic untouched
+
+Changed:
+- file/export panel now has a real JSX title, not CSS ::before
+- document panel title is real JSX
+- top controls are forced by one final clean top section
+- removed old topbar-actions::before rule
+- no nth-child label hacks
+- no separate css patch file
+- no Vite hotfix
+
+Expected:
+- visible top change compared to build 05/06
+- file/export is a compact real panel
+- document is a compact real panel
+- page/view/navigation row is compact and readable
+- no pseudo-label renaming
