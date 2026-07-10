@@ -114,3 +114,21 @@ body[data-album-mode='templates'] .template-photo-slot:hover,
   font-size: 12px;
   line-height: 1.35;
 }
+
+.template-package-card {
+  border-color: rgba(79, 143, 116, 0.28);
+  background: linear-gradient(180deg, #ffffff 0%, #f4faf6 100%);
+}
+
+.template-package-card strong::before {
+  content: 'Пакет · ';
+  color: #4f8f74;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.template-package-list {
+  max-height: 220px;
+}

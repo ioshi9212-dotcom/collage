@@ -19,5 +19,16 @@
       "photoSlots": 3,
       "format": "a5-portrait"
     }
+  ],
+  "packages": [
+    {
+      "id": "wedding-soft-album-45",
+      "title": "Свадебный пакет · молочный 45 страниц",
+      "category": "wedding",
+      "design": "milk-soft",
+      "src": "/templates/packages/wedding-soft-album-45.json",
+      "pageCount": 45,
+      "format": "a5-portrait"
+    }
   ]
 }

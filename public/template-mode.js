@@ -5,6 +5,7 @@
 
   const state = {
     templates: [],
+    packages: [],
     loadState: 'idle',
     selectedAppliedId: null,
     selectedSlotId: null,
@@ -116,23 +117,30 @@
       const response = await fetch(`${TEMPLATE_MANIFEST_URL}?v=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`manifest ${response.status}`);
       const manifest = await response.json();
-      const entries = Array.isArray(manifest.templates) ? manifest.templates : [];
-      const loaded = [];
-      for (const entry of entries) {
-        if (!entry.src) continue;
-        try {
-          const templateResponse = await fetch(`${entry.src}?v=${Date.now()}`, { cache: 'no-store' });
-          if (!templateResponse.ok) throw new Error(`template ${templateResponse.status}`);
-          const data = await templateResponse.json();
-          loaded.push({ ...entry, data });
-        } catch (error) {
-          loaded.push({ ...entry, error: error.message });
+      const loadEntries = async (entries, label) => {
+        const loaded = [];
+        for (const entry of entries) {
+          if (!entry.src) continue;
+          try {
+            const itemResponse = await fetch(`${entry.src}?v=${Date.now()}`, { cache: 'no-store' });
+            if (!itemResponse.ok) throw new Error(`${label} ${itemResponse.status}`);
+            const data = await itemResponse.json();
+            loaded.push({ ...entry, data });
+          } catch (error) {
+            loaded.push({ ...entry, error: error.message });
+          }
         }
-      }
-      state.templates = loaded;
+        return loaded;
+      };
+
+      const templateEntries = Array.isArray(manifest.templates) ? manifest.templates : [];
+      const packageEntries = Array.isArray(manifest.packages) ? manifest.packages : [];
+      state.templates = await loadEntries(templateEntries, 'template');
+      state.packages = await loadEntries(packageEntries, 'package');
       state.loadState = 'ready';
     } catch (error) {
       state.templates = [];
+      state.packages = [];
       state.loadState = 'error';
       showNotice(`Не смогла загрузить шаблоны: ${error.message}`);
     }
@@ -191,6 +199,33 @@
     setLayers(layers);
     showNotice(`Шаблон «${applied.title}» применён к странице`);
     renderNow();
+  }
+
+  function applyAlbumPackage(packageData) {
+    const pages = Array.isArray(packageData?.pages) ? packageData.pages : [];
+    const title = packageData?.title || 'Пакет альбома';
+    if (!pages.length) {
+      showNotice('В пакете нет страниц');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Применить пакет «${title}»?\n\n` +
+      `Текущий альбом будет заменён на ${pages.length} стр. из пакета.\n` +
+      `Перед этим можно скачать JSON проекта, если нужно сохранить текущую работу.`
+    );
+    if (!confirmed) return;
+
+    const result = globalThis.__collageApp?.applyTemplatePackage?.(packageData);
+    if (!result?.ok) {
+      showNotice(result?.error ? `Не удалось применить пакет: ${result.error}` : 'Редактор ещё не готов применить пакет');
+      return;
+    }
+
+    state.selectedAppliedId = null;
+    state.selectedSlotId = null;
+    showNotice(`Пакет «${result.title || title}» применён: ${result.pageCount || pages.length} стр.`);
+    window.setTimeout(renderNow, 180);
   }
 
   function createBlankTemplate() {
@@ -409,6 +444,23 @@
     title.append(titleText, el('span', 'album-mode-badge', `${pageTemplates.length}`));
     left.append(title);
 
+    const packageGallery = el('div', 'template-card-list template-package-list');
+    if (state.loadState === 'loading') packageGallery.append(empty('Загружаю пакеты…'));
+    else if (!state.packages.length) packageGallery.append(empty('Пакетов альбомов пока нет. Добавь их в public/templates/index.json → packages.'));
+    else state.packages.forEach((entry) => {
+      const card = el('button', 'template-card template-package-card');
+      card.type = 'button';
+      const pageCount = entry.pageCount || entry.data?.pageCount || entry.data?.pages?.length || 0;
+      const design = entry.design || entry.data?.design || entry.category || entry.data?.category || 'album';
+      card.append(
+        el('strong', '', entry.title || entry.data?.title || entry.id),
+        el('small', '', entry.error ? `Ошибка: ${entry.error}` : `${design} · страниц: ${pageCount}`)
+      );
+      card.disabled = Boolean(entry.error || !entry.data);
+      card.addEventListener('click', () => applyAlbumPackage(entry.data));
+      packageGallery.append(card);
+    });
+
     const gallery = el('div', 'template-card-list');
     if (state.loadState === 'loading') gallery.append(empty('Загружаю шаблоны…'));
     else if (!state.templates.length) gallery.append(empty('В папке public/templates пока нет готовых шаблонов. Можно создать ручной.'));
@@ -423,7 +475,8 @@
 
     const importInput = fileInput('.json,application/json', importTemplateFile);
     left.append(
-      block('Готовые шаблоны', [gallery, button('Обновить список', () => loadManifest(true).then(renderNow))]),
+      block('Пакеты альбомов', [packageGallery, hint('Пакет заменяет весь текущий альбом и сразу создаёт все страницы в ленте.')]),
+      block('Шаблоны страницы', [gallery, button('Обновить список', () => loadManifest(true).then(renderNow))]),
       block('Ручной режим', [button('+ Пустой шаблон', createBlankTemplate, 'primary'), hint('Создай пустой шаблон, добавь фон, фото-окна, текст, потом скачай JSON и положи его в public/templates.')]),
       block('Загрузить JSON', [importInput])
     );

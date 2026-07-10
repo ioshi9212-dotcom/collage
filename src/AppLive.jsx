@@ -1684,10 +1684,121 @@ export default function App() {
     saveLocalProject();
   }
 
+  function normalizeTemplatePackage(packageData = {}) {
+    const pageInfo = packageData.page || packageData.canvas || {};
+    const nextCanvas = {
+      width: clamp(Number(pageInfo.width) || canvas.width || DEFAULT_CANVAS.width, 300, 5000),
+      height: clamp(Number(pageInfo.height) || canvas.height || DEFAULT_CANVAS.height, 300, 5000),
+    };
+    const nextSettings = {
+      ...settings,
+      ...(packageData.settings || {}),
+      presetId: pageInfo.presetId || packageData.settings?.presetId || settings.presetId || 'custom',
+      frameMode: packageData.settings?.frameMode || 'free',
+    };
+
+    const sourcePages = Array.isArray(packageData.pages) && packageData.pages.length ? packageData.pages : [];
+    const nextExtraLayers = { version: 1, pages: {} };
+
+    const templateToFrames = (template, pageNumber) => (
+      Array.isArray(template?.photoSlots) ? template.photoSlots : []
+    ).map((slot, slotIndex) => cleanFrame({
+      id: makeId(),
+      x: Number(slot.x ?? 120),
+      y: Number(slot.y ?? 220),
+      width: Number(slot.width ?? 520),
+      height: Number(slot.height ?? 680),
+      zIndex: Number(slot.zIndex ?? slotIndex),
+      photo: null,
+      templateSlotId: slot.id || `page-${pageNumber}-slot-${slotIndex + 1}`,
+    }, nextCanvas));
+
+    const nextPages = sourcePages.map((sourcePage, index) => {
+      const pageNumber = index + 1;
+      const rawTemplates = Array.isArray(sourcePage.templates)
+        ? sourcePage.templates
+        : sourcePage.template
+          ? [sourcePage.template]
+          : [{
+              id: sourcePage.id || `page-${pageNumber}-template`,
+              title: sourcePage.title || `Страница ${pageNumber}`,
+              category: sourcePage.category || packageData.category || 'package',
+              page: { presetId: nextSettings.presetId, width: nextCanvas.width, height: nextCanvas.height },
+              background: sourcePage.background,
+              photoSlots: sourcePage.photoSlots,
+              texts: sourcePage.texts,
+              decorations: sourcePage.decorations,
+            }];
+
+      const normalizedTemplates = rawTemplates.map((template, templateIndex) => ({
+        id: makeId(),
+        sourceId: template.id || `${packageData.id || 'album-package'}-page-${pageNumber}-${templateIndex + 1}`,
+        title: template.title || sourcePage.title || `Страница ${pageNumber}`,
+        category: template.category || sourcePage.category || packageData.category || 'package',
+        page: template.page || { presetId: nextSettings.presetId, width: nextCanvas.width, height: nextCanvas.height },
+        background: template.background || sourcePage.background || { type: 'color', color: nextSettings.borderColor || '#ffffff', image: null, fit: 'cover', opacity: 1 },
+        photoSlots: Array.isArray(template.photoSlots) ? template.photoSlots : [],
+        texts: Array.isArray(template.texts) ? template.texts : [],
+        decorations: Array.isArray(template.decorations) ? template.decorations : [],
+      }));
+
+      nextExtraLayers.pages[String(pageNumber)] = {
+        texts: Array.isArray(sourcePage.extraTexts) ? sourcePage.extraTexts : [],
+        drawings: [],
+        templates: normalizedTemplates,
+      };
+
+      const frames = normalizedTemplates.flatMap((template) => templateToFrames(template, pageNumber));
+      if (!frames.length) return createBlankPage(pageNumber, { id: makeId(), title: sourcePage.title || `Страница ${pageNumber}` });
+
+      return {
+        id: makeId(),
+        title: sourcePage.title || `Страница ${pageNumber}`,
+        frameCount: clamp(frames.length, 1, 99),
+        layout: null,
+        frames,
+      };
+    });
+
+    return {
+      title: packageData.title || 'Пакет альбома',
+      canvas: nextCanvas,
+      settings: nextSettings,
+      pages: nextPages.length ? nextPages : [createBlankPage(1)],
+      extraLayers: nextExtraLayers,
+      viewMode: ['single', 'spread', 'booklet'].includes(packageData.viewMode) ? packageData.viewMode : 'spread',
+    };
+  }
+
+  function applyTemplatePackage(packageData = {}) {
+    try {
+      const normalizedPackage = normalizeTemplatePackage(packageData);
+      setCanvas(normalizedPackage.canvas);
+      setSettings(normalizedPackage.settings);
+      setAlbum({ pages: normalizedPackage.pages, currentPageId: normalizedPackage.pages[0].id });
+      setViewMode(normalizedPackage.viewMode);
+      writeExtraLayers(normalizedPackage.extraLayers);
+      setSelectedFrameId(null);
+      setSelectedPhotoId(null);
+      setMoveFrameWithPhotoId(null);
+      setBookletSideId(null);
+      setAlbumMode(applyAlbumEditorMode('templates'));
+      show(`Пакет «${normalizedPackage.title}» применён: ${normalizedPackage.pages.length} стр.`);
+      window.requestAnimationFrame?.(() => writeExtraLayers(normalizedPackage.extraLayers));
+      window.setTimeout?.(() => writeExtraLayers(normalizedPackage.extraLayers), 150);
+      return { ok: true, pageCount: normalizedPackage.pages.length, title: normalizedPackage.title };
+    } catch (error) {
+      console.error(error);
+      show('Не удалось применить пакет альбома');
+      return { ok: false, error: error?.message || String(error) };
+    }
+  }
+
   useEffect(() => {
     window.__collageApp = {
       getProject: () => project(),
       saveLocal: () => saveLocalProject({ silent: true }),
+      applyTemplatePackage: (packageData) => applyTemplatePackage(packageData),
     };
 
     return () => {
