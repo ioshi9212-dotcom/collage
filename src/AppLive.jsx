@@ -657,6 +657,8 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
     );
   }
 
+  if (printMode && !frame.photo) return null;
+
   function clampFrameNode(node) {
     node.x(clamp(node.x(), 0, Math.max(0, canvas.width - frame.width)));
     node.y(clamp(node.y(), 0, Math.max(0, canvas.height - frame.height)));
@@ -2238,8 +2240,20 @@ export default function App() {
       </section>
 
       <div className="export-stage-holder" aria-hidden="true">
-        <Stage ref={printPageRef} width={canvas.width} height={canvas.height}><Layer><PageLayer page={currentPage} pageIndex={currentPageIndex} x={0} {...commonPageLayerProps} /></Layer></Stage>
-        <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}><Layer><PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} {...commonPageLayerProps} /><PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} {...commonPageLayerProps} /></Layer></Stage>
+        <Stage ref={printPageRef} width={canvas.width} height={canvas.height}>
+          <Layer>
+            <PageLayer page={currentPage} pageIndex={currentPageIndex} x={0} {...commonPageLayerProps} />
+            <ExtraPageLayers extraLayers={extraLayers} pageIndex={currentPageIndex} x={0} y={0} />
+          </Layer>
+        </Stage>
+        <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}>
+          <Layer>
+            <PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} {...commonPageLayerProps} />
+            <ExtraPageLayers extraLayers={extraLayers} pageIndex={spreadStart} x={0} y={0} />
+            <PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} {...commonPageLayerProps} />
+            <ExtraPageLayers extraLayers={extraLayers} pageIndex={spreadStart + 1} x={canvas.width} y={0} />
+          </Layer>
+        </Stage>
         <Stage ref={printBookletRef} width={bookletSheetSize.width} height={bookletSheetSize.height}>
           <Layer>
             <BookletSheetBackground canvas={canvas} printSettings={normalizedBookletPrintSettings} />
