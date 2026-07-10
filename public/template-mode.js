@@ -458,7 +458,21 @@
     requestAnimationFrame(() => requestAnimationFrame(renderNow));
   }
 
+  function exposeTemplateApi() {
+    globalThis.__collageTemplates = {
+      save: (scope = 'page') => addRecord(scope),
+      savePage: () => addRecord('page'),
+      saveSpread: () => addRecord('spread'),
+      saveAlbum: () => addRecord('album'),
+      getRecords: () => clone(state.records),
+    };
+  }
+
   loadRecords();
+  exposeTemplateApi();
+  window.addEventListener('collage-template-save', (event) => {
+    addRecord(event.detail?.scope || 'page');
+  });
   window.addEventListener('collage-album-mode-change', scheduleRender);
   window.addEventListener('collage-album-layers-import', scheduleRender);
   window.addEventListener('storage', () => {

@@ -448,6 +448,27 @@
     return node;
   }
 
+
+  function saveCurrentAsTemplate(scope) {
+    const api = globalThis.__collageTemplates;
+    if (api?.save) {
+      api.save(scope);
+      return;
+    }
+
+    try {
+      window.dispatchEvent(new CustomEvent('collage-template-save', { detail: { scope } }));
+    } catch {
+      // ignore event errors
+    }
+
+    window.setTimeout(() => {
+      if (!globalThis.__collageTemplates?.save) {
+        showNotice('Сохранение шаблонов ещё загружается. Обнови страницу, если кнопка не сработала.');
+      }
+    }, 120);
+  }
+
   function renderTopPanel() {
     const panel = ensureTopPanel();
     if (!panel) return;
@@ -476,17 +497,25 @@
 
     const actions = document.createElement('div');
     actions.className = 'album-mode-actions';
-    if (state.mode === 'text') {
+    if (state.mode === 'collage') {
+      actions.append(
+        actionButton('Сохранить страницу как шаблон', () => saveCurrentAsTemplate('page'), 'primary'),
+        actionButton('Сохранить разворот', () => saveCurrentAsTemplate('spread')),
+        actionButton('Сохранить альбом', () => saveCurrentAsTemplate('album'))
+      );
+    } else if (state.mode === 'text') {
       actions.append(
         actionButton('+ Текст', () => addText('body'), 'primary'),
         actionButton('+ Заголовок', () => addText('title')),
         actionButton('+ Подпись', () => addText('signature')),
-        actionButton('PNG вида + текст', exportCurrentViewWithText)
+        actionButton('PNG вида + текст', exportCurrentViewWithText),
+        actionButton('Сохранить страницу', () => saveCurrentAsTemplate('page'))
       );
     } else if (state.mode === 'drawings') {
       actions.append(
         actionButton('+ Линия', addLine, 'primary'),
-        actionButton('PNG вида + слои', exportCurrentViewWithText)
+        actionButton('PNG вида + слои', exportCurrentViewWithText),
+        actionButton('Сохранить страницу', () => saveCurrentAsTemplate('page'))
       );
     } else if (state.mode === 'templates') {
       actions.dataset.templateModeOwner = 'template-mode';
