@@ -274,7 +274,7 @@
       collage: 'Режим коллажа: рамки и фото снова редактируются.',
       text: 'Режим текста: панели фото и рамок заменены на настройки текста.',
       drawings: 'Рисунки пока пустые. Панели уже подготовлены.',
-      templates: 'Шаблоны пока пустые. Панели уже подготовлены.',
+      templates: 'Режим шаблонов открыт.',
     };
     scheduleRender();
     showNotice(messages[mode] || 'Режим переключён');
@@ -360,6 +360,7 @@
     const node = document.createElement('button');
     node.type = 'button';
     node.className = `album-mode-tab ${state.mode === mode ? 'active' : ''}`;
+    node.dataset.albumMode = mode;
     node.textContent = label;
     node.addEventListener('click', () => setMode(mode));
     return node;
@@ -392,9 +393,11 @@
     note.className = 'album-mode-note';
     note.textContent = state.mode === 'text'
       ? 'Текст отдельным слоем. Коллаж не перестраивается и не сбрасывается.'
-      : state.mode === 'collage'
-        ? 'Рамки и фото редактируются как раньше. Текст остаётся на странице.'
-        : 'Раздел подготовлен, наполнение добавим позже.';
+      : state.mode === 'templates'
+        ? 'Шаблоны редактируются отдельным модулем. Заглушку больше не рисуем.'
+        : state.mode === 'collage'
+          ? 'Рамки и фото редактируются как раньше. Текст остаётся на странице.'
+          : 'Раздел подготовлен, наполнение добавим позже.';
 
     const actions = document.createElement('div');
     actions.className = 'album-mode-actions';
@@ -408,7 +411,8 @@
     } else if (state.mode === 'drawings') {
       actions.append(actionButton('+ Рисунок', () => showNotice('Рисунки пока пустые. Потом добавим библиотеку.')));
     } else if (state.mode === 'templates') {
-      actions.append(actionButton('+ Шаблон', () => showNotice('Шаблоны пока пустые. Потом добавим библиотеку.')));
+      actions.dataset.templateModeOwner = 'template-mode';
+      actions.append(actionButton('Шаблоны загружаются…', () => showNotice('Редактор шаблонов уже загружается.')));
     }
 
     panel.append(tabs, note, actions);
@@ -798,9 +802,32 @@
     ctx.restore();
   }
 
+  function syncTemplateModeShell() {
+    const panel = document.querySelector('.album-tool-panel');
+    if (!panel) {
+      renderTopPanel();
+    }
+
+    document.querySelectorAll('.album-mode-tab').forEach((button) => {
+      button.classList.toggle('active', button.dataset.albumMode === state.mode);
+    });
+
+    const note = document.querySelector('.album-tool-panel .album-mode-note');
+    if (note) note.textContent = 'Шаблоны редактируются отдельным модулем. Заглушку больше не рисуем.';
+
+    ensureModePanels();
+    ensureOverlay();
+  }
+
   function render() {
     syncLayersFromStorage();
     document.body.dataset.albumMode = state.mode;
+
+    if (state.mode === 'templates') {
+      syncTemplateModeShell();
+      return;
+    }
+
     renderTopPanel();
     renderSidePanels();
     renderOverlay();
