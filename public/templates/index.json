@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "title": "Collage templates",
+  "description": "Manifest for built-in collage templates. The editor will read this file to show template categories and available templates.",
+  "templates": []
+}
