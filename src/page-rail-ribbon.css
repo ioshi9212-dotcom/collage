@@ -1,0 +1,158 @@
+/* Unified page navigation ribbon.
+   Keep page rail horizontal in Collage, Text, Drawings and Templates modes. */
+
+body[data-album-mode='text'] .workspace.three-columns,
+body[data-album-mode='drawings'] .workspace.three-columns,
+body[data-album-mode='templates'] .workspace.three-columns,
+body[data-album-mode='text'] .three-columns,
+body[data-album-mode='drawings'] .three-columns,
+body[data-album-mode='templates'] .three-columns {
+  display: grid !important;
+  grid-template-columns: 220px max-content 250px !important;
+  grid-template-areas:
+    "tools pages inspector"
+    "tools canvas inspector" !important;
+  justify-content: center !important;
+  align-items: start !important;
+  gap: 8px 10px !important;
+}
+
+body[data-album-mode='text'] .workspace > .album-mode-sidebar,
+body[data-album-mode='drawings'] .workspace > .album-mode-sidebar,
+body[data-album-mode='templates'] .workspace > .album-mode-sidebar {
+  display: grid !important;
+  grid-area: tools !important;
+  grid-column: auto !important;
+  grid-row: 1 / span 2 !important;
+  max-height: calc(100vh - 205px) !important;
+  overflow: auto !important;
+}
+
+body[data-album-mode='text'] .workspace > .page-rail,
+body[data-album-mode='drawings'] .workspace > .page-rail,
+body[data-album-mode='templates'] .workspace > .page-rail {
+  grid-area: pages !important;
+  grid-column: auto !important;
+  grid-row: auto !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-height: 64px !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  padding: 8px 10px !important;
+  box-sizing: border-box !important;
+}
+
+body[data-album-mode='text'] .workspace > .canvas-area,
+body[data-album-mode='drawings'] .workspace > .canvas-area,
+body[data-album-mode='templates'] .workspace > .canvas-area {
+  grid-area: canvas !important;
+  grid-column: auto !important;
+  grid-row: auto !important;
+}
+
+body[data-album-mode='text'] .workspace > .album-mode-inspector,
+body[data-album-mode='drawings'] .workspace > .album-mode-inspector,
+body[data-album-mode='templates'] .workspace > .album-mode-inspector {
+  display: grid !important;
+  grid-area: inspector !important;
+  grid-column: auto !important;
+  grid-row: 1 / span 2 !important;
+  max-height: calc(100vh - 205px) !important;
+  overflow: auto !important;
+}
+
+body[data-album-mode='text'] .page-rail .panel-title.compact,
+body[data-album-mode='drawings'] .page-rail .panel-title.compact,
+body[data-album-mode='templates'] .page-rail .panel-title.compact {
+  min-width: 94px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-bottom: 0 !important;
+}
+
+body[data-album-mode='text'] .page-rail .panel-title.compact h2,
+body[data-album-mode='drawings'] .page-rail .panel-title.compact h2,
+body[data-album-mode='templates'] .page-rail .panel-title.compact h2 {
+  font-size: 13px !important;
+}
+
+body[data-album-mode='text'] .page-rail .panel-title.compact p,
+body[data-album-mode='drawings'] .page-rail .panel-title.compact p,
+body[data-album-mode='templates'] .page-rail .panel-title.compact p {
+  display: none !important;
+}
+
+body[data-album-mode='text'] .page-rail-list,
+body[data-album-mode='drawings'] .page-rail-list,
+body[data-album-mode='templates'] .page-rail-list {
+  display: flex !important;
+  gap: 7px !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding: 1px 2px 5px !important;
+}
+
+body[data-album-mode='text'] .page-rail-card,
+body[data-album-mode='drawings'] .page-rail-card,
+body[data-album-mode='templates'] .page-rail-card {
+  flex: 0 0 68px !important;
+  width: 68px !important;
+  min-height: 54px !important;
+  padding: 6px !important;
+}
+
+body[data-album-mode='text'] .page-rail-card b,
+body[data-album-mode='drawings'] .page-rail-card b,
+body[data-album-mode='templates'] .page-rail-card b {
+  font-size: 18px !important;
+}
+
+body[data-album-mode='text'] .page-rail-note,
+body[data-album-mode='drawings'] .page-rail-note,
+body[data-album-mode='templates'] .page-rail-note {
+  grid-column: 1 / -1 !important;
+  margin-top: 2px !important;
+}
+
+@media (max-width: 1180px) {
+  body[data-album-mode='text'] .workspace.three-columns,
+  body[data-album-mode='drawings'] .workspace.three-columns,
+  body[data-album-mode='templates'] .workspace.three-columns,
+  body[data-album-mode='text'] .three-columns,
+  body[data-album-mode='drawings'] .three-columns,
+  body[data-album-mode='templates'] .three-columns {
+    grid-template-columns: 210px max-content !important;
+    grid-template-areas:
+      "tools pages"
+      "tools canvas" !important;
+  }
+
+  body[data-album-mode='text'] .workspace > .album-mode-inspector,
+  body[data-album-mode='drawings'] .workspace > .album-mode-inspector,
+  body[data-album-mode='templates'] .workspace > .album-mode-inspector {
+    display: none !important;
+  }
+}
+
+@media (max-width: 980px) {
+  body[data-album-mode='text'] .workspace.three-columns,
+  body[data-album-mode='drawings'] .workspace.three-columns,
+  body[data-album-mode='templates'] .workspace.three-columns,
+  body[data-album-mode='text'] .three-columns,
+  body[data-album-mode='drawings'] .three-columns,
+  body[data-album-mode='templates'] .three-columns {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  body[data-album-mode='text'] .workspace > .page-rail,
+  body[data-album-mode='drawings'] .workspace > .page-rail,
+  body[data-album-mode='templates'] .workspace > .page-rail {
+    width: 100% !important;
+  }
+}
