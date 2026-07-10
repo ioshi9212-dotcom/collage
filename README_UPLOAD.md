@@ -1,24 +1,36 @@
-# Collage templates patch v2 + PNG export fix
+# Collage templates patch v3 — no template flicker
 
-Заменить файлы в проекте по тем же путям:
+Заменить файлы по тем же путям:
 
 - `src/AppLive.jsx`
-- `index.html`
 - `public/album-layers.js`
 - `public/album-layers.css`
 - `public/template-mode.js`
 - `public/template-mode.css`
 - `public/local-font-aliases.css`
-- `public/templates/index.json`
-- `public/templates/a5-soft-wedding-4.json`
-- `public/templates/a5-clean-family-3.json`
-- `public/templates/README.md`
-- `public/template-assets/README.md`
+- `index.html`
 
-Что исправлено в v2:
+Также добавить/оставить папки:
 
-1. PNG страницы и PNG разворота теперь берут текстовые слои `ExtraPageLayers`.
-2. Пустые фото-окна без фото не попадают в PNG — остаётся только фон страницы.
-3. Сборка проверена командой `npm run build`.
+- `public/templates/`
+- `public/template-assets/`
 
-Важно: файлы шрифтов `.ttf` в ZIP не вложены. Они должны лежать в репозитории в `public/fonts/`.
+## Что исправлено в v3
+
+1. Убран конфликт владельцев режима `Шаблоны`.
+   - `album-layers.js` больше не перерисовывает заглушку `скоро будет` в режиме шаблонов.
+   - `template-mode.js` остаётся единственным владельцем панелей шаблонов.
+
+2. Исправлено мигание между заглушкой и реальным редактором шаблонов.
+
+3. Сохранены фиксы v2:
+   - текст попадает в PNG страницы и разворота;
+   - пустые фото-окна без фото не печатаются в PNG;
+   - остаётся только фон страницы.
+
+## Проверка
+
+```bash
+npm install
+npm run build
+```
