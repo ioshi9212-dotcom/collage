@@ -3,28 +3,37 @@
   const MODE_KEY = 'collage-album-editor-mode';
   const PROJECT_PREFIX = 'collage-creator-album';
   const SPREAD_GAP = 90;
-  const DEFAULT_FONT_ID = 'manrope';
+  const DEFAULT_FONT_ID = 'onest';
   const DEFAULT_TEXT_PRESET_ID = 'body';
   const TEXT_FONTS = [
-    { id: 'system', label: 'Обычный', family: 'Arial, sans-serif' },
-    { id: 'manrope', label: 'Мягкий обычный', family: "'Manrope', Arial, sans-serif" },
-    { id: 'montserrat', label: 'Современный', family: "'Montserrat', Arial, sans-serif" },
-    { id: 'rubik', label: 'Аккуратный', family: "'Rubik', Arial, sans-serif" },
-    { id: 'lora', label: 'Книжный', family: "'Lora', Georgia, serif" },
-    { id: 'playfair', label: 'Красивый заголовок', family: "'Playfair Display', Georgia, serif" },
-    { id: 'cormorant', label: 'Элегантный', family: "'Cormorant Garamond', Georgia, serif" },
-    { id: 'oswald', label: 'Строгий заголовок', family: "'Oswald', Arial, sans-serif" },
-    { id: 'marck', label: 'Рукописный', family: "'Marck Script', cursive" },
-    { id: 'caveat', label: 'Живая подпись', family: "'Caveat', cursive" },
-    { id: 'bad-script', label: 'Нежная подпись', family: "'Bad Script', cursive" },
+    { id: 'system', label: 'Обычный системный', family: 'Arial, sans-serif' },
+    { id: 'onest', label: 'Onest — обычный', family: "'Collage Onest', Arial, sans-serif" },
+    { id: 'lato-light', label: 'Lato Light — лёгкий', family: "'Collage Lato Light', Arial, sans-serif" },
+    { id: 'montserrat-alt', label: 'Montserrat Alternates', family: "'Collage Montserrat Alternates', Arial, sans-serif" },
+    { id: 'bebas', label: 'Bebas Neue — заголовок', family: "'Collage Bebas Neue', Arial, sans-serif" },
+    { id: 'new-standard', label: 'New Standard Old — книжный', family: "'Collage New Standard Old', Georgia, serif" },
+    { id: 'caslon', label: 'Caslon Becker — классика', family: "'Collage Caslon Becker', Georgia, serif" },
+    { id: 'agreverence', label: 'AGReverence — элегантный', family: "'Collage AGReverence', Georgia, serif" },
+    { id: 'good-vibes', label: 'Good Vibes Pro — рукописный', family: "'Collage Good Vibes', cursive" },
+    { id: 'chopin', label: 'ChopinScript — подпись', family: "'Collage Chopin Script', cursive" },
+    { id: 'thin-pen', label: 'Script Thin Pen — тонкий', family: "'Collage Script Thin Pen', cursive" },
+    { id: 'shelley', label: 'Shelley Volante', family: "'Collage Shelley Volante', cursive" },
+    { id: 'calligraphia', label: 'Calligraphia One', family: "'Collage Calligraphia One', cursive" },
+    { id: 'czizh', label: 'Czizh', family: "'Collage Czizh', serif" },
+    { id: 'karsten', label: 'Karsten', family: "'Collage Karsten', serif" },
+    { id: 'patefon', label: 'Patefon', family: "'Collage Patefon', serif" },
+    { id: 'romand', label: 'RomanD', family: "'Collage RomanD', serif" },
+    { id: 'web-serveroff', label: 'Web Serveroff', family: "'Collage Web Serveroff', sans-serif" },
+    { id: 'zector', label: 'Zector', family: "'Collage Zector', sans-serif" },
+    { id: 'zeferino', label: 'Zeferino Two', family: "'Collage Zeferino Two', serif" },
   ];
   const TEXT_PRESETS = [
-    { id: 'body', label: 'Обычный', text: 'Новый текст', fontId: 'manrope', fontSize: 56, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.18, color: '#1f2723' },
-    { id: 'title', label: 'Заголовок', text: 'Заголовок', fontId: 'playfair', fontSize: 96, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.05, color: '#1f2723' },
-    { id: 'soft-title', label: 'Нежный', text: 'Нежный заголовок', fontId: 'cormorant', fontSize: 92, fontWeight: 600, fontStyle: 'normal', lineHeight: 1.06, color: '#2a312e' },
-    { id: 'strict', label: 'Строгий', text: 'Строгий текст', fontId: 'oswald', fontSize: 72, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.08, color: '#1f2723' },
-    { id: 'script', label: 'Рукописный', text: 'Рукописная подпись', fontId: 'marck', fontSize: 88, fontWeight: 400, fontStyle: 'normal', lineHeight: 1.1, color: '#1f2723' },
-    { id: 'signature', label: 'Подпись', text: 'Тёплая подпись', fontId: 'caveat', fontSize: 92, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.0, color: '#1f2723' },
+    { id: 'body', label: 'Обычный', text: 'Новый текст', fontId: 'onest', fontSize: 56, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.18, color: '#1f2723' },
+    { id: 'title', label: 'Заголовок', text: 'Заголовок', fontId: 'caslon', fontSize: 96, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.05, color: '#1f2723' },
+    { id: 'soft-title', label: 'Нежный', text: 'Нежный заголовок', fontId: 'agreverence', fontSize: 92, fontWeight: 600, fontStyle: 'normal', lineHeight: 1.06, color: '#2a312e' },
+    { id: 'strict', label: 'Строгий', text: 'Строгий текст', fontId: 'bebas', fontSize: 72, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.08, color: '#1f2723' },
+    { id: 'script', label: 'Рукописный', text: 'Рукописная подпись', fontId: 'good-vibes', fontSize: 88, fontWeight: 400, fontStyle: 'normal', lineHeight: 1.1, color: '#1f2723' },
+    { id: 'signature', label: 'Подпись', text: 'Тёплая подпись', fontId: 'chopin', fontSize: 92, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.0, color: '#1f2723' },
   ];
 
   const state = {

@@ -1,32 +1,55 @@
-# Collage font patch v1
+# Collage template mode v1
 
-Заменить файлы в проекте:
+Это ZIP для точечной замены/добавления файлов в проект.
 
-- `src/AppLive.jsx`
-- `src/styles.css`
-- `public/album-layers.js`
-- `public/album-layers.css`
-- `index.html`
+## Заменить файлы
 
-Что добавлено:
+```text
+index.html
+public/album-layers.js
+public/album-layers.css
+```
 
-- выпадающий список русских шрифтов в режиме `Текст`;
-- готовые стили текста: обычный, заголовок, нежный, строгий, рукописный, подпись;
-- быстрые кнопки `+ Заголовок` и `+ Подпись` в верхней панели режима текста;
-- предпросмотр выбранного шрифта;
-- шрифт сохраняется в текстовом слое и попадает в PNG/экспорт;
-- перед экспортом добавлено ожидание загрузки шрифтов через `document.fonts.ready`.
+## Добавить файлы
 
-Важно:
+```text
+public/local-font-aliases.css
+public/template-mode.js
+public/template-mode.css
+public/templates/index.json
+public/templates/a5-soft-wedding-4.json
+public/templates/a5-clean-family-3.json
+public/templates/README.md
+public/template-assets/README.md
+```
 
-Шрифты подключены через Google Fonts CDN в `public/album-layers.css`.
-Файлы шрифтов в архив не включены.
+## Что добавлено
 
-Проверка:
+- Режим `Шаблоны` теперь читает `public/templates/index.json`.
+- В шаблонах есть JSON-структура: фон, фото-окна, рамки, тексты.
+- Можно применить готовый шаблон к текущей странице.
+- Можно создать ручной шаблон.
+- Можно выбрать цвет фона через палитру и HEX.
+- Можно загрузить картинку фоном для шаблона.
+- Можно добавить фото-окна, двигать их на холсте и менять рамку.
+- Можно скачать JSON созданного шаблона.
+- Добавлена кнопка `PNG вида + шаблон`.
+
+## Важно
+
+Файлы шрифтов в ZIP не включены. Они уже должны лежать в проекте:
+
+```text
+public/fonts/*.ttf
+```
+
+Шрифты подключаются из этой папки через `@font-face`.
+
+## Проверка
+
+После замены/добавления файлов:
 
 ```bash
 npm install
 npm run build
 ```
-
-Build прошёл успешно.

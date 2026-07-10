@@ -1,0 +1,116 @@
+/* Template mode v1: separate layer over existing collage editor. */
+body[data-album-mode='templates'] .album-layer-overlay {
+  pointer-events: auto;
+}
+
+.template-page-background-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.stage-scale-shell > .konvajs-content {
+  position: relative;
+  z-index: 1;
+}
+
+.template-layer-overlay {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.template-photo-slot,
+.template-text-layer {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.template-photo-slot {
+  display: grid;
+  place-items: center;
+  border-style: solid;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(31, 39, 35, 0.52);
+  font: 800 28px/1.1 Arial, sans-serif;
+  text-align: center;
+  user-select: none;
+  pointer-events: none;
+}
+
+body[data-album-mode='templates'] .template-photo-slot {
+  pointer-events: auto;
+  cursor: move;
+}
+
+body[data-album-mode='templates'] .template-photo-slot:hover,
+.template-photo-slot.selected {
+  outline: 3px solid rgba(79, 143, 116, 0.42);
+  outline-offset: 5px;
+}
+
+.template-text-layer {
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+.template-card-list,
+.template-applied-list {
+  display: grid;
+  gap: 8px;
+}
+
+.template-card,
+.template-applied-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid var(--album-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--album-text);
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.template-card:hover,
+.template-applied-card:hover,
+.template-applied-card.active {
+  border-color: var(--album-green);
+  background: var(--album-soft);
+}
+
+.template-card strong,
+.template-applied-card strong {
+  font-size: 13px;
+}
+
+.template-card small,
+.template-applied-card small {
+  color: var(--album-muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.template-color-row {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.template-file-input {
+  width: 100%;
+  font-size: 12px;
+}
+
+.template-inspector-note {
+  color: var(--album-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}

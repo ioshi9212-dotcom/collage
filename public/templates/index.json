@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "title": "Collage templates",
+  "description": "Built-in templates for the collage editor.",
+  "templates": [
+    {
+      "id": "a5-soft-wedding-4",
+      "title": "Нежный A5 · 4 фото",
+      "category": "wedding",
+      "src": "/templates/a5-soft-wedding-4.json",
+      "photoSlots": 4,
+      "format": "a5-portrait"
+    },
+    {
+      "id": "a5-clean-family-3",
+      "title": "Чистый A5 · 3 фото",
+      "category": "family",
+      "src": "/templates/a5-clean-family-3.json",
+      "photoSlots": 3,
+      "format": "a5-portrait"
+    }
+  ]
+}
