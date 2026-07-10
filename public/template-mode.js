@@ -11,6 +11,7 @@
     selectedSlotId: null,
     dragging: null,
     lastRenderMode: '',
+    packagePageById: {},
   };
 
   function makeId(prefix = 'template') {
@@ -201,7 +202,12 @@
     renderNow();
   }
 
-  function applyAlbumPackage(packageData) {
+  function pageTitleForPackage(packageData, pageIndex) {
+    const page = packageData?.pages?.[pageIndex];
+    return page?.title || page?.templates?.[0]?.title || `Страница ${pageIndex + 1}`;
+  }
+
+  function applyAlbumPackage(packageData, scope = 'album', pageIndex = 0) {
     const pages = Array.isArray(packageData?.pages) ? packageData.pages : [];
     const title = packageData?.title || 'Пакет альбома';
     if (!pages.length) {
@@ -209,14 +215,21 @@
       return;
     }
 
+    const safePageIndex = Math.min(Math.max(Number(pageIndex) || 0, 0), Math.max(0, pages.length - 1));
+    const actionText = scope === 'page'
+      ? `Текущая страница будет заменена страницей «${pageTitleForPackage(packageData, safePageIndex)}».`
+      : scope === 'spread'
+        ? `Текущий разворот будет заменён страницами пакета, начиная с «${pageTitleForPackage(packageData, safePageIndex)}».`
+        : `Текущий альбом будет заменён на ${pages.length} стр. из пакета.`;
+
     const confirmed = window.confirm(
       `Применить пакет «${title}»?\n\n` +
-      `Текущий альбом будет заменён на ${pages.length} стр. из пакета.\n` +
-      `Перед этим можно скачать JSON проекта, если нужно сохранить текущую работу.`
+      `${actionText}\n` +
+      `Фото не подставляются: страницы появятся пустыми, с готовыми окнами, фоном и текстом.`
     );
     if (!confirmed) return;
 
-    const result = globalThis.__collageApp?.applyTemplatePackage?.(packageData);
+    const result = globalThis.__collageApp?.applyTemplatePackage?.(packageData, { scope, pageIndex: safePageIndex });
     if (!result?.ok) {
       showNotice(result?.error ? `Не удалось применить пакет: ${result.error}` : 'Редактор ещё не готов применить пакет');
       return;
@@ -224,7 +237,34 @@
 
     state.selectedAppliedId = null;
     state.selectedSlotId = null;
-    showNotice(`Пакет «${result.title || title}» применён: ${result.pageCount || pages.length} стр.`);
+    const label = scope === 'page' ? 'страница' : scope === 'spread' ? 'разворот' : `${result.pageCount || pages.length} стр.`;
+    showNotice(`Пакет «${result.title || title}» применён: ${label}`);
+    window.setTimeout(renderNow, 180);
+  }
+
+  function applyReadyPageTemplate(templateData) {
+    if (!templateData) return;
+    const title = templateData.title || 'Шаблон страницы';
+    const confirmed = window.confirm(
+      `Применить шаблон «${title}» к текущей странице?\n\n` +
+      'Текущие окна и текст этой страницы будут заменены. Фото не подставляются.'
+    );
+    if (!confirmed) return;
+
+    const packageLikeData = {
+      title,
+      page: templateData.page,
+      settings: { frameMode: 'free' },
+      pages: [{ title, templates: [templateData] }],
+    };
+    const result = globalThis.__collageApp?.applyTemplatePackage?.(packageLikeData, { scope: 'page', pageIndex: 0 });
+    if (!result?.ok) {
+      showNotice(result?.error ? `Не удалось применить шаблон: ${result.error}` : 'Редактор ещё не готов применить шаблон');
+      return;
+    }
+    state.selectedAppliedId = null;
+    state.selectedSlotId = null;
+    showNotice(`Шаблон «${title}» применён к текущей странице`);
     window.setTimeout(renderNow, 180);
   }
 
@@ -448,16 +488,47 @@
     if (state.loadState === 'loading') packageGallery.append(empty('Загружаю пакеты…'));
     else if (!state.packages.length) packageGallery.append(empty('Пакетов альбомов пока нет. Добавь их в public/templates/index.json → packages.'));
     else state.packages.forEach((entry) => {
-      const card = el('button', 'template-card template-package-card');
-      card.type = 'button';
+      const card = el('div', 'template-card template-package-card');
       const pageCount = entry.pageCount || entry.data?.pageCount || entry.data?.pages?.length || 0;
       const design = entry.design || entry.data?.design || entry.category || entry.data?.category || 'album';
+      const titleText = entry.title || entry.data?.title || entry.id;
       card.append(
-        el('strong', '', entry.title || entry.data?.title || entry.id),
+        el('strong', '', titleText),
         el('small', '', entry.error ? `Ошибка: ${entry.error}` : `${design} · страниц: ${pageCount}`)
       );
-      card.disabled = Boolean(entry.error || !entry.data);
-      card.addEventListener('click', () => applyAlbumPackage(entry.data));
+
+      if (entry.error || !entry.data) {
+        card.classList.add('disabled');
+        packageGallery.append(card);
+        return;
+      }
+
+      const selectedIndex = Math.min(
+        Math.max(Number(state.packagePageById[entry.id] || 0), 0),
+        Math.max(0, (entry.data.pages?.length || 1) - 1),
+      );
+      state.packagePageById[entry.id] = selectedIndex;
+
+      const pageSelect = document.createElement('select');
+      pageSelect.className = 'template-package-select';
+      (entry.data.pages || []).forEach((page, pageIndex) => {
+        const option = document.createElement('option');
+        option.value = String(pageIndex);
+        option.textContent = `${pageIndex + 1}. ${page.title || page.templates?.[0]?.title || 'Страница'}`;
+        pageSelect.append(option);
+      });
+      pageSelect.value = String(selectedIndex);
+      pageSelect.addEventListener('change', () => {
+        state.packagePageById[entry.id] = Number(pageSelect.value) || 0;
+      });
+
+      const actions = el('div', 'template-package-actions');
+      actions.append(
+        button('Весь альбом', () => applyAlbumPackage(entry.data, 'album', Number(pageSelect.value) || 0), 'primary'),
+        button('Страница', () => applyAlbumPackage(entry.data, 'page', Number(pageSelect.value) || 0)),
+        button('Разворот', () => applyAlbumPackage(entry.data, 'spread', Number(pageSelect.value) || 0))
+      );
+      card.append(field('Выбранная страница пакета', pageSelect), actions);
       packageGallery.append(card);
     });
 
@@ -469,13 +540,13 @@
       card.type = 'button';
       card.append(el('strong', '', entry.title || entry.data?.title || entry.id), el('small', '', entry.error ? `Ошибка: ${entry.error}` : `${entry.category || entry.data?.category || 'template'} · фото: ${entry.photoSlots || entry.data?.photoSlots?.length || 0}`));
       card.disabled = Boolean(entry.error || !entry.data);
-      card.addEventListener('click', () => applyTemplate(entry.data));
+      card.addEventListener('click', () => applyReadyPageTemplate(entry.data));
       gallery.append(card);
     });
 
     const importInput = fileInput('.json,application/json', importTemplateFile);
     left.append(
-      block('Пакеты альбомов', [packageGallery, hint('Пакет заменяет весь текущий альбом и сразу создаёт все страницы в ленте.')]),
+      block('Пакеты альбомов', [packageGallery, hint('Можно применить весь альбом, одну выбранную страницу или разворот. После применения всё открывается в режиме коллажа: фото-окна пустые, текст редактируется в режиме “Текст”.')]),
       block('Шаблоны страницы', [gallery, button('Обновить список', () => loadManifest(true).then(renderNow))]),
       block('Ручной режим', [button('+ Пустой шаблон', createBlankTemplate, 'primary'), hint('Создай пустой шаблон, добавь фон, фото-окна, текст, потом скачай JSON и положи его в public/templates.')]),
       block('Загрузить JSON', [importInput])

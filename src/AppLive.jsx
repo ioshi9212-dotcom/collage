@@ -520,12 +520,13 @@ function countFramesInLayout(layout) {
 
 function resolvePageFrameCount(page, fallbackSettings = DEFAULT_SETTINGS) {
   if (page?.isBlankPage) return 0;
+  if (Number(page?.frameCount) === 0) return 0;
   const saved = Number(page?.frameCount);
-  if (Number.isFinite(saved) && saved >= 1) return clamp(saved, 1, 9);
+  if (Number.isFinite(saved) && saved >= 1) return clamp(saved, 1, 99);
   const fromLayout = countFramesInLayout(page?.layout);
-  if (fromLayout) return clamp(fromLayout, 1, 9);
+  if (fromLayout) return clamp(fromLayout, 1, 99);
   const fromFrames = Array.isArray(page?.frames) ? page.frames.length : 0;
-  if (fromFrames) return clamp(fromFrames, 1, 9);
+  if (fromFrames) return clamp(fromFrames, 1, 99);
   return clamp(Number(fallbackSettings.frameCount) || DEFAULT_SETTINGS.frameCount, 1, 9);
 }
 
@@ -550,6 +551,7 @@ function createBlankPage(number, overrides = {}) {
     frameCount: 0,
     layout: null,
     frames: [],
+    background: overrides.background ?? null,
   };
 }
 
@@ -793,13 +795,39 @@ function GridHandles({ layout, onColumnResize, onRowResize, onActivate }) {
   );
 }
 
+
+function PageBackground({ page, canvas, settings }) {
+  const background = page?.background || {};
+  const [image, setImage] = useState(null);
+  const imageSrc = background?.image || '';
+
+  useEffect(() => {
+    let active = true;
+    if (!imageSrc) {
+      setImage(null);
+      return () => { active = false; };
+    }
+    loadImage(imageSrc)
+      .then((loaded) => { if (active) setImage(loaded); })
+      .catch(() => { if (active) setImage(null); });
+    return () => { active = false; };
+  }, [imageSrc]);
+
+  const opacity = Number.isFinite(Number(background.opacity)) ? Number(background.opacity) : 1;
+  return (
+    <>
+      <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={background.color || settings.borderColor || '#ffffff'} listening />
+      {image && <KonvaImage image={image} x={0} y={0} width={canvas.width} height={canvas.height} opacity={opacity} listening={false} />}
+    </>
+  );
+}
 function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const safe = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
   if (!page || page.isBlankPage) {
     return (
       <Group x={x} y={y}>
-        <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
+        <PageBackground page={page} canvas={canvas} settings={settings} />
         {page?.isBlankPage && !printMode && !collagePreviewOnly && (
           <Text x={42} y={42} text="Пустая страница" fontSize={34} fill="#b49a87" fontStyle="bold" opacity={0.75} listening={false} />
         )}
@@ -809,7 +837,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
   const orderedFrames = [...page.frames].sort((a, b) => (Number(a.zIndex) || 0) - (Number(b.zIndex) || 0));
   return (
     <Group x={x} y={y}>
-      <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
+      <PageBackground page={page} canvas={canvas} settings={settings} />
       {!collagePreviewOnly && !printMode && settings.showGuides && (
         <>
           <Rect x={safe} y={safe} width={Math.max(0, canvas.width - safe * 2)} height={Math.max(0, canvas.height - safe * 2)} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={2} strokeScaleEnabled={false} dash={[18, 14]} listening={false} />
@@ -1391,24 +1419,27 @@ export default function App() {
 
   function deleteSelectedFrame() {
     if (!selectedFrame || !currentPage) return;
-    const frameCount = resolvePageFrameCount(currentPage, settings);
-    if (frameCount <= 1) return show('Нельзя удалить последнее окно на странице');
-    const nextFrameCount = frameCount - 1;
-    const keptFrames = currentPage.frames.filter((frame) => frame.id !== selectedFrame.id);
-    const nextSettings = { ...settings, frameCount: nextFrameCount };
-    setSettings(nextSettings);
+    const existingFrames = Array.isArray(currentPage.frames) ? currentPage.frames : [];
+    const nextFrames = existingFrames.filter((frame) => frame.id !== selectedFrame.id);
+    const nextFrameCount = nextFrames.length;
+
     setAlbum((current) => ({
       ...current,
       pages: current.pages.map((page) => {
         if (page.id !== current.currentPageId) return page;
-        const pageSettings = settingsForPage(nextSettings, page, nextFrameCount);
-        const built = buildGridLayout(canvas, pageSettings, keptFrames);
-        return { ...page, frameCount: nextFrameCount, layout: built.layout, frames: built.frames };
+        const shouldRebuildGrid = settings.frameMode === 'locked' && page.layout?.type === 'grid' && nextFrameCount > 0;
+        if (shouldRebuildGrid) {
+          const pageSettings = settingsForPage(settings, page, nextFrameCount);
+          const built = buildGridLayout(canvas, pageSettings, nextFrames);
+          return { ...page, frameCount: nextFrameCount, layout: built.layout, frames: built.frames };
+        }
+        return { ...page, frameCount: nextFrameCount, layout: nextFrameCount ? page.layout : null, frames: nextFrames };
       }),
     }));
+
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
-    show(`Окно удалено. На странице ${currentPageIndex + 1}: ${nextFrameCount} фото-окон`);
+    show(nextFrameCount ? `Окно удалено. Осталось: ${nextFrameCount}` : 'Окно удалено. Страница осталась с фоном и текстом.');
   }
 
   function bringSelectedFrameToFront() {
@@ -1684,7 +1715,103 @@ export default function App() {
     saveLocalProject();
   }
 
-  function normalizeTemplatePackage(packageData = {}) {
+  function normalizePackageText(text = {}) {
+    return {
+      id: makeId(),
+      sourceId: text.id || '',
+      text: String(text.text ?? ''),
+      x: Number(text.x ?? 120),
+      y: Number(text.y ?? 120),
+      width: Number(text.width ?? 800),
+      fontId: text.fontId || undefined,
+      fontFamily: text.fontFamily || "'Collage Caslon Becker', Georgia, serif",
+      fontSize: Number(text.fontSize ?? 72),
+      fontWeight: Number(text.fontWeight ?? 400),
+      fontStyle: text.fontStyle === 'italic' ? 'italic' : 'normal',
+      lineHeight: Number(text.lineHeight ?? 1.08),
+      color: text.color || '#1f2723',
+      align: text.align || 'left',
+    };
+  }
+
+  function normalizePackageBackground(background, fallbackColor = '#ffffff') {
+    return {
+      type: background?.image ? 'image' : 'color',
+      color: background?.color || fallbackColor,
+      image: background?.image || null,
+      fit: background?.fit || 'cover',
+      opacity: Number.isFinite(Number(background?.opacity)) ? Number(background.opacity) : 1,
+    };
+  }
+
+  function rawTemplatesForPackagePage(sourcePage = {}, pageNumber, packageData = {}, nextCanvas, nextSettings) {
+    if (Array.isArray(sourcePage.templates) && sourcePage.templates.length) return sourcePage.templates;
+    if (sourcePage.template) return [sourcePage.template];
+    return [{
+      id: sourcePage.id || `page-${pageNumber}-template`,
+      title: sourcePage.title || `Страница ${pageNumber}`,
+      category: sourcePage.category || packageData.category || 'package',
+      page: { presetId: nextSettings.presetId, width: nextCanvas.width, height: nextCanvas.height },
+      background: sourcePage.background,
+      photoSlots: sourcePage.photoSlots,
+      texts: sourcePage.texts,
+      decorations: sourcePage.decorations,
+    }];
+  }
+
+  function buildPackagePage(sourcePage = {}, pageNumber, packageData = {}, nextCanvas, nextSettings) {
+    const rawTemplates = rawTemplatesForPackagePage(sourcePage, pageNumber, packageData, nextCanvas, nextSettings);
+    const pageBackground = normalizePackageBackground(
+      sourcePage.background || rawTemplates.find((template) => template?.background)?.background,
+      nextSettings.borderColor || '#ffffff',
+    );
+
+    const frames = rawTemplates.flatMap((template, templateIndex) => (
+      Array.isArray(template?.photoSlots) ? template.photoSlots : []
+    ).map((slot, slotIndex) => cleanFrame({
+      id: makeId(),
+      x: Number(slot.x ?? 120),
+      y: Number(slot.y ?? 220),
+      width: Number(slot.width ?? 520),
+      height: Number(slot.height ?? 680),
+      zIndex: Number(slot.zIndex ?? (templateIndex * 100 + slotIndex)),
+      photo: null,
+      templateSlotId: slot.id || `page-${pageNumber}-slot-${templateIndex + 1}-${slotIndex + 1}`,
+    }, nextCanvas)));
+
+    const texts = [
+      ...(Array.isArray(sourcePage.extraTexts) ? sourcePage.extraTexts : []),
+      ...(Array.isArray(sourcePage.texts) ? sourcePage.texts : []),
+      ...rawTemplates.flatMap((template) => (Array.isArray(template?.texts) ? template.texts : [])),
+    ].map(normalizePackageText);
+
+    return {
+      page: {
+        id: makeId(),
+        title: sourcePage.title || rawTemplates[0]?.title || `Страница ${pageNumber}`,
+        frameCount: frames.length,
+        layout: null,
+        frames,
+        background: pageBackground,
+      },
+      extraPage: {
+        texts,
+        drawings: [],
+        templates: [],
+      },
+    };
+  }
+
+  function selectedPackageSourcePages(packageData = {}, options = {}) {
+    const sourcePages = Array.isArray(packageData.pages) && packageData.pages.length ? packageData.pages : [];
+    if (options.scope === 'page' || options.scope === 'spread') {
+      const safeIndex = clamp(Number(options.pageIndex) || 0, 0, Math.max(0, sourcePages.length - 1));
+      return sourcePages.slice(safeIndex, safeIndex + (options.scope === 'spread' ? 2 : 1));
+    }
+    return sourcePages;
+  }
+
+  function normalizeTemplatePackage(packageData = {}, options = {}) {
     const pageInfo = packageData.page || packageData.canvas || {};
     const nextCanvas = {
       width: clamp(Number(pageInfo.width) || canvas.width || DEFAULT_CANVAS.width, 300, 5000),
@@ -1697,67 +1824,13 @@ export default function App() {
       frameMode: packageData.settings?.frameMode || 'free',
     };
 
-    const sourcePages = Array.isArray(packageData.pages) && packageData.pages.length ? packageData.pages : [];
+    const sourcePages = selectedPackageSourcePages(packageData, options);
     const nextExtraLayers = { version: 1, pages: {} };
-
-    const templateToFrames = (template, pageNumber) => (
-      Array.isArray(template?.photoSlots) ? template.photoSlots : []
-    ).map((slot, slotIndex) => cleanFrame({
-      id: makeId(),
-      x: Number(slot.x ?? 120),
-      y: Number(slot.y ?? 220),
-      width: Number(slot.width ?? 520),
-      height: Number(slot.height ?? 680),
-      zIndex: Number(slot.zIndex ?? slotIndex),
-      photo: null,
-      templateSlotId: slot.id || `page-${pageNumber}-slot-${slotIndex + 1}`,
-    }, nextCanvas));
-
     const nextPages = sourcePages.map((sourcePage, index) => {
       const pageNumber = index + 1;
-      const rawTemplates = Array.isArray(sourcePage.templates)
-        ? sourcePage.templates
-        : sourcePage.template
-          ? [sourcePage.template]
-          : [{
-              id: sourcePage.id || `page-${pageNumber}-template`,
-              title: sourcePage.title || `Страница ${pageNumber}`,
-              category: sourcePage.category || packageData.category || 'package',
-              page: { presetId: nextSettings.presetId, width: nextCanvas.width, height: nextCanvas.height },
-              background: sourcePage.background,
-              photoSlots: sourcePage.photoSlots,
-              texts: sourcePage.texts,
-              decorations: sourcePage.decorations,
-            }];
-
-      const normalizedTemplates = rawTemplates.map((template, templateIndex) => ({
-        id: makeId(),
-        sourceId: template.id || `${packageData.id || 'album-package'}-page-${pageNumber}-${templateIndex + 1}`,
-        title: template.title || sourcePage.title || `Страница ${pageNumber}`,
-        category: template.category || sourcePage.category || packageData.category || 'package',
-        page: template.page || { presetId: nextSettings.presetId, width: nextCanvas.width, height: nextCanvas.height },
-        background: template.background || sourcePage.background || { type: 'color', color: nextSettings.borderColor || '#ffffff', image: null, fit: 'cover', opacity: 1 },
-        photoSlots: Array.isArray(template.photoSlots) ? template.photoSlots : [],
-        texts: Array.isArray(template.texts) ? template.texts : [],
-        decorations: Array.isArray(template.decorations) ? template.decorations : [],
-      }));
-
-      nextExtraLayers.pages[String(pageNumber)] = {
-        texts: Array.isArray(sourcePage.extraTexts) ? sourcePage.extraTexts : [],
-        drawings: [],
-        templates: normalizedTemplates,
-      };
-
-      const frames = normalizedTemplates.flatMap((template) => templateToFrames(template, pageNumber));
-      if (!frames.length) return createBlankPage(pageNumber, { id: makeId(), title: sourcePage.title || `Страница ${pageNumber}` });
-
-      return {
-        id: makeId(),
-        title: sourcePage.title || `Страница ${pageNumber}`,
-        frameCount: clamp(frames.length, 1, 99),
-        layout: null,
-        frames,
-      };
+      const built = buildPackagePage(sourcePage, pageNumber, packageData, nextCanvas, nextSettings);
+      nextExtraLayers.pages[String(pageNumber)] = built.extraPage;
+      return built.page;
     });
 
     return {
@@ -1767,26 +1840,91 @@ export default function App() {
       pages: nextPages.length ? nextPages : [createBlankPage(1)],
       extraLayers: nextExtraLayers,
       viewMode: ['single', 'spread', 'booklet'].includes(packageData.viewMode) ? packageData.viewMode : 'spread',
+      scope: options.scope || 'album',
     };
   }
 
-  function applyTemplatePackage(packageData = {}) {
+  function mergeExtraLayersForPackagePage(targetPageIndex, extraPage) {
+    const layers = readExtraLayers();
+    const key = String(targetPageIndex + 1);
+    layers.pages = { ...(layers.pages || {}) };
+    layers.pages[key] = {
+      texts: Array.isArray(extraPage?.texts) ? extraPage.texts : [],
+      drawings: Array.isArray(extraPage?.drawings) ? extraPage.drawings : [],
+      templates: Array.isArray(extraPage?.templates) ? extraPage.templates : [],
+    };
+    writeExtraLayers(layers);
+    window.requestAnimationFrame?.(() => writeExtraLayers(layers));
+    window.setTimeout?.(() => writeExtraLayers(layers), 150);
+    return layers;
+  }
+
+  function applyTemplatePackage(packageData = {}, options = {}) {
     try {
-      const normalizedPackage = normalizeTemplatePackage(packageData);
+      const scope = ['page', 'spread', 'album'].includes(options.scope) ? options.scope : 'album';
+      const normalizedPackage = normalizeTemplatePackage(packageData, { ...options, scope });
+
       setCanvas(normalizedPackage.canvas);
       setSettings(normalizedPackage.settings);
-      setAlbum({ pages: normalizedPackage.pages, currentPageId: normalizedPackage.pages[0].id });
-      setViewMode(normalizedPackage.viewMode);
-      writeExtraLayers(normalizedPackage.extraLayers);
       setSelectedFrameId(null);
       setSelectedPhotoId(null);
       setMoveFrameWithPhotoId(null);
       setBookletSideId(null);
-      setAlbumMode(applyAlbumEditorMode('templates'));
+      setAlbumMode(applyAlbumEditorMode('collage'));
+
+      if (scope === 'page') {
+        const replacement = normalizedPackage.pages[0];
+        const extraPage = normalizedPackage.extraLayers.pages['1'];
+        setAlbum((current) => ({
+          ...current,
+          pages: current.pages.map((page, index) => (
+            index === currentPageIndex ? { ...replacement, id: page.id, title: replacement.title || page.title } : page
+          )),
+          currentPageId: current.pages[currentPageIndex]?.id ?? current.currentPageId,
+        }));
+        mergeExtraLayersForPackagePage(currentPageIndex, extraPage);
+        show(`Страница из пакета «${normalizedPackage.title}» применена`);
+        return { ok: true, pageCount: 1, title: normalizedPackage.title, scope };
+      }
+
+      if (scope === 'spread') {
+        const spreadTargetStart = currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1;
+        const normalizedPages = normalizedPackage.pages.slice(0, 2);
+        const layers = readExtraLayers();
+        layers.pages = { ...(layers.pages || {}) };
+
+        setAlbum((current) => {
+          const nextPages = [...current.pages];
+          normalizedPages.forEach((replacement, index) => {
+            const targetIndex = spreadTargetStart + index;
+            if (targetIndex < nextPages.length) {
+              nextPages[targetIndex] = { ...replacement, id: nextPages[targetIndex].id, title: replacement.title || nextPages[targetIndex].title };
+            } else {
+              nextPages.push(replacement);
+            }
+            const extraPage = normalizedPackage.extraLayers.pages[String(index + 1)];
+            layers.pages[String(targetIndex + 1)] = {
+              texts: Array.isArray(extraPage?.texts) ? extraPage.texts : [],
+              drawings: Array.isArray(extraPage?.drawings) ? extraPage.drawings : [],
+              templates: Array.isArray(extraPage?.templates) ? extraPage.templates : [],
+            };
+          });
+          return { ...current, pages: nextPages, currentPageId: nextPages[spreadTargetStart]?.id ?? current.currentPageId };
+        });
+        writeExtraLayers(layers);
+        window.requestAnimationFrame?.(() => writeExtraLayers(layers));
+        window.setTimeout?.(() => writeExtraLayers(layers), 150);
+        show(`Разворот из пакета «${normalizedPackage.title}» применён`);
+        return { ok: true, pageCount: normalizedPages.length, title: normalizedPackage.title, scope };
+      }
+
+      setAlbum({ pages: normalizedPackage.pages, currentPageId: normalizedPackage.pages[0].id });
+      setViewMode(normalizedPackage.viewMode);
+      writeExtraLayers(normalizedPackage.extraLayers);
       show(`Пакет «${normalizedPackage.title}» применён: ${normalizedPackage.pages.length} стр.`);
       window.requestAnimationFrame?.(() => writeExtraLayers(normalizedPackage.extraLayers));
       window.setTimeout?.(() => writeExtraLayers(normalizedPackage.extraLayers), 150);
-      return { ok: true, pageCount: normalizedPackage.pages.length, title: normalizedPackage.title };
+      return { ok: true, pageCount: normalizedPackage.pages.length, title: normalizedPackage.title, scope };
     } catch (error) {
       console.error(error);
       show('Не удалось применить пакет альбома');
@@ -1798,7 +1936,7 @@ export default function App() {
     window.__collageApp = {
       getProject: () => project(),
       saveLocal: () => saveLocalProject({ silent: true }),
-      applyTemplatePackage: (packageData) => applyTemplatePackage(packageData),
+      applyTemplatePackage: (packageData, options) => applyTemplatePackage(packageData, options),
     };
 
     return () => {
@@ -1814,11 +1952,23 @@ export default function App() {
         }
         const frames = Array.isArray(page.frames) ? page.frames.map((frame) => cleanFrame(frame, nextCanvas)) : [];
         const existingLayoutCount = countFramesInLayout(page.layout);
-        const frameCount = clamp(Number(page.frameCount) || existingLayoutCount || frames.length || nextSettings.frameCount, 1, 9);
+        const frameCount = Number(page.frameCount) === 0
+          ? 0
+          : clamp(Number(page.frameCount) || existingLayoutCount || frames.length || nextSettings.frameCount, 1, 99);
+        if (frameCount === 0) {
+          return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, frameCount: 0, layout: null, frames: [], background: page.background ?? null };
+        }
         const trustLayout = page.layout?.type === 'grid' && existingLayoutCount === frameCount;
         const pageSettings = { ...nextSettings, frameCount };
-        const layout = trustLayout ? page.layout : buildGridLayout(nextCanvas, pageSettings, frames).layout;
-        return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, frameCount, layout, frames: framesFromLayout(layout, frames) };
+        const layout = trustLayout ? page.layout : page.layout ? buildGridLayout(nextCanvas, pageSettings, frames).layout : null;
+        return {
+          id: page.id ?? makeId(),
+          title: page.title ?? `Страница ${index + 1}`,
+          frameCount,
+          layout,
+          frames: layout ? framesFromLayout(layout, frames) : frames,
+          background: page.background ?? null,
+        };
       });
     }
     if (Array.isArray(data.frames)) return [createPage(nextCanvas, nextSettings, 1, data.frames.map((frame) => cleanFrame(frame, nextCanvas)))];
@@ -2088,7 +2238,7 @@ export default function App() {
             <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
             <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
             <label className="field small-field"><span>Высота px</span><input type="number" value={canvas.height} onChange={(event) => updateCanvas(canvas.width, event.target.value, 'custom')} /></label>
-            <label className="field small-field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
+            <label className="field small-field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : currentPageFrameCount === 0 ? <option value={0}>0</option> : [1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
             <label className="field small-field"><span>Зазор</span><input type="number" value={settings.gap} onChange={(event) => updateSetting('gap', clamp(event.target.value, 0, 200))} /></label>
             <label className="field small-field"><span>Поля</span><input type="number" value={settings.padding} onChange={(event) => updateSetting('padding', clamp(event.target.value, 0, 300))} /></label>
           </div>
@@ -2330,8 +2480,8 @@ export default function App() {
                 </div>
                 {!locked && <button className="button full" onClick={bringSelectedFrameToFront}>Поверх остальных</button>}
                 {!locked && <button className={`button full ${moveFrameWithPhotoId === selectedFrame.id ? 'accent' : ''}`} onClick={enableMoveFrameWithPhoto} disabled={!selectedFrame.photo}>{moveFrameWithPhotoId === selectedFrame.id ? 'Перетащи рамку сейчас' : 'Двигать рамку с фото'}</button>}
-                <button className="button full danger-button" onClick={deleteSelectedFrame} disabled={currentPageFrameCount <= 1}>Удалить окно</button>
-                <p className="hint">Удаление перестроит эту страницу: соседние окна сдвинутся, фото сохранятся по порядку.</p>
+                <button className="button full danger-button" onClick={deleteSelectedFrame}>Удалить окно</button>
+                <p className="hint">Удаление убирает выбранное окно. Если это было последнее окно, на странице останется фон и текст.</p>
                 <p className="hint">Режим: {locked ? 'сетка через layout, без угадывания соседей по координатам' : selectedFrame.photo ? 'фото внутри окна двигается; для движения рамки вместе с фото нажми кнопку выше' : 'рамка двигается внутри страницы и меняет размер за маркеры'}.</p>
               </div>
               <div className="inspector-block">

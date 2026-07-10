@@ -132,3 +132,30 @@ body[data-album-mode='templates'] .template-photo-slot:hover,
 .template-package-list {
   max-height: 220px;
 }
+
+.template-package-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.template-package-actions .album-mode-button {
+  flex: 1 1 92px;
+}
+
+.template-package-select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--album-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--album-text);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.template-card.disabled {
+  opacity: 0.62;
+}
