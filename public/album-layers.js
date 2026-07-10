@@ -217,6 +217,27 @@
     };
   }
 
+  function currentProject() {
+    try {
+      return globalThis.__collageApp?.getProject?.() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function shouldShowPageGuides() {
+    const project = currentProject();
+    return project?.settings?.showGuides !== false;
+  }
+
+  function currentSafeInset() {
+    const canvas = currentCanvas();
+    const project = currentProject();
+    const raw = Number(project?.settings?.padding);
+    if (Number.isFinite(raw)) return Math.min(raw, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
+    return Math.min(70, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
+  }
+
   function activePageNumber() {
     const text = document.querySelector('.page-chip.active-page-chip b')?.textContent;
     const pageNumber = Number(text);
@@ -864,6 +885,57 @@
     return overlay;
   }
 
+  function guideDiv(className, styles = {}, text = '') {
+    const node = document.createElement('div');
+    node.className = className;
+    if (text) node.textContent = text;
+    Object.assign(node.style, styles);
+    return node;
+  }
+
+  function renderPageGuideNode(layer, pageX, pageNumber) {
+    const canvas = currentCanvas();
+    const safe = currentSafeInset();
+    const page = guideDiv('album-page-guide', {
+      left: `${pageX}px`,
+      top: '0px',
+      width: `${canvas.width}px`,
+      height: `${canvas.height}px`,
+    });
+
+    page.append(guideDiv('album-page-guide-label', {}, `стр. ${pageNumber}`));
+    page.append(guideDiv('album-safe-guide', {
+      left: `${safe}px`,
+      top: `${safe}px`,
+      width: `${Math.max(0, canvas.width - safe * 2)}px`,
+      height: `${Math.max(0, canvas.height - safe * 2)}px`,
+    }));
+
+    [0.25, 0.5, 0.75].forEach((part) => {
+      const isCenter = part === 0.5;
+      page.append(guideDiv(`album-guide-line album-guide-vertical ${isCenter ? 'center' : 'quarter'}`, { left: `${canvas.width * part}px` }));
+      page.append(guideDiv(`album-guide-line album-guide-horizontal ${isCenter ? 'center' : 'quarter'}`, { top: `${canvas.height * part}px` }));
+    });
+
+    page.append(guideDiv('album-guide-center-label', {
+      left: `${canvas.width / 2}px`,
+      top: `${canvas.height / 2}px`,
+    }, 'центр'));
+
+    layer.append(page);
+  }
+
+  function renderGuideOverlay(overlay = ensureOverlay()) {
+    if (!overlay) return;
+    overlay.querySelector('.album-guide-layer')?.remove();
+    if (!shouldShowPageGuides()) return;
+
+    const layer = document.createElement('div');
+    layer.className = 'album-guide-layer';
+    visiblePages().forEach(({ pageNumber, x }) => renderPageGuideNode(layer, x, pageNumber));
+    overlay.insertBefore(layer, overlay.firstChild);
+  }
+
   function renderLineNode(overlay, item, pageX, pageNumber) {
     if (item.type !== 'line') return;
     const strokeWidth = clampNumber(item.strokeWidth || 4, 1, 120);
@@ -894,6 +966,7 @@
     const overlay = ensureOverlay();
     if (!overlay) return;
     overlay.innerHTML = '';
+    renderGuideOverlay(overlay);
 
     visiblePages().forEach(({ pageNumber, x }) => {
       pageTexts(pageNumber).forEach((item) => {
@@ -1123,7 +1196,7 @@
     if (note) note.textContent = 'Шаблоны редактируются отдельным модулем. Заглушку больше не рисуем.';
 
     ensureModePanels();
-    ensureOverlay();
+    renderGuideOverlay(ensureOverlay());
   }
 
   function render() {
