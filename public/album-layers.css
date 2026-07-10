@@ -1,4 +1,154 @@
-@import url('https://fonts.googleapis.com/css2?family=Bad+Script&family=Caveat:wght@400;700&family=Cormorant+Garamond:wght@400;500;600;700&family=Lora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Marck+Script&family=Montserrat:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Rubik:wght@400;500;600;700&display=swap');
+@font-face {
+  font-family: 'Collage Onest';
+  src: url('/fonts/ofont.ru_Onest.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Lato Light';
+  src: url('/fonts/ofont.ru_Lato%20Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Montserrat Alternates';
+  src: url('/fonts/ofont.ru_Montserrat%20Alternates.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Bebas Neue';
+  src: url('/fonts/ofont.ru_Bebas%20Neue.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage New Standard Old';
+  src: url('/fonts/ofont.ru_New%20Standard%20Old.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Caslon Becker';
+  src: url('/fonts/ofont.ru_Caslon%20Becker.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage AGReverence';
+  src: url('/fonts/ofont.ru_AGReverence-Roman.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Good Vibes';
+  src: url('/fonts/ofont.ru_Good%20Vibes%20Pro.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Chopin Script';
+  src: url('/fonts/ofont.ru_KB%20ChopinScript.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Script Thin Pen';
+  src: url('/fonts/ofont.ru_Script%20Thin%20Pen.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Shelley Volante';
+  src: url('/fonts/ofont.ru_1%20Shelley%20Volante.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Calligraphia One';
+  src: url('/fonts/ofont.ru_Calligraphia%20One.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Czizh';
+  src: url('/fonts/ofont.ru_Czizh.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Karsten';
+  src: url('/fonts/ofont.ru_Karsten.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Patefon';
+  src: url('/fonts/ofont.ru_Patefon.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage RomanD';
+  src: url('/fonts/ofont.ru_RomanD.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Web Serveroff';
+  src: url('/fonts/ofont.ru_Web%20Serveroff.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Zector';
+  src: url('/fonts/ofont.ru_Zector.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Collage Zeferino Two';
+  src: url('/fonts/ofont.ru_Zeferino%20Two.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   --album-green: #4f8f74;
