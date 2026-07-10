@@ -948,6 +948,12 @@ function textLayersForPage(extraLayers, pageIndex) {
   return Array.isArray(page?.texts) ? page.texts : [];
 }
 
+function drawingLayersForPage(extraLayers, pageIndex) {
+  const pageNumber = pageIndex + 1;
+  const page = extraLayers?.pages?.[String(pageNumber)];
+  return Array.isArray(page?.drawings) ? page.drawings : [];
+}
+
 const TEXT_FONT_FAMILIES = {
   system: 'Arial, sans-serif',
   manrope: "'Manrope', Arial, sans-serif",
@@ -974,10 +980,34 @@ function textFontStyle(item) {
 
 function ExtraPageLayers({ extraLayers, pageIndex, x = 0, y = 0 }) {
   const texts = textLayersForPage(extraLayers, pageIndex);
-  if (!texts.length) return null;
+  const drawings = drawingLayersForPage(extraLayers, pageIndex);
+  if (!texts.length && !drawings.length) return null;
 
   return (
     <Group x={x} y={y} listening={false}>
+      {drawings.map((item) => {
+        if (item?.type !== 'line') return null;
+        const length = Math.max(1, Number(item.length) || 300);
+        return (
+          <Group
+            key={item.id ?? `${pageIndex}-line-${item.x}-${item.y}`}
+            x={Number(item.x) || 0}
+            y={Number(item.y) || 0}
+            rotation={Number(item.angle) || 0}
+            opacity={Number(item.opacity ?? 1)}
+            listening={false}
+          >
+            <Line
+              points={[0, 0, length, 0]}
+              stroke={item.color || '#6f6862'}
+              strokeWidth={Math.max(1, Number(item.strokeWidth) || 4)}
+              lineCap="round"
+              lineJoin="round"
+              listening={false}
+            />
+          </Group>
+        );
+      })}
       {texts.map((item) => {
         const fontSize = Math.max(1, Number(item.fontSize) || 56);
         return (
@@ -1024,6 +1054,7 @@ export default function App() {
   const [printBookletSideId, setPrintBookletSideId] = useState(null);
   const [notice, setNotice] = useState('');
   const [albumMode, setAlbumMode] = useState(() => localStorage.getItem(ALBUM_MODE_KEY) || 'collage');
+  const [, setExtraLayersRevision] = useState(0);
   const [dragPageIndex, setDragPageIndex] = useState(null);
   const [dragOverPageIndex, setDragOverPageIndex] = useState(null);
 
@@ -1032,12 +1063,21 @@ export default function App() {
       const next = document.body?.dataset?.albumMode || localStorage.getItem(ALBUM_MODE_KEY) || 'collage';
       setAlbumMode((current) => (current === next ? current : next));
     };
+    const refreshExtraLayers = () => setExtraLayersRevision((value) => value + 1);
+    const handleStorage = (event) => {
+      readAlbumMode();
+      if (event.key === ALBUM_LAYERS_KEY) refreshExtraLayers();
+    };
     readAlbumMode();
     const timer = window.setInterval(readAlbumMode, 250);
-    window.addEventListener('storage', readAlbumMode);
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('collage-album-layers-changed', refreshExtraLayers);
+    window.addEventListener('collage-album-layers-import', refreshExtraLayers);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener('storage', readAlbumMode);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('collage-album-layers-changed', refreshExtraLayers);
+      window.removeEventListener('collage-album-layers-import', refreshExtraLayers);
     };
   }, []);
 
@@ -2052,6 +2092,7 @@ export default function App() {
 
           <div className="album-actions control-group">
             <span className="control-label">Страницы</span>
+            <label className="frame-count-inline-control"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count === 0 ? 'нет' : count}</option>)}</select></label>
             <button className="small-button" onClick={addPage}>+ Страница</button>
             <button className="small-button" onClick={addBlankPage}>+ Пустая</button>
             <button className="small-button" onClick={duplicatePage}>Копия</button>

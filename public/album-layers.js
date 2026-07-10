@@ -39,6 +39,7 @@
   const state = {
     mode: localStorage.getItem(MODE_KEY) || 'collage',
     selectedTextId: null,
+    selectedDrawingId: null,
     layers: loadLayers(),
     dragging: null,
   };
@@ -125,6 +126,11 @@
   function saveLayers() {
     lastLayersSnapshot = JSON.stringify(state.layers);
     localStorage.setItem(STORAGE_KEY, lastLayersSnapshot);
+    try {
+      window.dispatchEvent(new CustomEvent('collage-album-layers-changed', { detail: { layers: state.layers } }));
+    } catch {
+      // ignore event errors
+    }
   }
 
   function syncLayersFromStorage() {
@@ -170,6 +176,7 @@
   function importLayersFromProject(value) {
     state.layers = normalizeLayers(value);
     state.selectedTextId = null;
+    state.selectedDrawingId = null;
     saveLayers();
     scheduleRender();
   }
@@ -242,6 +249,10 @@
     return pageLayer(pageNumber).texts;
   }
 
+  function pageDrawings(pageNumber) {
+    return pageLayer(pageNumber).drawings;
+  }
+
   function selectedItem() {
     for (const page of Object.values(state.layers.pages)) {
       const item = page?.texts?.find((text) => text.id === state.selectedTextId);
@@ -253,6 +264,21 @@
   function selectedItemPageNumber() {
     for (const [pageNumber, page] of Object.entries(state.layers.pages)) {
       if (page?.texts?.some((text) => text.id === state.selectedTextId)) return Number(pageNumber);
+    }
+    return activePageNumber();
+  }
+
+  function selectedDrawing() {
+    for (const page of Object.values(state.layers.pages)) {
+      const item = page?.drawings?.find((drawing) => drawing.id === state.selectedDrawingId);
+      if (item) return item;
+    }
+    return null;
+  }
+
+  function selectedDrawingPageNumber() {
+    for (const [pageNumber, page] of Object.entries(state.layers.pages)) {
+      if (page?.drawings?.some((drawing) => drawing.id === state.selectedDrawingId)) return Number(pageNumber);
     }
     return activePageNumber();
   }
@@ -269,11 +295,12 @@
   function setMode(mode) {
     state.mode = mode;
     state.selectedTextId = null;
+    state.selectedDrawingId = null;
     localStorage.setItem(MODE_KEY, mode);
     const messages = {
       collage: 'Режим коллажа: рамки и фото снова редактируются.',
       text: 'Режим текста: панели фото и рамок заменены на настройки текста.',
-      drawings: 'Рисунки пока пустые. Панели уже подготовлены.',
+      drawings: 'Режим рисунков: линии можно двигать и настраивать.',
       templates: 'Режим шаблонов открыт.',
     };
     scheduleRender();
@@ -289,6 +316,52 @@
     localStorage.setItem(MODE_KEY, 'text');
     saveLayers();
     scheduleRender();
+  }
+
+  function createLineItem() {
+    const canvas = currentCanvas();
+    return {
+      id: makeId(),
+      type: 'line',
+      x: Math.round(canvas.width * 0.18),
+      y: Math.round(canvas.height * 0.5),
+      length: Math.round(canvas.width * 0.48),
+      angle: 0,
+      strokeWidth: 4,
+      color: '#6f6862',
+      opacity: 1,
+    };
+  }
+
+  function addLine() {
+    const pageNumber = activePageNumber();
+    const item = createLineItem();
+    pageDrawings(pageNumber).push(item);
+    state.selectedTextId = null;
+    state.selectedDrawingId = item.id;
+    state.mode = 'drawings';
+    localStorage.setItem(MODE_KEY, 'drawings');
+    saveLayers();
+    scheduleRender();
+  }
+
+  function updateSelectedLine(patch, options = {}) {
+    const item = selectedDrawing();
+    if (!item) return;
+    Object.assign(item, patch);
+    saveLayers();
+    renderOverlay();
+    if (options.renderPanels) renderSidePanels();
+  }
+
+  function deleteSelectedLine() {
+    if (!state.selectedDrawingId) return;
+    Object.values(state.layers.pages).forEach((page) => {
+      if (Array.isArray(page.drawings)) page.drawings = page.drawings.filter((drawing) => drawing.id !== state.selectedDrawingId);
+    });
+    state.selectedDrawingId = null;
+    saveLayers();
+    render();
   }
 
   function updateSelected(patch, options = {}) {
@@ -397,7 +470,9 @@
         ? 'Шаблоны редактируются отдельным модулем. Заглушку больше не рисуем.'
         : state.mode === 'collage'
           ? 'Рамки и фото редактируются как раньше. Текст остаётся на странице.'
-          : 'Раздел подготовлен, наполнение добавим позже.';
+          : state.mode === 'drawings'
+            ? 'Рисунки отдельным слоем. Добавляй линии, меняй толщину, длину и цвет.'
+            : 'Раздел подготовлен, наполнение добавим позже.';
 
     const actions = document.createElement('div');
     actions.className = 'album-mode-actions';
@@ -409,7 +484,10 @@
         actionButton('PNG вида + текст', exportCurrentViewWithText)
       );
     } else if (state.mode === 'drawings') {
-      actions.append(actionButton('+ Рисунок', () => showNotice('Рисунки пока пустые. Потом добавим библиотеку.')));
+      actions.append(
+        actionButton('+ Линия', addLine, 'primary'),
+        actionButton('PNG вида + слои', exportCurrentViewWithText)
+      );
     } else if (state.mode === 'templates') {
       actions.dataset.templateModeOwner = 'template-mode';
       actions.append(actionButton('Шаблоны загружаются…', () => showNotice('Редактор шаблонов уже загружается.')));
@@ -608,6 +686,84 @@
     );
   }
 
+  function drawingLabel(item) {
+    const width = Number(item.strokeWidth || 4);
+    const length = Number(item.length || 0);
+    return `линия · ${Math.round(width)} px · ${Math.round(length)} px`;
+  }
+
+  function renderDrawingsLeft(left) {
+    const currentPages = visiblePages();
+    left.append(
+      titleBlock('Рисунки', 'Пока добавлены простые линии. Их можно двигать, менять длину, толщину и цвет.', 'линии'),
+      block(null, [actionButton('+ Линия', addLine, 'primary')])
+    );
+
+    const list = document.createElement('div');
+    list.className = 'album-text-list';
+    let hasAny = false;
+
+    currentPages.forEach(({ pageNumber }) => {
+      pageDrawings(pageNumber).forEach((item, index) => {
+        if (item.type !== 'line') return;
+        hasAny = true;
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = `album-text-card album-line-card ${item.id === state.selectedDrawingId ? 'active' : ''}`;
+        const name = document.createElement('strong');
+        name.textContent = `Стр. ${pageNumber} · линия ${index + 1}`;
+        const meta = document.createElement('small');
+        meta.textContent = drawingLabel(item);
+        const swatch = document.createElement('i');
+        swatch.className = 'album-line-swatch';
+        swatch.style.background = item.color || '#6f6862';
+        card.append(swatch, name, meta);
+        card.addEventListener('click', () => {
+          state.selectedTextId = null;
+          state.selectedDrawingId = item.id;
+          render();
+        });
+        list.append(card);
+      });
+    });
+
+    left.append(block('Линии на видимых страницах', [hasAny ? list : empty('На этой странице пока нет линий. Нажми «+ Линия».')]));
+  }
+
+  function renderDrawingsRight(right) {
+    const selected = selectedDrawing();
+    right.append(titleBlock('Настройки линии', selected ? 'Меняй толщину, длину, цвет и положение.' : 'Выбери линию или добавь новую.', selected ? 'выбрана' : 'нет'));
+
+    if (!selected) {
+      right.append(empty('Линии сохраняются вместе с шаблоном/альбомом без фотографий.'));
+      return;
+    }
+
+    const geometry = document.createElement('div');
+    geometry.className = 'album-geometry-grid';
+    geometry.append(
+      editField('X', input('number', Math.round(selected.x || 0), (value) => updateSelectedLine({ x: clampNumber(value, -5000, 5000) }, { renderPanels: true }))),
+      editField('Y', input('number', Math.round(selected.y || 0), (value) => updateSelectedLine({ y: clampNumber(value, -5000, 5000) }, { renderPanels: true }))),
+      editField('Длина', input('number', Math.round(selected.length || 400), (value) => updateSelectedLine({ length: clampNumber(value, 10, 5000) }, { renderPanels: true }))),
+      editField('Угол', input('number', Math.round(selected.angle || 0), (value) => updateSelectedLine({ angle: clampNumber(value, -180, 180) }, { renderPanels: true })))
+    );
+
+    const strokeWidthInput = input('number', Math.round(selected.strokeWidth || 4), (value) => updateSelectedLine({ strokeWidth: clampNumber(value, 1, 120) }, { renderPanels: true }));
+    const colorInput = input('color', selected.color || '#6f6862', (value) => updateSelectedLine({ color: value }, { renderPanels: true }));
+    const opacityInput = input('number', selected.opacity ?? 1, (value) => updateSelectedLine({ opacity: clampNumber(value, 0.05, 1) }, { renderPanels: true }));
+    opacityInput.step = '0.05';
+
+    right.append(
+      block('Линия', [
+        editField('Цвет', colorInput),
+        editField('Толщина', strokeWidthInput),
+        editField('Прозрачность', opacityInput),
+        geometry,
+      ]),
+      block(null, [actionButton('Удалить линию', deleteSelectedLine, 'danger')])
+    );
+  }
+
   function renderEmptyMode(left, right, mode) {
     const label = mode === 'drawings' ? 'Рисунки' : 'Шаблоны';
     left.append(
@@ -631,7 +787,10 @@
     if (state.mode === 'text') {
       renderTextLeft(left);
       renderTextRight(right);
-    } else if (state.mode === 'drawings' || state.mode === 'templates') {
+    } else if (state.mode === 'drawings') {
+      renderDrawingsLeft(left);
+      renderDrawingsRight(right);
+    } else if (state.mode === 'templates') {
       renderEmptyMode(left, right, state.mode);
     }
   }
@@ -649,7 +808,34 @@
     overlay.style.width = shell.style.width || `${shell.offsetWidth}px`;
     overlay.style.height = shell.style.height || `${shell.offsetHeight}px`;
     overlay.classList.toggle('album-text-mode', state.mode === 'text');
+    overlay.classList.toggle('album-drawing-mode', state.mode === 'drawings');
     return overlay;
+  }
+
+  function renderLineNode(overlay, item, pageX, pageNumber) {
+    if (item.type !== 'line') return;
+    const strokeWidth = clampNumber(item.strokeWidth || 4, 1, 120);
+    const length = clampNumber(item.length || 300, 10, 5000);
+    const hitHeight = Math.max(24, strokeWidth + 16);
+    const div = document.createElement('div');
+    div.className = `album-line-item ${item.id === state.selectedDrawingId ? 'selected' : ''}`;
+    div.style.left = `${pageX + Number(item.x || 0)}px`;
+    div.style.top = `${Number(item.y || 0) - hitHeight / 2}px`;
+    div.style.width = `${length}px`;
+    div.style.height = `${hitHeight}px`;
+    div.style.transform = `rotate(${Number(item.angle || 0)}deg)`;
+    div.style.transformOrigin = `0 ${hitHeight / 2}px`;
+    div.style.opacity = String(item.opacity ?? 1);
+    div.dataset.id = item.id;
+    div.dataset.page = String(pageNumber);
+
+    const line = document.createElement('span');
+    line.className = 'album-line-body';
+    line.style.height = `${strokeWidth}px`;
+    line.style.background = item.color || '#6f6862';
+    div.append(line);
+    div.addEventListener('pointerdown', (event) => startLineDrag(event, item));
+    overlay.append(div);
   }
 
   function renderOverlay() {
@@ -677,6 +863,8 @@
         div.addEventListener('pointerdown', (event) => startTextDrag(event, item));
         overlay.append(div);
       });
+
+      pageDrawings(pageNumber).forEach((item) => renderLineNode(overlay, item, x, pageNumber));
     });
   }
 
@@ -736,6 +924,55 @@
     if (shouldRenderPanels) renderSidePanels();
   }
 
+  function startLineDrag(event, item) {
+    if (state.mode !== 'drawings') return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const wasSelected = state.selectedDrawingId === item.id;
+    state.selectedTextId = null;
+    state.selectedDrawingId = item.id;
+    const scale = stageScale();
+    state.dragging = {
+      type: 'line',
+      id: item.id,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: Number(item.x || 0),
+      startY: Number(item.y || 0),
+      moved: false,
+      scale,
+    };
+
+    window.addEventListener('pointermove', moveLineDrag);
+    window.addEventListener('pointerup', stopLineDrag, { once: true });
+    if (!wasSelected) render();
+  }
+
+  function moveLineDrag(event) {
+    if (!state.dragging || state.dragging.type !== 'line') return;
+    const item = selectedDrawing();
+    if (!item) return;
+
+    const dx = (event.clientX - state.dragging.startClientX) / state.dragging.scale;
+    const dy = (event.clientY - state.dragging.startClientY) / state.dragging.scale;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) state.dragging.moved = true;
+
+    item.x = Math.round(state.dragging.startX + dx);
+    item.y = Math.round(state.dragging.startY + dy);
+    saveLayers();
+    renderOverlay();
+  }
+
+  function stopLineDrag() {
+    const shouldRenderPanels = state.dragging?.moved;
+    state.dragging = null;
+    window.removeEventListener('pointermove', moveLineDrag);
+    saveLayers();
+    renderOverlay();
+    if (shouldRenderPanels) renderSidePanels();
+  }
+
   async function exportCurrentViewWithText() {
     const shell = document.querySelector('.stage-scale-shell');
     const stageCanvas = shell?.querySelector('.konvajs-content canvas');
@@ -756,6 +993,7 @@
     ctx.drawImage(stageCanvas, 0, 0);
 
     visiblePages().forEach(({ pageNumber, x }) => {
+      pageDrawings(pageNumber).forEach((item) => drawLineToCanvas(ctx, item, x, ratio));
       pageTexts(pageNumber).forEach((item) => {
         drawWrappedText(ctx, item, (x + Number(item.x || 0)) * ratio, Number(item.y || 0) * ratio, Number(item.width || 500) * ratio, Number(item.fontSize || 56) * ratio);
       });
@@ -767,17 +1005,18 @@
     document.body.append(link);
     link.click();
     link.remove();
-    showNotice('PNG текущего вида с текстом скачан');
+    showNotice('PNG текущего вида со слоями скачан');
   }
 
-  function drawWrappedText(ctx, text, x, y, maxWidth, fontSize, color) {
+  function drawWrappedText(ctx, item, x, y, maxWidth, fontSize) {
     ctx.save();
-    ctx.fillStyle = color;
-    ctx.font = `${fontSize}px Arial, sans-serif`;
+    const textStyle = normalizedTextStyle(item);
+    ctx.fillStyle = item.color || '#1f2723';
+    ctx.font = `${textStyle.fontStyle} ${textStyle.fontWeight} ${fontSize}px ${fontFamilyForItem(item)}`;
     ctx.textBaseline = 'top';
-    const lineHeight = fontSize * 1.18;
+    const lineHeight = fontSize * textStyle.lineHeight;
     let currentY = y;
-    String(text).split('\n').forEach((paragraph) => {
+    String(item.text || '').split('\n').forEach((paragraph) => {
       const words = paragraph.split(/\s+/).filter(Boolean);
       let line = '';
       if (!words.length) {
@@ -799,6 +1038,22 @@
         currentY += lineHeight;
       }
     });
+    ctx.restore();
+  }
+
+  function drawLineToCanvas(ctx, item, pageX, ratio) {
+    if (item.type !== 'line') return;
+    ctx.save();
+    ctx.globalAlpha = Number(item.opacity ?? 1);
+    ctx.translate((pageX + Number(item.x || 0)) * ratio, Number(item.y || 0) * ratio);
+    ctx.rotate((Number(item.angle || 0) * Math.PI) / 180);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Number(item.length || 300) * ratio, 0);
+    ctx.strokeStyle = item.color || '#6f6862';
+    ctx.lineWidth = Math.max(1, Number(item.strokeWidth || 4)) * ratio;
+    ctx.lineCap = 'round';
+    ctx.stroke();
     ctx.restore();
   }
 
