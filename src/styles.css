@@ -1216,7 +1216,7 @@ body[data-album-mode='templates'] .three-columns {
   }
 }
 
-/* v2: restore album layer tool tabs and mode panels after layout rewrite. */
+/* Mode panels: text/drawings/templates keep the page rail as a top ribbon. */
 .album-tool-panel {
   display: grid !important;
   grid-template-columns: auto minmax(220px, 1fr) auto;
@@ -1233,10 +1233,7 @@ body[data-album-mode='templates'] .three-columns {
   box-shadow: 0 12px 28px rgba(31, 45, 39, 0.05);
 }
 
-.album-tool-panel .album-mode-note {
-  min-width: 0;
-}
-
+.album-tool-panel .album-mode-note,
 .album-tool-panel .album-mode-tabs,
 .album-tool-panel .album-mode-actions {
   min-width: 0;
@@ -1249,11 +1246,13 @@ body[data-album-mode='text'] .three-columns,
 body[data-album-mode='drawings'] .three-columns,
 body[data-album-mode='templates'] .three-columns {
   display: grid !important;
-  grid-template-columns: 220px 92px max-content 250px !important;
-  grid-template-areas: none !important;
+  grid-template-columns: 220px max-content 250px !important;
+  grid-template-areas:
+    "mode-sidebar pages mode-inspector"
+    "mode-sidebar canvas mode-inspector" !important;
   justify-content: center;
   align-items: start;
-  gap: 10px;
+  gap: 8px 10px;
 }
 
 body[data-album-mode='text'] .workspace > .sidebar,
@@ -1269,8 +1268,7 @@ body[data-album-mode='text'] .workspace > .album-mode-sidebar,
 body[data-album-mode='drawings'] .workspace > .album-mode-sidebar,
 body[data-album-mode='templates'] .workspace > .album-mode-sidebar {
   display: grid !important;
-  grid-column: 1;
-  grid-row: 1;
+  grid-area: mode-sidebar;
   max-height: calc(100vh - 205px);
   overflow: auto;
 }
@@ -1278,29 +1276,30 @@ body[data-album-mode='templates'] .workspace > .album-mode-sidebar {
 body[data-album-mode='text'] .workspace > .page-rail,
 body[data-album-mode='drawings'] .workspace > .page-rail,
 body[data-album-mode='templates'] .workspace > .page-rail {
-  grid-column: 2;
-  grid-row: 1;
-  display: block;
-  width: auto;
-  min-height: 0;
-  max-height: calc(100vh - 205px);
-  overflow: auto;
-  padding: 10px;
+  grid-area: pages;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 64px;
+  max-height: none;
+  overflow: hidden;
+  padding: 8px 10px;
+  box-sizing: border-box;
 }
 
 body[data-album-mode='text'] .workspace > .canvas-area,
 body[data-album-mode='drawings'] .workspace > .canvas-area,
 body[data-album-mode='templates'] .workspace > .canvas-area {
-  grid-column: 3;
-  grid-row: 1;
+  grid-area: canvas;
 }
 
 body[data-album-mode='text'] .workspace > .album-mode-inspector,
 body[data-album-mode='drawings'] .workspace > .album-mode-inspector,
 body[data-album-mode='templates'] .workspace > .album-mode-inspector {
   display: grid !important;
-  grid-column: 4;
-  grid-row: 1;
+  grid-area: mode-inspector;
   max-height: calc(100vh - 205px);
   overflow: auto;
 }
@@ -1308,31 +1307,42 @@ body[data-album-mode='templates'] .workspace > .album-mode-inspector {
 body[data-album-mode='text'] .page-rail .panel-title.compact,
 body[data-album-mode='drawings'] .page-rail .panel-title.compact,
 body[data-album-mode='templates'] .page-rail .panel-title.compact {
-  min-width: 0;
-  margin-bottom: 8px;
+  min-width: 94px;
+  margin: 0;
+  padding: 0;
+  border-bottom: 0;
 }
 
 body[data-album-mode='text'] .page-rail .panel-title.compact p,
 body[data-album-mode='drawings'] .page-rail .panel-title.compact p,
 body[data-album-mode='templates'] .page-rail .panel-title.compact p {
-  display: block;
+  display: none;
 }
 
 body[data-album-mode='text'] .page-rail-list,
 body[data-album-mode='drawings'] .page-rail-list,
 body[data-album-mode='templates'] .page-rail-list {
-  display: grid;
+  display: flex;
   gap: 7px;
-  overflow: visible;
-  padding: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1px 2px 5px;
 }
 
 body[data-album-mode='text'] .page-rail-card,
 body[data-album-mode='drawings'] .page-rail-card,
 body[data-album-mode='templates'] .page-rail-card {
-  width: 100%;
+  flex: 0 0 68px;
+  width: 68px;
   min-height: 54px;
-  padding: 7px;
+  padding: 6px;
+}
+
+body[data-album-mode='text'] .page-rail-card b,
+body[data-album-mode='drawings'] .page-rail-card b,
+body[data-album-mode='templates'] .page-rail-card b {
+  font-size: 18px;
 }
 
 @media (max-width: 1180px) {
@@ -1342,7 +1352,10 @@ body[data-album-mode='templates'] .page-rail-card {
   body[data-album-mode='text'] .three-columns,
   body[data-album-mode='drawings'] .three-columns,
   body[data-album-mode='templates'] .three-columns {
-    grid-template-columns: 210px 86px max-content !important;
+    grid-template-columns: 210px max-content !important;
+    grid-template-areas:
+      "mode-sidebar pages"
+      "mode-sidebar canvas" !important;
   }
 
   body[data-album-mode='text'] .workspace > .album-mode-inspector,
@@ -1365,6 +1378,12 @@ body[data-album-mode='templates'] .page-rail-card {
   body[data-album-mode='templates'] .three-columns {
     display: flex !important;
     flex-direction: column;
+  }
+
+  body[data-album-mode='text'] .workspace > .page-rail,
+  body[data-album-mode='drawings'] .workspace > .page-rail,
+  body[data-album-mode='templates'] .workspace > .page-rail {
+    width: 100%;
   }
 }
 

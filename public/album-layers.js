@@ -561,6 +561,30 @@
     return node;
   }
 
+  function softNumberInput(value, { min = -Infinity, max = Infinity, step = null } = {}, onValue) {
+    const node = document.createElement('input');
+    node.type = 'number';
+    node.value = value ?? '';
+    if (Number.isFinite(min)) node.min = String(min);
+    if (Number.isFinite(max)) node.max = String(max);
+    if (step != null) node.step = String(step);
+
+    const commit = (shouldClamp = false) => {
+      const raw = node.value;
+      if (raw === '' || raw === '-' || raw === '.' || raw === '-.') return;
+      const number = Number(raw);
+      if (!Number.isFinite(number)) return;
+      const next = shouldClamp ? Math.min(max, Math.max(min, number)) : number;
+      if (shouldClamp && next !== number) node.value = String(next);
+      onValue(next);
+    };
+
+    node.addEventListener('input', () => commit(false));
+    node.addEventListener('change', () => commit(true));
+    node.addEventListener('blur', () => commit(true));
+    return node;
+  }
+
   function select(value, options, onInput) {
     const node = document.createElement('select');
     options.forEach((option) => {
@@ -742,16 +766,15 @@
     const geometry = document.createElement('div');
     geometry.className = 'album-geometry-grid';
     geometry.append(
-      editField('X', input('number', Math.round(selected.x || 0), (value) => updateSelectedLine({ x: clampNumber(value, -5000, 5000) }, { renderPanels: true }))),
-      editField('Y', input('number', Math.round(selected.y || 0), (value) => updateSelectedLine({ y: clampNumber(value, -5000, 5000) }, { renderPanels: true }))),
-      editField('Длина', input('number', Math.round(selected.length || 400), (value) => updateSelectedLine({ length: clampNumber(value, 10, 5000) }, { renderPanels: true }))),
-      editField('Угол', input('number', Math.round(selected.angle || 0), (value) => updateSelectedLine({ angle: clampNumber(value, -180, 180) }, { renderPanels: true })))
+      editField('X', softNumberInput(Math.round(selected.x || 0), { min: -5000, max: 5000 }, (value) => updateSelectedLine({ x: value }))),
+      editField('Y', softNumberInput(Math.round(selected.y || 0), { min: -5000, max: 5000 }, (value) => updateSelectedLine({ y: value }))),
+      editField('Длина', softNumberInput(Math.round(selected.length || 400), { min: 10, max: 5000 }, (value) => updateSelectedLine({ length: value }))),
+      editField('Угол', softNumberInput(Math.round(selected.angle || 0), { min: -180, max: 180 }, (value) => updateSelectedLine({ angle: value })))
     );
 
-    const strokeWidthInput = input('number', Math.round(selected.strokeWidth || 4), (value) => updateSelectedLine({ strokeWidth: clampNumber(value, 1, 120) }, { renderPanels: true }));
+    const strokeWidthInput = softNumberInput(Math.round(selected.strokeWidth || 4), { min: 1, max: 120 }, (value) => updateSelectedLine({ strokeWidth: value }));
     const colorInput = input('color', selected.color || '#6f6862', (value) => updateSelectedLine({ color: value }, { renderPanels: true }));
-    const opacityInput = input('number', selected.opacity ?? 1, (value) => updateSelectedLine({ opacity: clampNumber(value, 0.05, 1) }, { renderPanels: true }));
-    opacityInput.step = '0.05';
+    const opacityInput = softNumberInput(selected.opacity ?? 1, { min: 0.05, max: 1, step: 0.05 }, (value) => updateSelectedLine({ opacity: value }));
 
     right.append(
       block('Линия', [
