@@ -106,13 +106,18 @@
     });
   }
 
-  function loadLayers() {
+  function clearLegacyLayerStorage() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return normalizeLayers(JSON.parse(raw));
+      localStorage.removeItem(STORAGE_KEY);
     } catch {
-      // ignore broken local data
+      // ignore localStorage errors
     }
+  }
+
+  function loadLayers() {
+    // Текст/рисунки не должны переживать обновление страницы сами по себе.
+    // Они попадают в проект только через основную кнопку "Сохранить".
+    clearLegacyLayerStorage();
     return { version: 1, pages: {} };
   }
 
@@ -125,7 +130,7 @@
 
   function saveLayers() {
     lastLayersSnapshot = JSON.stringify(state.layers);
-    localStorage.setItem(STORAGE_KEY, lastLayersSnapshot);
+    clearLegacyLayerStorage();
     try {
       window.dispatchEvent(new CustomEvent('collage-album-layers-changed', { detail: { layers: state.layers } }));
     } catch {
@@ -134,16 +139,8 @@
   }
 
   function syncLayersFromStorage() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw || raw === lastLayersSnapshot) return false;
-      state.layers = normalizeLayers(JSON.parse(raw));
-      state.selectedTextId = null;
-      lastLayersSnapshot = JSON.stringify(state.layers);
-      return true;
-    } catch {
-      return false;
-    }
+    clearLegacyLayerStorage();
+    return false;
   }
 
   function scheduleRender() {
@@ -154,19 +151,8 @@
   }
 
   function extractLayersFromCurrentProject() {
-    for (const key of Object.keys(localStorage)) {
-      if (!key.startsWith(PROJECT_PREFIX)) continue;
-      try {
-        const data = JSON.parse(localStorage.getItem(key));
-        if (data?.extraLayers?.pages) {
-          state.layers = normalizeLayers(data.extraLayers);
-          saveLayers();
-          return;
-        }
-      } catch {
-        // ignore
-      }
-    }
+    // Больше не подтягиваем слои из localStorage автоматически.
+    // Открытие сохранённого проекта делает AppLive через collage-album-layers-import.
   }
 
   function exportLayersForProject() {
@@ -200,11 +186,8 @@
   });
 
   window.addEventListener('storage', (event) => {
-    if (event.key !== STORAGE_KEY && event.key !== MODE_KEY) return;
-    if (event.key === MODE_KEY) {
-      state.mode = localStorage.getItem(MODE_KEY) || 'collage';
-    }
-    if (event.key === STORAGE_KEY) syncLayersFromStorage();
+    if (event.key !== MODE_KEY) return;
+    state.mode = localStorage.getItem(MODE_KEY) || 'collage';
     scheduleRender();
   });
 
@@ -227,7 +210,7 @@
 
   function shouldShowPageGuides() {
     const project = currentProject();
-    return project?.settings?.showGuides !== false;
+    return state.mode !== 'collage' && project?.settings?.showGuides !== false;
   }
 
   function currentSafeInset() {

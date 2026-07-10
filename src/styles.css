@@ -1463,7 +1463,7 @@ body[data-album-mode='templates'] .page-rail-card b {
 }
 
 
-/* Page guide overlay v7: visible page borders and simple center grid in all edit modes. */
+/* Page guide overlay v8: subtle page borders and center guides for non-collage edit modes. */
 .album-guide-layer {
   position: absolute;
   inset: 0 auto auto 0;
@@ -1474,14 +1474,14 @@ body[data-album-mode='templates'] .page-rail-card b {
 .album-page-guide {
   position: absolute;
   box-sizing: border-box;
-  border: 2px dashed rgba(194, 123, 79, 0.46);
+  border: 1px dashed rgba(194, 123, 79, 0.22);
   pointer-events: none;
 }
 
 .album-safe-guide {
   position: absolute;
   box-sizing: border-box;
-  border: 2px dashed rgba(194, 123, 79, 0.28);
+  border: 1px dashed rgba(194, 123, 79, 0.14);
   pointer-events: none;
 }
 
@@ -1494,23 +1494,23 @@ body[data-album-mode='templates'] .page-rail-card b {
   top: 0;
   width: 0;
   height: 100%;
-  border-left: 1px dashed rgba(79, 143, 116, 0.34);
+  border-left: 1px dashed rgba(79, 143, 116, 0.16);
 }
 
 .album-guide-horizontal {
   left: 0;
   width: 100%;
   height: 0;
-  border-top: 1px dashed rgba(79, 143, 116, 0.34);
+  border-top: 1px dashed rgba(79, 143, 116, 0.16);
 }
 
 .album-guide-line.center {
-  border-color: rgba(47, 125, 82, 0.62);
+  border-color: rgba(47, 125, 82, 0.28);
   border-style: solid;
 }
 
 .album-guide-line.quarter {
-  opacity: 0.62;
+  opacity: 0.38;
 }
 
 .album-page-guide-label,
@@ -1518,10 +1518,10 @@ body[data-album-mode='templates'] .page-rail-card b {
   position: absolute;
   z-index: 2;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  color: rgba(47, 125, 82, 0.9);
-  padding: 4px 7px;
-  font-size: 18px;
+  background: rgba(255, 255, 255, 0.46);
+  color: rgba(47, 125, 82, 0.45);
+  padding: 2px 5px;
+  font-size: 13px;
   font-weight: 900;
   line-height: 1;
   letter-spacing: 0.02em;
