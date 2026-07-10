@@ -909,14 +909,10 @@
   }
 
   function renderGuideOverlay(overlay = ensureOverlay()) {
+    // Page borders, photo-window placeholders and center grid are rendered by AppLive/Konva.
+    // Keep this function only to remove old DOM guide layers after cache updates.
     if (!overlay) return;
     overlay.querySelector('.album-guide-layer')?.remove();
-    if (!shouldShowPageGuides()) return;
-
-    const layer = document.createElement('div');
-    layer.className = 'album-guide-layer';
-    visiblePages().forEach(({ pageNumber, x }) => renderPageGuideNode(layer, x, pageNumber));
-    overlay.insertBefore(layer, overlay.firstChild);
   }
 
   function renderLineNode(overlay, item, pageX, pageNumber) {

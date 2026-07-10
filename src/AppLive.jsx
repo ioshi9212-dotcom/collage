@@ -521,7 +521,7 @@ function countFramesInLayout(layout) {
 function resolvePageFrameCount(page, fallbackSettings = DEFAULT_SETTINGS) {
   if (page?.isBlankPage) return 0;
   const saved = Number(page?.frameCount);
-  if (Number.isFinite(saved) && saved >= 0) return clamp(saved, 0, 9);
+  if (Number.isFinite(saved) && saved >= 1) return clamp(saved, 1, 9);
   const fromLayout = countFramesInLayout(page?.layout);
   if (fromLayout) return clamp(fromLayout, 1, 9);
   const fromFrames = Array.isArray(page?.frames) ? page.frames.length : 0;
@@ -536,17 +536,10 @@ function settingsForPage(settings, page, explicitFrameCount) {
   };
 }
 
-function createPage(canvas, settings, number, previousFrames = [], overrides = {}) {
+function createPage(canvas, settings, number, previousFrames = []) {
   const frameCount = clamp(Number(settings.frameCount) || DEFAULT_SETTINGS.frameCount, 1, 9);
   const built = buildGridLayout(canvas, { ...settings, frameCount }, previousFrames);
-  return {
-    id: overrides.id ?? makeId(),
-    title: overrides.title ?? `Страница ${number}`,
-    frameCount,
-    layout: built.layout,
-    frames: built.frames,
-    background: overrides.background ?? null,
-  };
+  return { id: makeId(), title: `Страница ${number}`, frameCount, layout: built.layout, frames: built.frames };
 }
 
 function createBlankPage(number, overrides = {}) {
@@ -557,7 +550,6 @@ function createBlankPage(number, overrides = {}) {
     frameCount: 0,
     layout: null,
     frames: [],
-    background: overrides.background ?? null,
   };
 }
 
@@ -654,17 +646,8 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
     transformer.getLayer()?.batchDraw();
   }, [selected, collagePreviewOnly, printMode, locked, frame.x, frame.y, frame.width, frame.height]);
 
-  if (collagePreviewOnly) {
-    if (!frame.photo || !rect) return null;
-    return (
-      <Group x={frame.x} y={frame.y} listening={false}>
-        <Group clipX={0} clipY={0} clipWidth={frame.width} clipHeight={frame.height}>
-          <KonvaImage image={image} x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
-        </Group>
-      </Group>
-    );
-  }
-
+  // In text/drawings/templates modes the collage itself is preview-only,
+  // but empty photo windows must stay visible as template placeholders.
   if (printMode && !frame.photo) return null;
 
   function clampFrameNode(node) {
@@ -702,6 +685,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
         ref={groupRef}
         x={frame.x}
         y={frame.y}
+        listening={!collagePreviewOnly && !printMode}
         draggable={canDragFrame}
         onMouseDown={onSelect}
         onTap={onSelect}
@@ -801,16 +785,70 @@ function GridHandles({ layout, onColumnResize, onRowResize, onActivate }) {
   );
 }
 
+
+function PageVisualGuides({ canvas, safe, locked, pageIndex, active }) {
+  const pageColor = locked ? '#2f7d52' : '#c27b4f';
+  const centerColor = '#2f7d52';
+  const quarters = [0.25, 0.75];
+
+  return (
+    <>
+      <Rect
+        x={0}
+        y={0}
+        width={canvas.width}
+        height={canvas.height}
+        stroke={pageColor}
+        strokeWidth={1.5}
+        strokeScaleEnabled={false}
+        dash={[18, 14]}
+        opacity={0.18}
+        listening={false}
+      />
+      <Rect
+        x={safe}
+        y={safe}
+        width={Math.max(0, canvas.width - safe * 2)}
+        height={Math.max(0, canvas.height - safe * 2)}
+        stroke={pageColor}
+        strokeWidth={2}
+        strokeScaleEnabled={false}
+        dash={[18, 14]}
+        opacity={0.32}
+        listening={false}
+      />
+      {quarters.map((part) => (
+        <Group key={`quarter-${part}`} listening={false} opacity={0.08}>
+          <Line points={[canvas.width * part, 0, canvas.width * part, canvas.height]} stroke={centerColor} strokeWidth={1} strokeScaleEnabled={false} dash={[10, 14]} listening={false} />
+          <Line points={[0, canvas.height * part, canvas.width, canvas.height * part]} stroke={centerColor} strokeWidth={1} strokeScaleEnabled={false} dash={[10, 14]} listening={false} />
+        </Group>
+      ))}
+      <Line points={[canvas.width / 2, 0, canvas.width / 2, canvas.height]} stroke={centerColor} strokeWidth={1.5} strokeScaleEnabled={false} opacity={0.22} listening={false} />
+      <Line points={[0, canvas.height / 2, canvas.width, canvas.height / 2]} stroke={centerColor} strokeWidth={1.5} strokeScaleEnabled={false} opacity={0.22} listening={false} />
+      <Text
+        x={28}
+        y={24}
+        text={`Стр. ${pageIndex + 1}`}
+        fontSize={34}
+        fill={active ? pageColor : '#b49a87'}
+        fontStyle="bold"
+        opacity={0.82}
+        listening={false}
+      />
+    </>
+  );
+}
+
 function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const safe = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
-  const backgroundFill = page?.background?.color || settings.borderColor;
   if (!page || page.isBlankPage) {
     return (
       <Group x={x} y={y}>
-        <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={backgroundFill} />
+        <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
+        {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} safe={safe} locked={locked} pageIndex={pageIndex} active={page?.id === activePageId} />}
         {page?.isBlankPage && !printMode && !collagePreviewOnly && (
-          <Text x={42} y={42} text="Пустая страница" fontSize={34} fill="#b49a87" fontStyle="bold" opacity={0.75} listening={false} />
+          <Text x={42} y={78} text="Пустая страница" fontSize={34} fill="#b49a87" fontStyle="bold" opacity={0.62} listening={false} />
         )}
       </Group>
     );
@@ -818,14 +856,8 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
   const orderedFrames = [...page.frames].sort((a, b) => (Number(a.zIndex) || 0) - (Number(b.zIndex) || 0));
   return (
     <Group x={x} y={y}>
-      <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={backgroundFill} />
-      {!collagePreviewOnly && !printMode && settings.showGuides && (
-        <>
-          <Rect x={safe} y={safe} width={Math.max(0, canvas.width - safe * 2)} height={Math.max(0, canvas.height - safe * 2)} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={2} strokeScaleEnabled={false} dash={[18, 14]} listening={false} />
-          <Text x={safe + 16} y={safe + 16} text={locked ? 'сетка: двигай разделители' : 'поля / безопасная зона'} fontSize={28} fill={locked ? '#2f7d52' : '#c27b4f'} opacity={0.62} listening={false} />
-        </>
-      )}
-      {!collagePreviewOnly && !printMode && <Text x={28} y={24} text={`Стр. ${pageIndex + 1}`} fontSize={34} fill={page.id === activePageId ? (locked ? '#2f7d52' : '#c27b4f') : '#b49a87'} fontStyle="bold" listening={false} />}
+      <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
+      {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} safe={safe} locked={locked} pageIndex={pageIndex} active={page.id === activePageId} />}
       {orderedFrames.map((frame) => (
         <CollageFrame
           key={frame.id}
@@ -948,12 +980,6 @@ function textLayersForPage(extraLayers, pageIndex) {
   return Array.isArray(page?.texts) ? page.texts : [];
 }
 
-function drawingLayersForPage(extraLayers, pageIndex) {
-  const pageNumber = pageIndex + 1;
-  const page = extraLayers?.pages?.[String(pageNumber)];
-  return Array.isArray(page?.drawings) ? page.drawings : [];
-}
-
 const TEXT_FONT_FAMILIES = {
   system: 'Arial, sans-serif',
   manrope: "'Manrope', Arial, sans-serif",
@@ -980,34 +1006,10 @@ function textFontStyle(item) {
 
 function ExtraPageLayers({ extraLayers, pageIndex, x = 0, y = 0 }) {
   const texts = textLayersForPage(extraLayers, pageIndex);
-  const drawings = drawingLayersForPage(extraLayers, pageIndex);
-  if (!texts.length && !drawings.length) return null;
+  if (!texts.length) return null;
 
   return (
     <Group x={x} y={y} listening={false}>
-      {drawings.map((item) => {
-        if (item?.type !== 'line') return null;
-        const length = Math.max(1, Number(item.length) || 300);
-        return (
-          <Group
-            key={item.id ?? `${pageIndex}-line-${item.x}-${item.y}`}
-            x={Number(item.x) || 0}
-            y={Number(item.y) || 0}
-            rotation={Number(item.angle) || 0}
-            opacity={Number(item.opacity ?? 1)}
-            listening={false}
-          >
-            <Line
-              points={[0, 0, length, 0]}
-              stroke={item.color || '#6f6862'}
-              strokeWidth={Math.max(1, Number(item.strokeWidth) || 4)}
-              lineCap="round"
-              lineJoin="round"
-              listening={false}
-            />
-          </Group>
-        );
-      })}
       {texts.map((item) => {
         const fontSize = Math.max(1, Number(item.fontSize) || 56);
         return (
@@ -1054,7 +1056,6 @@ export default function App() {
   const [printBookletSideId, setPrintBookletSideId] = useState(null);
   const [notice, setNotice] = useState('');
   const [albumMode, setAlbumMode] = useState(() => localStorage.getItem(ALBUM_MODE_KEY) || 'collage');
-  const [, setExtraLayersRevision] = useState(0);
   const [dragPageIndex, setDragPageIndex] = useState(null);
   const [dragOverPageIndex, setDragOverPageIndex] = useState(null);
 
@@ -1063,21 +1064,12 @@ export default function App() {
       const next = document.body?.dataset?.albumMode || localStorage.getItem(ALBUM_MODE_KEY) || 'collage';
       setAlbumMode((current) => (current === next ? current : next));
     };
-    const refreshExtraLayers = () => setExtraLayersRevision((value) => value + 1);
-    const handleStorage = (event) => {
-      readAlbumMode();
-      if (event.key === ALBUM_LAYERS_KEY) refreshExtraLayers();
-    };
     readAlbumMode();
     const timer = window.setInterval(readAlbumMode, 250);
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener('collage-album-layers-changed', refreshExtraLayers);
-    window.addEventListener('collage-album-layers-import', refreshExtraLayers);
+    window.addEventListener('storage', readAlbumMode);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('collage-album-layers-changed', refreshExtraLayers);
-      window.removeEventListener('collage-album-layers-import', refreshExtraLayers);
+      window.removeEventListener('storage', readAlbumMode);
     };
   }, []);
 
@@ -1199,7 +1191,6 @@ export default function App() {
         if (page.id !== pageId) return page;
         if (page.isBlankPage) return page;
         const frameCount = explicitFrameCount ?? resolvePageFrameCount(page, nextSettings);
-        if (frameCount <= 0) return { ...page, frameCount: 0, layout: null, frames: [] };
         const pageSettings = settingsForPage(nextSettings, page, frameCount);
         const built = buildGridLayout(nextCanvas, pageSettings, page.frames);
         return { ...page, frameCount, layout: built.layout, frames: built.frames };
@@ -1215,7 +1206,6 @@ export default function App() {
       pages: current.pages.map((page) => {
         if (page.isBlankPage) return page;
         const frameCount = resolvePageFrameCount(page, nextSettings);
-        if (frameCount <= 0) return { ...page, frameCount: 0, layout: null, frames: [] };
         const pageSettings = settingsForPage(nextSettings, page, frameCount);
         const built = buildGridLayout(nextCanvas, pageSettings, page.frames);
         return { ...page, frameCount, layout: built.layout, frames: built.frames };
@@ -1230,7 +1220,7 @@ export default function App() {
       show('Это пустая страница без фото-окон');
       return;
     }
-    const frameCount = clamp(Number(value), 0, 9);
+    const frameCount = clamp(Number(value), 1, 9);
     const nextSettings = { ...settings, frameCount };
     setSettings(nextSettings);
     rebuildPage(album.currentPageId, canvas, nextSettings, frameCount);
@@ -1443,7 +1433,8 @@ export default function App() {
   function deleteSelectedFrame() {
     if (!selectedFrame || !currentPage) return;
     const frameCount = resolvePageFrameCount(currentPage, settings);
-    const nextFrameCount = Math.max(0, frameCount - 1);
+    if (frameCount <= 1) return show('Нельзя удалить последнее окно на странице');
+    const nextFrameCount = frameCount - 1;
     const keptFrames = currentPage.frames.filter((frame) => frame.id !== selectedFrame.id);
     const nextSettings = { ...settings, frameCount: nextFrameCount };
     setSettings(nextSettings);
@@ -1451,7 +1442,6 @@ export default function App() {
       ...current,
       pages: current.pages.map((page) => {
         if (page.id !== current.currentPageId) return page;
-        if (nextFrameCount <= 0) return { ...page, frameCount: 0, layout: null, frames: [] };
         const pageSettings = settingsForPage(nextSettings, page, nextFrameCount);
         const built = buildGridLayout(canvas, pageSettings, keptFrames);
         return { ...page, frameCount: nextFrameCount, layout: built.layout, frames: built.frames };
@@ -1459,7 +1449,7 @@ export default function App() {
     }));
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
-    show(nextFrameCount > 0 ? `Окно удалено. На странице ${currentPageIndex + 1}: ${nextFrameCount} фото-окон` : `На странице ${currentPageIndex + 1} больше нет фото-окон`);
+    show(`Окно удалено. На странице ${currentPageIndex + 1}: ${nextFrameCount} фото-окон`);
   }
 
   function bringSelectedFrameToFront() {
@@ -1735,39 +1725,10 @@ export default function App() {
     saveLocalProject();
   }
 
-  function applyProjectData(data, { silent = false, notice = 'Шаблон применён' } = {}) {
-    try {
-      const nextCanvas = data.canvas ?? DEFAULT_CANVAS;
-      const nextSettings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
-      const nextPages = normalizePages(data, nextCanvas, nextSettings);
-      setCanvas(nextCanvas);
-      setSettings(nextSettings);
-      setLibrary(Array.isArray(data.library) ? data.library : []);
-      setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
-      setViewMode(['single', 'spread', 'booklet'].includes(data.viewMode) ? data.viewMode : 'spread');
-      setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
-      setBookletPrintSettings(normalizeBookletPrintSettings(data.bookletPrintSettings));
-      writeExtraLayers(data.extraLayers);
-      setAlbumMode(applyAlbumEditorMode(data.albumEditorMode || 'collage'));
-      setSelectedFrameId(null);
-      setSelectedPhotoId(null);
-      setMoveFrameWithPhotoId(null);
-      window.requestAnimationFrame?.(() => writeExtraLayers(data.extraLayers));
-      window.setTimeout?.(() => writeExtraLayers(data.extraLayers), 250);
-      if (!silent) show(notice);
-      return { ok: true };
-    } catch (error) {
-      console.error(error);
-      if (!silent) show('Не получилось применить шаблон');
-      return { ok: false, error };
-    }
-  }
-
   useEffect(() => {
     window.__collageApp = {
       getProject: () => project(),
       saveLocal: () => saveLocalProject({ silent: true }),
-      openProject: (data, options) => applyProjectData(data, options),
     };
 
     return () => {
@@ -1783,15 +1744,11 @@ export default function App() {
         }
         const frames = Array.isArray(page.frames) ? page.frames.map((frame) => cleanFrame(frame, nextCanvas)) : [];
         const existingLayoutCount = countFramesInLayout(page.layout);
-        const savedFrameCount = Number(page.frameCount);
-        const frameCount = Number.isFinite(savedFrameCount) && savedFrameCount >= 0
-          ? clamp(savedFrameCount, 0, 9)
-          : clamp(existingLayoutCount || frames.length || nextSettings.frameCount, 1, 9);
-        if (frameCount <= 0) return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, frameCount: 0, layout: null, frames: [], background: page.background ?? null };
+        const frameCount = clamp(Number(page.frameCount) || existingLayoutCount || frames.length || nextSettings.frameCount, 1, 9);
         const trustLayout = page.layout?.type === 'grid' && existingLayoutCount === frameCount;
         const pageSettings = { ...nextSettings, frameCount };
         const layout = trustLayout ? page.layout : buildGridLayout(nextCanvas, pageSettings, frames).layout;
-        return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, frameCount, layout, frames: framesFromLayout(layout, frames), background: page.background ?? null };
+        return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, frameCount, layout, frames: framesFromLayout(layout, frames) };
       });
     }
     if (Array.isArray(data.frames)) return [createPage(nextCanvas, nextSettings, 1, data.frames.map((frame) => cleanFrame(frame, nextCanvas)))];
@@ -2061,7 +2018,7 @@ export default function App() {
             <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
             <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
             <label className="field small-field"><span>Высота px</span><input type="number" value={canvas.height} onChange={(event) => updateCanvas(canvas.width, event.target.value, 'custom')} /></label>
-            <label className="field small-field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count === 0 ? 'нет' : count}</option>)}</select></label>
+            <label className="field small-field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
             <label className="field small-field"><span>Зазор</span><input type="number" value={settings.gap} onChange={(event) => updateSetting('gap', clamp(event.target.value, 0, 200))} /></label>
             <label className="field small-field"><span>Поля</span><input type="number" value={settings.padding} onChange={(event) => updateSetting('padding', clamp(event.target.value, 0, 300))} /></label>
           </div>
@@ -2092,7 +2049,6 @@ export default function App() {
 
           <div className="album-actions control-group">
             <span className="control-label">Страницы</span>
-            <label className="frame-count-inline-control"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count === 0 ? 'нет' : count}</option>)}</select></label>
             <button className="small-button" onClick={addPage}>+ Страница</button>
             <button className="small-button" onClick={addBlankPage}>+ Пустая</button>
             <button className="small-button" onClick={duplicatePage}>Копия</button>
@@ -2304,7 +2260,7 @@ export default function App() {
                 </div>
                 {!locked && <button className="button full" onClick={bringSelectedFrameToFront}>Поверх остальных</button>}
                 {!locked && <button className={`button full ${moveFrameWithPhotoId === selectedFrame.id ? 'accent' : ''}`} onClick={enableMoveFrameWithPhoto} disabled={!selectedFrame.photo}>{moveFrameWithPhotoId === selectedFrame.id ? 'Перетащи рамку сейчас' : 'Двигать рамку с фото'}</button>}
-                <button className="button full danger-button" onClick={deleteSelectedFrame}>Удалить окно</button>
+                <button className="button full danger-button" onClick={deleteSelectedFrame} disabled={currentPageFrameCount <= 1}>Удалить окно</button>
                 <p className="hint">Удаление перестроит эту страницу: соседние окна сдвинутся, фото сохранятся по порядку.</p>
                 <p className="hint">Режим: {locked ? 'сетка через layout, без угадывания соседей по координатам' : selectedFrame.photo ? 'фото внутри окна двигается; для движения рамки вместе с фото нажми кнопку выше' : 'рамка двигается внутри страницы и меняет размер за маркеры'}.</p>
               </div>
