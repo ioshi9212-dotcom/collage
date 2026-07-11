@@ -138,6 +138,71 @@ function cloneDeep(value) {
   }
 }
 
+
+function formatNumberDraft(value, fallback = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(fallback);
+  return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(3)));
+}
+
+function softClampNumber(value, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return Number.isFinite(Number(min)) ? Number(min) : 0;
+  let next = number;
+  if (Number.isFinite(Number(min))) next = Math.max(Number(min), next);
+  if (Number.isFinite(Number(max))) next = Math.min(Number(max), next);
+  return next;
+}
+
+function isSoftNumberDraft(value) {
+  return value === '' || value === '-' || value === '.' || value === '-.' || value === '+.' || value === '+';
+}
+
+function SoftNumberInput({ value, onValue, min, max, step = 1, disabled = false, fallback = 0 }) {
+  const [draft, setDraft] = useState(() => formatNumberDraft(value, fallback));
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(formatNumberDraft(value, fallback));
+  }, [value, fallback, editing]);
+
+  function commit(raw, clampValue) {
+    if (isSoftNumberDraft(raw)) return;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return;
+    const next = clampValue ? softClampNumber(parsed, min, max) : parsed;
+    onValue(next);
+    if (clampValue) setDraft(formatNumberDraft(next, fallback));
+  }
+
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={draft}
+      disabled={disabled}
+      onFocus={(event) => {
+        setEditing(true);
+        event.currentTarget.select?.();
+      }}
+      onChange={(event) => {
+        const raw = event.target.value;
+        setDraft(raw);
+        commit(raw, false);
+      }}
+      onBlur={(event) => {
+        setEditing(false);
+        commit(event.target.value, true);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur();
+      }}
+    />
+  );
+}
+
 function makeId() {
   return globalThis.crypto?.randomUUID?.() ?? `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -2491,13 +2556,13 @@ export default function App() {
               <div className="inspector-block"><h3>Содержание</h3><label className="field"><span>Текст</span><textarea value={selectedText.text || ''} onChange={(event) => updateText(selectedText.id, { text: event.target.value })} /></label></div>
               <div className="inspector-block"><h3>Шрифт</h3>
                 <label className="field"><span>Гарнитура</span><select value={selectedText.fontId || DEFAULT_FONT_ID} onChange={(event) => updateText(selectedText.id, { fontId: event.target.value, fontFamily: fontById(event.target.value).family })}>{TEXT_FONTS.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}</select></label>
-                <label className="field"><span>Размер</span><input type="number" min="8" max="260" value={Math.round(Number(selectedText.fontSize) || 56)} onChange={(event) => updateText(selectedText.id, { fontSize: clamp(event.target.value, 8, 260) })} /></label>
+                <label className="field"><span>Размер</span><SoftNumberInput min={8} max={260} value={Math.round(Number(selectedText.fontSize) || 56)} onValue={(value) => updateText(selectedText.id, { fontSize: value })} /></label>
                 <label className="field"><span>Цвет</span><input type="color" value={selectedText.color || '#1f2723'} onChange={(event) => updateText(selectedText.id, { color: event.target.value })} /></label>
               </div>
               <div className="inspector-block"><h3>Положение</h3><div className="geometry-grid">
-                <label className="field"><span>X</span><input type="number" value={Math.round(Number(selectedText.x) || 0)} onChange={(event) => updateText(selectedText.id, { x: Number(event.target.value) || 0 })} /></label>
-                <label className="field"><span>Y</span><input type="number" value={Math.round(Number(selectedText.y) || 0)} onChange={(event) => updateText(selectedText.id, { y: Number(event.target.value) || 0 })} /></label>
-                <label className="field"><span>Ширина</span><input type="number" value={Math.round(Number(selectedText.width) || 500)} onChange={(event) => updateText(selectedText.id, { width: clamp(event.target.value, 40, 4000) })} /></label>
+                <label className="field"><span>X</span><SoftNumberInput value={Math.round(Number(selectedText.x) || 0)} onValue={(value) => updateText(selectedText.id, { x: value })} /></label>
+                <label className="field"><span>Y</span><SoftNumberInput value={Math.round(Number(selectedText.y) || 0)} onValue={(value) => updateText(selectedText.id, { y: value })} /></label>
+                <label className="field"><span>Ширина</span><SoftNumberInput min={40} max={4000} value={Math.round(Number(selectedText.width) || 500)} onValue={(value) => updateText(selectedText.id, { width: value })} /></label>
               </div></div>
               <button className="button full danger-button" onClick={() => deleteText(selectedText.id)}>Удалить текст</button>
             </>
@@ -2513,14 +2578,14 @@ export default function App() {
             <>
               <div className="inspector-block"><h3>Линия</h3>
                 <label className="field"><span>Цвет</span><input type="color" value={selectedDrawing.color || '#6f6862'} onChange={(event) => updateDrawing(selectedDrawing.id, { color: event.target.value })} /></label>
-                <label className="field"><span>Толщина</span><input type="number" min="1" max="120" value={Math.round(Number(selectedDrawing.strokeWidth) || 4)} onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value)) updateDrawing(selectedDrawing.id, { strokeWidth: Math.max(1, Math.min(120, value)) }); }} /></label>
-                <label className="field"><span>Прозрачность</span><input type="number" min="0.05" max="1" step="0.05" value={Number(selectedDrawing.opacity ?? 1)} onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value)) updateDrawing(selectedDrawing.id, { opacity: Math.max(0.05, Math.min(1, value)) }); }} /></label>
+                <label className="field"><span>Толщина</span><SoftNumberInput min={1} max={120} value={Math.round(Number(selectedDrawing.strokeWidth) || 4)} onValue={(value) => updateDrawing(selectedDrawing.id, { strokeWidth: value })} /></label>
+                <label className="field"><span>Прозрачность</span><SoftNumberInput min={0.05} max={1} step={0.05} value={Number(selectedDrawing.opacity ?? 1)} onValue={(value) => updateDrawing(selectedDrawing.id, { opacity: value })} /></label>
               </div>
               <div className="inspector-block"><h3>Положение</h3><div className="geometry-grid">
-                <label className="field"><span>X</span><input type="number" value={Math.round(Number(selectedDrawing.x) || 0)} onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value)) updateDrawing(selectedDrawing.id, { x: value }); }} /></label>
-                <label className="field"><span>Y</span><input type="number" value={Math.round(Number(selectedDrawing.y) || 0)} onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value)) updateDrawing(selectedDrawing.id, { y: value }); }} /></label>
-                <label className="field"><span>Длина</span><input type="number" min="1" max="5000" value={Math.round(Number(selectedDrawing.length) || 300)} onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value)) updateDrawing(selectedDrawing.id, { length: Math.max(1, Math.min(5000, value)) }); }} /></label>
-                <label className="field"><span>Угол</span><input type="number" min="-180" max="180" value={Math.round(Number(selectedDrawing.angle) || 0)} onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value)) updateDrawing(selectedDrawing.id, { angle: Math.max(-180, Math.min(180, value)) }); }} /></label>
+                <label className="field"><span>X</span><SoftNumberInput value={Math.round(Number(selectedDrawing.x) || 0)} onValue={(value) => updateDrawing(selectedDrawing.id, { x: value })} /></label>
+                <label className="field"><span>Y</span><SoftNumberInput value={Math.round(Number(selectedDrawing.y) || 0)} onValue={(value) => updateDrawing(selectedDrawing.id, { y: value })} /></label>
+                <label className="field"><span>Длина</span><SoftNumberInput min={1} max={5000} value={Math.round(Number(selectedDrawing.length) || 300)} onValue={(value) => updateDrawing(selectedDrawing.id, { length: value })} /></label>
+                <label className="field"><span>Угол</span><SoftNumberInput min={-180} max={180} value={Math.round(Number(selectedDrawing.angle) || 0)} onValue={(value) => updateDrawing(selectedDrawing.id, { angle: value })} /></label>
               </div></div>
               <button className="button full danger-button" onClick={() => deleteDrawing(selectedDrawing.id)}>Удалить линию</button>
             </>
@@ -2560,11 +2625,11 @@ export default function App() {
           <div className="section-title">Документ</div>
           <div className="document-grid">
             <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
-            <label className="field small-field"><span>Ширина px</span><input type="number" value={canvas.width} onChange={(event) => updateCanvas(event.target.value, canvas.height, 'custom')} /></label>
-            <label className="field small-field"><span>Высота px</span><input type="number" value={canvas.height} onChange={(event) => updateCanvas(canvas.width, event.target.value, 'custom')} /></label>
+            <label className="field small-field"><span>Ширина px</span><SoftNumberInput min={300} max={5000} value={canvas.width} onValue={(value) => updateCanvas(value, canvas.height, 'custom')} /></label>
+            <label className="field small-field"><span>Высота px</span><SoftNumberInput min={300} max={5000} value={canvas.height} onValue={(value) => updateCanvas(canvas.width, value, 'custom')} /></label>
             <label className="field small-field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage) || albumMode !== 'collage'} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count === 0 ? 'нет' : count}</option>)}</select></label>
-            <label className="field small-field"><span>Зазор</span><input type="number" value={settings.gap} onChange={(event) => updateSetting('gap', clamp(event.target.value, 0, 200))} /></label>
-            <label className="field small-field"><span>Поля</span><input type="number" value={settings.padding} onChange={(event) => updateSetting('padding', clamp(event.target.value, 0, 300))} /></label>
+            <label className="field small-field"><span>Зазор</span><SoftNumberInput min={0} max={200} value={settings.gap} onValue={(value) => updateSetting('gap', value)} /></label>
+            <label className="field small-field"><span>Поля</span><SoftNumberInput min={0} max={300} value={settings.padding} onValue={(value) => updateSetting('padding', value)} /></label>
           </div>
         </section>
 
@@ -2625,8 +2690,8 @@ export default function App() {
                 <label className="booklet-sheets-control"><span>Листов в блоке</span><select value={bookletSheetsPerBlock} onChange={(event) => updateBookletSheetsPerBlock(event.target.value)}>{[1, 2, 3, 4].map((count) => <option key={count} value={count}>{count} лист. / {count * 4} стр.</option>)}</select></label>
                 <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.showFoldLine} onChange={(event) => updateBookletPrintSetting('showFoldLine', event.target.checked)} /><span>Сгиб</span></label>
                 <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.showCropMarks} onChange={(event) => updateBookletPrintSetting('showCropMarks', event.target.checked)} /><span>Метки реза</span></label>
-                <label className="booklet-sheets-control booklet-number-control"><span>Зазор px</span><input type="number" min="0" max={MAX_BOOKLET_PRINT_GAP} value={normalizedBookletPrintSettings.gap} onChange={(event) => updateBookletPrintSetting('gap', event.target.value)} /></label>
-                <label className="booklet-sheets-control booklet-number-control"><span>Поля px</span><input type="number" min="0" max={MAX_BOOKLET_PRINT_MARGIN} value={normalizedBookletPrintSettings.margin} onChange={(event) => updateBookletPrintSetting('margin', event.target.value)} /></label>
+                <label className="booklet-sheets-control booklet-number-control"><span>Зазор px</span><SoftNumberInput min={0} max={MAX_BOOKLET_PRINT_GAP} value={normalizedBookletPrintSettings.gap} onValue={(value) => updateBookletPrintSetting('gap', value)} /></label>
+                <label className="booklet-sheets-control booklet-number-control"><span>Поля px</span><SoftNumberInput min={0} max={MAX_BOOKLET_PRINT_MARGIN} value={normalizedBookletPrintSettings.margin} onValue={(value) => updateBookletPrintSetting('margin', value)} /></label>
               </div>
             </div>
 
@@ -2861,16 +2926,16 @@ export default function App() {
 
         <aside className="inspector">
           <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? (locked ? 'В сетке двигай зелёные разделители между окнами.' : 'Двигай рамку внутри страницы или меняй размер за маркеры. Фото внутри двигай мышкой.') : 'Выбери рамку на холсте'}</p></div></div>
-          <div className="inspector-block"><h3>Цвет и рамка</h3><label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label><label className="field"><span>Обводка внутри окна</span><input type="number" min="0" max="80" value={settings.borderWidth} onChange={(event) => updateSetting('borderWidth', clamp(event.target.value, 0, 80))} /></label></div>
+          <div className="inspector-block"><h3>Цвет и рамка</h3><label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label><label className="field"><span>Обводка внутри окна</span><SoftNumberInput min={0} max={80} value={settings.borderWidth} onValue={(value) => updateSetting('borderWidth', value)} /></label></div>
           {selectedFrame ? (
             <>
               <div className="inspector-block">
                 <h3>Положение рамки</h3>
                 <div className="geometry-grid">
-                  <label className="field"><span>X</span><input type="number" value={selectedFrame.x} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { x: event.target.value })} /></label>
-                  <label className="field"><span>Y</span><input type="number" value={selectedFrame.y} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { y: event.target.value })} /></label>
-                  <label className="field"><span>Ширина</span><input type="number" value={selectedFrame.width} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { width: event.target.value })} /></label>
-                  <label className="field"><span>Высота</span><input type="number" value={selectedFrame.height} onChange={(event) => changeFrame(album.currentPageId, selectedFrame.id, { height: event.target.value })} /></label>
+                  <label className="field"><span>X</span><SoftNumberInput min={0} max={Math.max(0, canvas.width - selectedFrame.width)} value={selectedFrame.x} onValue={(value) => changeFrame(album.currentPageId, selectedFrame.id, { x: value })} /></label>
+                  <label className="field"><span>Y</span><SoftNumberInput min={0} max={Math.max(0, canvas.height - selectedFrame.height)} value={selectedFrame.y} onValue={(value) => changeFrame(album.currentPageId, selectedFrame.id, { y: value })} /></label>
+                  <label className="field"><span>Ширина</span><SoftNumberInput min={MIN_FRAME} max={canvas.width} value={selectedFrame.width} onValue={(value) => changeFrame(album.currentPageId, selectedFrame.id, { width: value })} /></label>
+                  <label className="field"><span>Высота</span><SoftNumberInput min={MIN_FRAME} max={canvas.height} value={selectedFrame.height} onValue={(value) => changeFrame(album.currentPageId, selectedFrame.id, { height: value })} /></label>
                 </div>
                 {!locked && <button className="button full" onClick={bringSelectedFrameToFront}>Поверх остальных</button>}
                 {!locked && <button className={`button full ${moveFrameWithPhotoId === selectedFrame.id ? 'accent' : ''}`} onClick={enableMoveFrameWithPhoto} disabled={!selectedFrame.photo}>{moveFrameWithPhotoId === selectedFrame.id ? 'Перетащи рамку сейчас' : 'Двигать рамку с фото'}</button>}
