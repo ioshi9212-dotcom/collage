@@ -1,4 +1,3 @@
-
 export async function saveCloudProject(project) {
   const response = await fetch('/api/projects', {
     method: 'POST',
@@ -10,10 +9,11 @@ export async function saveCloudProject(project) {
     }),
   });
 
+  const payload = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || 'Cloud save failed');
+    throw new Error(payload?.message || payload?.error || 'Cloud save failed');
   }
 
-  return response.json();
+  return payload?.project || payload;
 }
