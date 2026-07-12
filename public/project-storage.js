@@ -7,6 +7,9 @@
   const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
   const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';
 
+  let writeQueue = Promise.resolve();
+  let lastStoredSignature = '';
+
   function openDatabase() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -41,6 +44,14 @@
     }
   }
 
+  function queueProjectWrite(key, data, metadata = {}) {
+    const operation = writeQueue
+      .catch(() => {})
+      .then(() => writeProject(key, data, metadata));
+    writeQueue = operation;
+    return operation;
+  }
+
   async function readProject(key) {
     const database = await openDatabase();
     try {
@@ -55,6 +66,59 @@
     }
   }
 
+  function cloneProject(value) {
+    if (typeof structuredClone === 'function') {
+      try {
+        return structuredClone(value);
+      } catch {
+        // JSON fallback below.
+      }
+    }
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function projectSignature(project) {
+    const comparable = cloneProject(project);
+    delete comparable.savedAt;
+    return JSON.stringify(comparable);
+  }
+
+  function countProjectPhotos(project) {
+    const ids = new Set();
+    const library = Array.isArray(project?.library) ? project.library : [];
+    library.forEach((photo) => {
+      if (photo?.id) ids.add(photo.id);
+    });
+    const pages = Array.isArray(project?.pages) ? project.pages : [];
+    pages.forEach((page) => {
+      const frames = Array.isArray(page?.frames) ? page.frames : [];
+      frames.forEach((frame) => {
+        if (frame?.photo?.id) ids.add(frame.photo.id);
+      });
+    });
+    return ids.size;
+  }
+
+  function countProjectDecor(project) {
+    const pages = project?.extraLayers?.pages;
+    if (!pages || typeof pages !== 'object') return 0;
+    return Object.values(pages).reduce((total, page) => (
+      total
+      + (Array.isArray(page?.texts) ? page.texts.length : 0)
+      + (Array.isArray(page?.drawings) ? page.drawings.length : 0)
+      + (Array.isArray(page?.templates) ? page.templates.length : 0)
+    ), 0);
+  }
+
+  function validateProject(project) {
+    if (!project || typeof project !== 'object') {
+      throw new Error('Редактор не передал данные проекта');
+    }
+    if (!Array.isArray(project.pages) || project.pages.length === 0) {
+      throw new Error('В проекте нет страниц для сохранения');
+    }
+  }
+
   function showToast(message, isError = false) {
     let toast = document.querySelector('.project-storage-toast');
     if (!toast) {
@@ -66,7 +130,7 @@
         bottom: '28px',
         transform: 'translateX(-50%)',
         zIndex: '100000',
-        maxWidth: 'min(520px, calc(100vw - 32px))',
+        maxWidth: 'min(560px, calc(100vw - 32px))',
         padding: '12px 18px',
         borderRadius: '12px',
         color: '#fff',
@@ -119,6 +183,7 @@
     transfer.items.add(file);
     input.files = transfer.files;
     input.dispatchEvent(new Event('change', { bubbles: true }));
+    lastStoredSignature = projectSignature(data);
   }
 
   function getEditorProject() {
@@ -128,10 +193,37 @@
     return project && typeof project === 'object' ? project : null;
   }
 
-  async function persistCurrentEditorProject() {
+  function waitForEditorCommit() {
+    return new Promise((resolve) => {
+      const raf = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
+      raf(() => raf(resolve));
+    });
+  }
+
+  async function getFreshEditorSnapshot() {
+    await waitForEditorCommit();
     const project = getEditorProject();
-    if (!project) return;
-    await writeProject(LATEST_LOCAL_KEY, project, { source: 'editor' });
+    validateProject(project);
+    const snapshot = cloneProject(project);
+    snapshot.savedAt = new Date().toISOString();
+    return snapshot;
+  }
+
+  async function persistCurrentEditorProject({ force = true, source = 'editor' } = {}) {
+    const snapshot = await getFreshEditorSnapshot();
+    const signature = projectSignature(snapshot);
+    if (!force && signature === lastStoredSignature) {
+      return { saved: false, data: snapshot };
+    }
+
+    await queueProjectWrite(LATEST_LOCAL_KEY, snapshot, {
+      source,
+      pageCount: snapshot.pages.length,
+      photoCount: countProjectPhotos(snapshot),
+      decorCount: countProjectDecor(snapshot),
+    });
+    lastStoredSignature = signature;
+    return { saved: true, data: snapshot };
   }
 
   async function openLocalProject() {
@@ -143,8 +235,9 @@
         const raw = localStorage.getItem(CURRENT_STORAGE_KEY);
         if (raw) {
           const data = JSON.parse(raw);
+          validateProject(data);
           record = { data };
-          await writeProject(LATEST_LOCAL_KEY, data, { source: 'localStorage-migration' });
+          await queueProjectWrite(LATEST_LOCAL_KEY, data, { source: 'localStorage-migration' });
         }
       }
 
@@ -152,9 +245,10 @@
         throw new Error('Сохранённого проекта пока нет');
       }
 
+      validateProject(record.data);
       importIntoEditor(record.data);
       setCloudStatus('Сохранённый проект открыт');
-      showToast('Сохранённый проект открыт');
+      showToast('Проект открыт полностью: макет, текст, цвета и фото');
     } catch (error) {
       console.error(error);
       setCloudStatus(error.message);
@@ -185,11 +279,15 @@
       const projectPayload = await readJsonResponse(projectResponse);
       const project = projectPayload.project;
       if (!project?.data) throw new Error('В сохранении нет данных проекта');
+      validateProject(project.data);
 
-      await writeProject(LATEST_LOCAL_KEY, project.data, {
+      await queueProjectWrite(LATEST_LOCAL_KEY, project.data, {
         source: 'cloud',
         projectId: project.id,
         title: project.title,
+        pageCount: project.data.pages.length,
+        photoCount: countProjectPhotos(project.data),
+        decorCount: countProjectDecor(project.data),
       });
       importIntoEditor(project.data);
 
@@ -199,7 +297,7 @@
       if (titleInput) titleInput.value = project.title || '';
 
       setCloudStatus('Проект открыт');
-      showToast('Проект открыт из аккаунта');
+      showToast('Проект открыт полностью из аккаунта');
     } catch (error) {
       console.error(error);
       setCloudStatus(error.message);
@@ -210,12 +308,38 @@
   async function migrateCurrentLocalProject() {
     try {
       const existing = await readProject(LATEST_LOCAL_KEY);
-      if (existing?.data) return;
+      if (existing?.data) {
+        lastStoredSignature = projectSignature(existing.data);
+        return;
+      }
       const raw = localStorage.getItem(CURRENT_STORAGE_KEY);
       if (!raw) return;
-      await writeProject(LATEST_LOCAL_KEY, JSON.parse(raw), { source: 'localStorage-migration' });
+      const data = JSON.parse(raw);
+      validateProject(data);
+      await queueProjectWrite(LATEST_LOCAL_KEY, data, {
+        source: 'localStorage-migration',
+        pageCount: data.pages.length,
+        photoCount: countProjectPhotos(data),
+        decorCount: countProjectDecor(data),
+      });
+      lastStoredSignature = projectSignature(data);
     } catch (error) {
       console.warn('Не удалось перенести локальное сохранение в IndexedDB', error);
+    }
+  }
+
+  async function saveFullProjectSnapshot() {
+    try {
+      const result = await persistCurrentEditorProject({ force: true, source: 'manual-save' });
+      const photos = countProjectPhotos(result.data);
+      const decor = countProjectDecor(result.data);
+      const detail = photos > 0
+        ? `страниц: ${result.data.pages.length}, фото: ${photos}, оформление: ${decor}`
+        : `страниц: ${result.data.pages.length}, без фото, оформление: ${decor}`;
+      showToast(`Проект сохранён полностью — ${detail}`);
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Не удалось сохранить проект полностью', true);
     }
   }
 
@@ -226,14 +350,7 @@
 
     if (button.closest('.file-actions')) {
       if (label === 'Сохранить') {
-        setTimeout(() => {
-          persistCurrentEditorProject()
-            .then(() => showToast('Проект сохранён в надёжное локальное хранилище'))
-            .catch((error) => {
-              console.error(error);
-              showToast('Не удалось сохранить проект локально', true);
-            });
-        }, 0);
+        void saveFullProjectSnapshot();
         return;
       }
 
@@ -251,6 +368,12 @@
       void openCloudProject(button);
     }
   }, true);
+
+  window.__collageProjectStorage = {
+    saveFullProject: () => persistCurrentEditorProject({ force: true, source: 'bridge-save' }),
+    openLocalProject,
+    readLatest: () => readProject(LATEST_LOCAL_KEY),
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => void migrateCurrentLocalProject(), { once: true });
