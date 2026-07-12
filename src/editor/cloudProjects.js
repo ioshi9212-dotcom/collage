@@ -1,55 +1,19 @@
-const API_PREFIX = '/api';
 
-async function request(url, options = {}) {
-  const response = await fetch(url, {
+export async function saveCloudProject(project) {
+  const response = await fetch('/api/projects', {
+    method: 'POST',
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-    ...options,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: project.title || 'Альбом без названия',
+      data: project,
+    }),
   });
-
-  let payload = {};
-  try {
-    payload = await response.json();
-  } catch {
-    payload = {};
-  }
 
   if (!response.ok) {
-    const error = new Error(payload.error || `Request failed: ${response.status}`);
-    error.status = response.status;
-    throw error;
+    const text = await response.text();
+    throw new Error(text || 'Cloud save failed');
   }
 
-  return payload;
-}
-
-export function saveCloudProject({ title, data, id = null }) {
-  if (id) {
-    return request(`${API_PREFIX}/projects/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ title, data }),
-    });
-  }
-
-  return request(`${API_PREFIX}/projects`, {
-    method: 'POST',
-    body: JSON.stringify({ title, data }),
-  });
-}
-
-export function getCloudProjects() {
-  return request(`${API_PREFIX}/projects`);
-}
-
-export function loadCloudProject(id) {
-  return request(`${API_PREFIX}/projects/${id}`);
-}
-
-export function deleteCloudProject(id) {
-  return request(`${API_PREFIX}/projects/${id}`, {
-    method: 'DELETE',
-  });
+  return response.json();
 }

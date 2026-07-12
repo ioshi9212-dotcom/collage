@@ -22,6 +22,7 @@ import {
   getAdjacentBookletSide,
   getBookletSide,
 } from './editor/booklet';
+import { saveCloudProject } from './editor/cloudProjects';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const ALBUM_MODE_KEY = 'collage-album-editor-mode';
@@ -2028,8 +2029,20 @@ export default function App() {
     }
   }
 
-  function save() {
-    saveLocalProject();
+  async function save() {
+    const local = saveLocalProject({ silent: true });
+    try {
+      const result = await saveCloudProject(project());
+      if (result?.id) {
+        show('Альбом сохранён в аккаунт');
+      } else {
+        show('Альбом сохранён локально');
+      }
+    } catch (error) {
+      console.error(error);
+      show('Локально сохранено. Облако недоступно');
+    }
+    return local;
   }
 
   useEffect(() => {
