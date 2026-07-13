@@ -91,4 +91,3 @@ assert.doesNotMatch(appSource, /const imageCache = new Map\(\)/, 'unbounded cach
 assert.doesNotMatch(appSource, /function loadImage\(src\)/, 'AppLive must use the tested loader module');
 
 console.log('bounded image cache checks passed');
-// final CI trigger
