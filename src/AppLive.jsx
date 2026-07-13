@@ -3,7 +3,6 @@ import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer
 import {
   MIN_FRAME,
   buildGridLayout,
-  cleanFrame,
   clamp,
   ensureLayout,
   framesFromLayout,
@@ -36,6 +35,22 @@ import {
   resolvePageFrameCount,
   settingsForPage,
 } from './editor/pageModel';
+import {
+  applyPhotoToFrames,
+  bringFrameToFront,
+  buildFrameTransformPatch,
+  clampFramePosition,
+  clampPhotoPosition,
+  clearAllFramePhotos,
+  clearFramePhoto,
+  coverPhotoRect,
+  findFrameAtPoint,
+  photoOffsetFromPosition,
+  removeFrameById,
+  updateFrameGeometry,
+  updateFramePhoto,
+  validateFrameTransformBox,
+} from './editor/frameModel';
 import {
   ALBUM_LAYERS_KEY,
   ALBUM_MODE_KEY,
@@ -642,32 +657,6 @@ function BookletPrintGuides({ canvas, printSettings, preview = false }) {
 }
 
 
-function coverRect(image, frame, photo) {
-  if (!image || !photo) return null;
-  const zoom = photo.zoom ?? 1;
-  const scale = Math.max(frame.width / image.width, frame.height / image.height) * zoom;
-  const width = image.width * scale;
-  const height = image.height * scale;
-  const baseX = (frame.width - width) / 2;
-  const baseY = (frame.height - height) / 2;
-  return {
-    x: baseX + (photo.offsetX ?? 0),
-    y: baseY + (photo.offsetY ?? 0),
-    width,
-    height,
-    baseX,
-    baseY,
-  };
-}
-
-function clampPhoto(rect, frame, x, y) {
-  if (!rect) return { x, y };
-  return {
-    x: clamp(x, Math.min(0, frame.width - rect.width), 0),
-    y: clamp(y, Math.min(0, frame.height - rect.height), 0),
-  };
-}
-
 function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhotoMove }) {
   if (!frame.photo || !rect) return null;
   return (
@@ -683,19 +672,16 @@ function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhoto
       onDragStart={(event) => { event.cancelBubble = true; }}
       onDragMove={(event) => {
         event.cancelBubble = true;
-        const next = clampPhoto(rect, frame, event.target.x(), event.target.y());
+        const next = clampPhotoPosition(rect, frame, event.target.x(), event.target.y());
         event.target.x(next.x);
         event.target.y(next.y);
       }}
       onDragEnd={(event) => {
         event.cancelBubble = true;
-        const next = clampPhoto(rect, frame, event.target.x(), event.target.y());
+        const next = clampPhotoPosition(rect, frame, event.target.x(), event.target.y());
         event.target.x(next.x);
         event.target.y(next.y);
-        onPhotoMove(frame.id, {
-          offsetX: Math.round(next.x - rect.baseX),
-          offsetY: Math.round(next.y - rect.baseY),
-        });
+        onPhotoMove(frame.id, photoOffsetFromPosition(rect, next.x, next.y));
       }}
     />
   );
@@ -706,7 +692,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   const groupRef = useRef(null);
   const frameRectRef = useRef(null);
   const transformerRef = useRef(null);
-  const rect = coverRect(image, frame, frame.photo);
+  const rect = coverPhotoRect(image, frame, frame.photo);
   const canDragFrame = !collagePreviewOnly && !printMode && selected && !locked;
 
   useEffect(() => {
@@ -734,8 +720,9 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   if (printMode && !frame.photo) return null;
 
   function clampFrameNode(node) {
-    node.x(clamp(node.x(), 0, Math.max(0, canvas.width - frame.width)));
-    node.y(clamp(node.y(), 0, Math.max(0, canvas.height - frame.height)));
+    const next = clampFramePosition(frame, canvas, node.x(), node.y());
+    node.x(next.x);
+    node.y(next.y);
   }
 
   function commitFrameDrag(event) {
@@ -749,12 +736,12 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   function commitTransform() {
     if (collagePreviewOnly || printMode || !selected || locked || !frameRectRef.current) return;
     const node = frameRectRef.current;
-    const patch = {
-      x: frame.x + node.x(),
-      y: frame.y + node.y(),
-      width: frame.width * node.scaleX(),
-      height: frame.height * node.scaleY(),
-    };
+    const patch = buildFrameTransformPatch(frame, {
+      x: node.x(),
+      y: node.y(),
+      scaleX: node.scaleX(),
+      scaleY: node.scaleY(),
+    });
     node.x(0);
     node.y(0);
     node.scaleX(1);
@@ -814,14 +801,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
           borderStrokeWidth={3}
           anchorStroke="#c27b4f"
           anchorFill="#fff7ef"
-          boundBoxFunc={(oldBox, newBox) => {
-            const pageLeft = pageOffsetX;
-            const pageRight = pageOffsetX + canvas.width;
-            if (newBox.width < MIN_FRAME || newBox.height < MIN_FRAME) return oldBox;
-            if (newBox.x < pageLeft || newBox.y < 0) return oldBox;
-            if (newBox.x + newBox.width > pageRight || newBox.y + newBox.height > canvas.height) return oldBox;
-            return newBox;
-          }}
+          boundBoxFunc={(oldBox, newBox) => validateFrameTransformBox(oldBox, newBox, { pageOffsetX, canvas, minFrame: MIN_FRAME })}
         />
       )}
     </>
@@ -1351,7 +1331,7 @@ export default function App() {
   }
 
   function changeFrame(pageId, frameId, patch) {
-    updatePageFrames(pageId, (frames) => frames.map((frame) => (frame.id === frameId ? cleanFrame({ ...frame, ...patch }, canvas) : frame)));
+    updatePageFrames(pageId, (frames) => updateFrameGeometry(frames, frameId, patch, canvas));
   }
 
   function rebuildPage(pageId, nextCanvas = canvas, nextSettings = settings, explicitFrameCount) {
@@ -1462,7 +1442,7 @@ export default function App() {
   }
 
   function putPhoto(pageId, frameId, photo) {
-    updatePageFrames(pageId, (frames) => frames.map((frame) => (frame.id === frameId ? { ...frame, photo: { id: photo.id, name: photo.name, src: photo.src, zoom: 1, offsetX: 0, offsetY: 0 } } : frame)));
+    updatePageFrames(pageId, (frames) => applyPhotoToFrames(frames, frameId, photo));
     setAlbum((current) => ({ ...current, currentPageId: pageId }));
     setSelectedFrameId(frameId);
     setMoveFrameWithPhotoId(null);
@@ -1487,21 +1467,16 @@ export default function App() {
     stageRef.current.setPointersPositions(event);
     const point = stageRef.current.getPointerPosition();
     if (!point) return;
-    for (const entry of entries) {
-      if (!entry.page) continue;
-      const x = point.x - entry.x;
-      const y = point.y;
-      const frame = entry.page.frames.find((item) => x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height);
-      if (frame) {
-        putPhoto(entry.page.id, frame.id, photo);
-        return;
-      }
+    const target = findFrameAtPoint(entries, point);
+    if (target) {
+      putPhoto(target.pageId, target.frameId, photo);
+      return;
     }
     show('Перетащи фото прямо в рамку');
   }
 
   function updatePhoto(pageId, frameId, patch) {
-    updatePageFrames(pageId, (frames) => frames.map((frame) => (frame.id === frameId && frame.photo ? { ...frame, photo: { ...frame.photo, ...patch } } : frame)));
+    updatePageFrames(pageId, (frames) => updateFramePhoto(frames, frameId, patch));
   }
 
   function addPage() {
@@ -1606,7 +1581,7 @@ export default function App() {
     const frameCount = resolvePageFrameCount(currentPage, settings);
     if (frameCount <= 0) return show('На странице уже нет фото-окон');
     const nextFrameCount = frameCount - 1;
-    const keptFrames = currentPage.frames.filter((frame) => frame.id !== selectedFrame.id);
+    const keptFrames = removeFrameById(currentPage.frames, selectedFrame.id);
     const nextSettings = { ...settings, frameCount: nextFrameCount };
     setSettings(nextSettings);
     setAlbum((current) => ({
@@ -1626,8 +1601,7 @@ export default function App() {
 
   function bringSelectedFrameToFront() {
     if (!selectedFrame || locked) return;
-    const maxZ = Math.max(0, ...(currentPage?.frames ?? []).map((frame) => Number(frame.zIndex) || 0));
-    updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => (frame.id === selectedFrame.id ? { ...frame, zIndex: maxZ + 1 } : frame)));
+    updatePageFrames(album.currentPageId, (frames) => bringFrameToFront(frames, selectedFrame.id));
     show('Окно поднято поверх остальных');
   }
 
@@ -2732,7 +2706,7 @@ export default function App() {
               <em>{isBooklet ? 'Это режим просмотра и PNG-экспорта брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.'}</em>
             </div>
             {!isBooklet && <button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button>}
-            {!isBooklet && <button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => ({ ...frame, photo: null }))); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button>}
+            {!isBooklet && <button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => clearAllFramePhotos(frames)); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button>}
           </div>
 
           <div className={`stage-frame ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''}`} style={{ width: stageDisplayWidth, height: stageDisplayHeight }} onDragOver={(event) => { if (!isBooklet) event.preventDefault(); }} onDrop={isBooklet ? undefined : dropPhoto}>
@@ -2782,7 +2756,7 @@ export default function App() {
                     <p className="photo-name">{selectedFrame.photo.name}</p>
                     <label className="range-row"><span>Масштаб</span><input type="range" min="1" max="3" step="0.01" value={selectedFrame.photo.zoom} onChange={(event) => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: Number(event.target.value) })} /><b>{selectedFrame.photo.zoom.toFixed(2)}</b></label>
                     <button className="button full" onClick={() => updatePhoto(album.currentPageId, selectedFrame.id, { zoom: 1, offsetX: 0, offsetY: 0 })}>Центрировать фото</button>
-                    <button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => frames.map((frame) => frame.id === selectedFrame.id ? { ...frame, photo: null } : frame))}>Убрать фото из окна</button>
+                    <button className="button full danger-button" onClick={() => updatePageFrames(album.currentPageId, (frames) => clearFramePhoto(frames, selectedFrame.id))}>Убрать фото из окна</button>
                   </>
                 ) : <p className="hint">Нажми фото слева, потом нажми эту рамку.</p>}
               </div>
