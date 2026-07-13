@@ -3,8 +3,9 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 
 function decodeRequestPath(requestUrl) {
   try {
-    const url = new URL(requestUrl || '/', 'http://localhost');
-    return decodeURIComponent(url.pathname);
+    const rawPath = String(requestUrl || '/').split('?')[0].split('#')[0] || '/';
+    const decodedPath = decodeURIComponent(rawPath);
+    return decodedPath.includes('\0') ? null : decodedPath;
   } catch {
     return null;
   }
@@ -43,22 +44,18 @@ export function resolveStaticRequest({
     return { kind: 'not_found' };
   }
 
-  const requestedPath = safeStaticPath(distDir, requestUrl === '/' ? '/index.html' : requestUrl);
+  const decodedPath = decodeRequestPath(requestUrl === '/' ? '/index.html' : requestUrl);
+  if (decodedPath === null) return { kind: 'not_found' };
+
+  const requestedPath = safeStaticPath(distDir, decodedPath);
   if (!requestedPath) return { kind: 'not_found' };
 
   if (isFile(requestedPath, fileExists, fileStat)) {
     return { kind: 'file', path: requestedPath };
   }
 
-  let pathname = '';
-  try {
-    pathname = new URL(requestUrl || '/', 'http://localhost').pathname;
-  } catch {
-    return { kind: 'not_found' };
-  }
-
   // A missing URL with a file extension is an asset request, not an SPA route.
-  if (extname(pathname)) return { kind: 'not_found' };
+  if (extname(decodedPath)) return { kind: 'not_found' };
 
   const indexPath = join(distDir, 'index.html');
   if (!isFile(indexPath, fileExists, fileStat)) return { kind: 'not_found' };
