@@ -25,6 +25,7 @@ import {
 import { saveCloudProject } from './editor/cloudProjects';
 import { compactProjectPhotos, hydrateProjectPhotos } from './editor/photoStorage';
 import { loadCachedImage as loadImage } from './editor/imageCache';
+import { prepareEditorProject } from './editor/projectLoad';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const ALBUM_MODE_KEY = 'collage-album-editor-mode';
@@ -2095,6 +2096,14 @@ export default function App() {
     window.__collageApp = {
       getProject: () => project(),
       saveLocal: () => saveLocalProject({ silent: true }),
+      openProject: (data) => {
+        const prepared = applyProjectData(data, 'Проект открыт из аккаунта');
+        saveLocalProject({ silent: true, data });
+        Promise.resolve(
+          window.__collageProjectStorage?.storeSnapshot?.(data, { source: 'cloud-open' }),
+        ).catch((error) => console.warn('IndexedDB cloud project save failed', error));
+        return { ok: true, currentPageId: prepared.currentPageId };
+      },
     };
 
     return () => {
@@ -2126,6 +2135,38 @@ export default function App() {
       return [createPage(nextCanvas, nextSettings, 1, legacyFrames.map((frame) => cleanFrame(frame, nextCanvas)))];
     }
     return [createPage(nextCanvas, nextSettings, 1), createPage(nextCanvas, nextSettings, 2)];
+  }
+
+  function applyProjectData(data, message) {
+    const prepared = prepareEditorProject(data, {
+      defaultCanvas: DEFAULT_CANVAS,
+      defaultSettings: DEFAULT_SETTINGS,
+      normalizePages,
+      normalizeBookletSheets: clampBookletSheetsPerBlock,
+      normalizeBookletPrintSettings,
+      normalizeExtraLayers,
+    });
+
+    setCanvas(prepared.canvas);
+    setSettings(prepared.settings);
+    setLibrary(prepared.library);
+    setAlbum({ pages: prepared.pages, currentPageId: prepared.currentPageId });
+    setViewMode(prepared.viewMode);
+    setBookletSheetsPerBlock(prepared.bookletSheetsPerBlock);
+    setBookletPrintSettings(prepared.bookletPrintSettings);
+    setExtraLayers(prepared.extraLayers);
+    setAlbumMode(prepared.albumEditorMode);
+    setBookletSideId(null);
+    setPrintBookletSideId(null);
+    setSelectedFrameId(null);
+    setSelectedPhotoId(null);
+    setMoveFrameWithPhotoId(null);
+    setSelectedTextId(null);
+    setSelectedDrawingId(null);
+    setDragPageIndex(null);
+    setDragOverPageIndex(null);
+    show(message);
+    return prepared;
   }
 
   function loadSaved() {

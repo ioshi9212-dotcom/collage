@@ -217,17 +217,40 @@
   }
 
   async function openProject(id) {
+    if (state.busy) return;
     if (!confirm('Открыть проект из аккаунта? Текущий несохранённый макет заменится.')) return;
+    state.busy = true;
     setStatus('Открываю проект…');
+    render();
+
     try {
       const result = await api(`/api/projects/${id}`);
       const project = result.project;
+      if (!project?.data || typeof project.data !== 'object' || Array.isArray(project.data)) {
+        throw new Error('Проект повреждён или имеет неподдерживаемый формат.');
+      }
+
+      const bridge = window.__collageApp;
+      if (typeof bridge?.openProject === 'function') {
+        const opened = await bridge.openProject(project.data);
+        if (opened === false || opened?.ok === false) {
+          throw new Error('Редактор не смог открыть проект.');
+        }
+        localStorage.setItem(CURRENT_PROJECT_ID_KEY, project.id);
+        localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, project.title);
+        setStatus('Проект открыт');
+        return;
+      }
+
       localStorage.setItem(CURRENT_STORAGE_KEY, JSON.stringify(project.data));
       localStorage.setItem(CURRENT_PROJECT_ID_KEY, project.id);
       localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, project.title);
       location.reload();
     } catch (error) {
       setStatus(error.message);
+    } finally {
+      state.busy = false;
+      render();
     }
   }
 
