@@ -1,0 +1,168 @@
+import { buildGridLayout, clamp, cleanFrame, framesFromLayout } from './layout.js';
+import { hydrateProjectPhotos } from './photoStorage.js';
+
+export const DEFAULT_PAGE_FRAME_COUNT = 5;
+
+function cloneDeep(value) {
+  try {
+    return JSON.parse(JSON.stringify(value ?? null));
+  } catch {
+    return value;
+  }
+}
+
+function makePageId() {
+  return globalThis.crypto?.randomUUID?.() ?? `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+export function countFramesInLayout(layout) {
+  if (!layout?.rows) return 0;
+  return layout.rows.reduce((sum, row) => sum + (Array.isArray(row.columns) ? row.columns.length : 0), 0);
+}
+
+export function resolvePageFrameCount(page, fallbackSettings = { frameCount: DEFAULT_PAGE_FRAME_COUNT }) {
+  if (page?.isBlankPage) return 0;
+  const saved = Number(page?.frameCount);
+  if (Number.isFinite(saved) && saved >= 0) return clamp(saved, 0, 9);
+  const fromLayout = countFramesInLayout(page?.layout);
+  if (fromLayout) return clamp(fromLayout, 1, 9);
+  const fromFrames = Array.isArray(page?.frames) ? page.frames.length : 0;
+  if (fromFrames) return clamp(fromFrames, 1, 9);
+  const fallback = Number(fallbackSettings?.frameCount);
+  return Number.isFinite(fallback)
+    ? clamp(fallback, 0, 9)
+    : DEFAULT_PAGE_FRAME_COUNT;
+}
+
+export function settingsForPage(settings, page, explicitFrameCount) {
+  return {
+    ...settings,
+    frameCount: explicitFrameCount ?? resolvePageFrameCount(page, settings),
+  };
+}
+
+export function createPage(canvas, settings, number, previousFrames = [], idFactory = makePageId) {
+  const frameCount = clamp(Number(settings?.frameCount) || DEFAULT_PAGE_FRAME_COUNT, 1, 9);
+  const built = buildGridLayout(canvas, { ...settings, frameCount }, previousFrames);
+  return { id: idFactory(), title: `Страница ${number}`, frameCount, layout: built.layout, frames: built.frames };
+}
+
+export function createBlankPage(number, overrides = {}, idFactory = makePageId) {
+  return {
+    id: overrides.id ?? idFactory(),
+    title: overrides.title ?? `Пустая страница ${number}`,
+    isBlankPage: true,
+    frameCount: 0,
+    layout: null,
+    frames: [],
+  };
+}
+
+export function clonePageForDuplicate(page, number, idFactory = makePageId) {
+  const next = cloneDeep(page) || {};
+  const frameIdMap = new Map();
+  const remapFrameId = (frameId) => {
+    if (frameId == null) return idFactory();
+    if (!frameIdMap.has(frameId)) frameIdMap.set(frameId, idFactory());
+    return frameIdMap.get(frameId);
+  };
+
+  const frames = Array.isArray(next.frames)
+    ? next.frames.map((frame) => ({ ...frame, id: remapFrameId(frame?.id) }))
+    : [];
+
+  let layout = next.layout ?? null;
+  if (layout && Array.isArray(layout.rows)) {
+    layout = {
+      ...layout,
+      rows: layout.rows.map((row) => ({
+        ...row,
+        id: idFactory(),
+        columns: Array.isArray(row?.columns)
+          ? row.columns.map((column) => ({
+            ...column,
+            id: idFactory(),
+            frameId: remapFrameId(column?.frameId),
+          }))
+          : [],
+      })),
+    };
+  }
+
+  return {
+    ...next,
+    id: idFactory(),
+    title: page?.isBlankPage ? `Пустая страница ${number}` : `Страница ${number}`,
+    layout,
+    frames,
+  };
+}
+
+export function createPageFromTemplate(page, index, idFactory = makePageId) {
+  const next = clonePageForDuplicate(page, index + 1, idFactory);
+  return {
+    ...next,
+    title: `Страница ${index + 1}`,
+    frames: Array.isArray(next?.frames) ? next.frames.map((frame) => ({ ...frame, photo: null })) : [],
+  };
+}
+
+export function createInitialAlbum(canvas, settings, idFactory = makePageId) {
+  const first = createPage(canvas, settings, 1, [], idFactory);
+  const second = createPage(canvas, settings, 2, [], idFactory);
+  return { pages: [first, second], currentPageId: first.id };
+}
+
+export function normalizeProjectPages(data, nextCanvas, nextSettings, idFactory = makePageId) {
+  const source = data && typeof data === 'object' ? data : {};
+  const hydratedPages = hydrateProjectPhotos(source.library, source.pages);
+  if (hydratedPages.length) {
+    return hydratedPages.map((page, index) => {
+      if (page?.isBlankPage) {
+        return createBlankPage(index + 1, { id: page.id, title: page.title }, idFactory);
+      }
+      const frames = Array.isArray(page?.frames) ? page.frames.map((frame) => cleanFrame(frame, nextCanvas)) : [];
+      const existingLayoutCount = countFramesInLayout(page?.layout);
+      const savedFrameCount = Number(page?.frameCount);
+      const frameCount = Number.isFinite(savedFrameCount) && savedFrameCount >= 0
+        ? clamp(savedFrameCount, 0, 9)
+        : clamp(existingLayoutCount || frames.length || nextSettings?.frameCount, 1, 9);
+      if (frameCount <= 0) {
+        return {
+          id: page?.id ?? idFactory(),
+          title: page?.title ?? `Страница ${index + 1}`,
+          frameCount: 0,
+          layout: null,
+          frames: [],
+        };
+      }
+      const trustLayout = page?.layout?.type === 'grid' && existingLayoutCount === frameCount;
+      const pageSettings = { ...nextSettings, frameCount };
+      const layout = trustLayout ? page.layout : buildGridLayout(nextCanvas, pageSettings, frames).layout;
+      return {
+        id: page?.id ?? idFactory(),
+        title: page?.title ?? `Страница ${index + 1}`,
+        frameCount,
+        layout,
+        frames: framesFromLayout(layout, frames),
+      };
+    });
+  }
+
+  if (Array.isArray(source.frames)) {
+    const [legacyPage] = hydrateProjectPhotos(source.library, [{ frames: source.frames }]);
+    const legacyFrames = legacyPage?.frames ?? source.frames;
+    return [createPage(
+      nextCanvas,
+      nextSettings,
+      1,
+      legacyFrames.map((frame) => cleanFrame(frame, nextCanvas)),
+      idFactory,
+    )];
+  }
+
+  return [
+    createPage(nextCanvas, nextSettings, 1, [], idFactory),
+    createPage(nextCanvas, nextSettings, 2, [], idFactory),
+  ];
+}
