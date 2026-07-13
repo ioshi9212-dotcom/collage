@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "test": "node src/editor/layout.test.mjs",
     "preview": "node server.js",
     "start": "node server.js"
   },
