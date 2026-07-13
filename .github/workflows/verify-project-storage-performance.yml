@@ -1,0 +1,50 @@
+name: Apply and verify project storage performance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'public/project-storage.js'
+      - 'src/AppLive.jsx'
+      - 'index.html'
+      - 'src/editor/project-storage.test.mjs'
+      - 'package.json'
+      - '.github/scripts/apply_project_storage_performance.py'
+      - '.github/workflows/verify-project-storage-performance.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply exact performance patch
+        run: python .github/scripts/apply_project_storage_performance.py
+      - name: Install dependencies
+        run: npm install
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Verify focused diff
+        run: |
+          git diff --check
+          test "$(git diff --name-only origin/main...HEAD | grep -Ev '^(package.json|src/editor/project-storage.test.mjs|public/project-storage.js|src/AppLive.jsx|index.html|.github/scripts/apply_project_storage_performance.py|.github/workflows/verify-project-storage-performance.yml)$' | wc -l)" -eq 0
+      - name: Remove temporary automation
+        run: rm .github/scripts/apply_project_storage_performance.py .github/workflows/verify-project-storage-performance.yml
+      - name: Commit verified changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Optimize large project persistence'
+          git push origin HEAD:${{ github.head_ref }}
