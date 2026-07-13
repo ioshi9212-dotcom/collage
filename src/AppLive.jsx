@@ -2066,12 +2066,12 @@ export default function App() {
     };
   }
 
-  function saveLocalProject({ silent = false } = {}) {
-    const data = project();
+  function saveLocalProject({ silent = false, data = null } = {}) {
+    const snapshot = data ?? project();
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
       if (!silent) show('Альбом сохранён');
-      return { ok: true, data };
+      return { ok: true, data: snapshot };
     } catch (error) {
       console.error(error);
       if (!silent) show('Не удалось сохранить: проект слишком большой. Скачай JSON или очисти лишние фото.');
@@ -2080,9 +2080,18 @@ export default function App() {
   }
 
   async function save() {
-    const local = saveLocalProject({ silent: true });
+    const data = project();
+    const local = saveLocalProject({ silent: true, data });
+    const storagePromise = Promise.resolve(
+      window.__collageProjectStorage?.storeSnapshot?.(data, { source: 'manual-save' }),
+    ).catch((error) => {
+      console.warn('IndexedDB project save failed', error);
+      return null;
+    });
+
     try {
-      const result = await saveCloudProject(project());
+      const result = await saveCloudProject(data);
+      await storagePromise;
       if (result?.id) {
         show('Альбом сохранён в аккаунт');
       } else {
@@ -2090,6 +2099,7 @@ export default function App() {
       }
     } catch (error) {
       console.error(error);
+      await storagePromise;
       show('Локально сохранено. Облако недоступно');
     }
     return local;

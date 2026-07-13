@@ -7,11 +7,14 @@
   const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
   const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';
 
-  let writeQueue = Promise.resolve();
-  let lastStoredSignature = '';
+  let databasePromise = null;
+  let writeInFlight = false;
+  const pendingWrites = new Map();
 
   function openDatabase() {
-    return new Promise((resolve, reject) => {
+    if (databasePromise) return databasePromise;
+
+    databasePromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const database = request.result;
@@ -19,95 +22,120 @@
           database.createObjectStore(STORE_NAME, { keyPath: 'key' });
         }
       };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error('Не удалось открыть хранилище проектов'));
+      request.onsuccess = () => {
+        const database = request.result;
+        database.onversionchange = () => {
+          database.close();
+          databasePromise = null;
+        };
+        resolve(database);
+      };
+      request.onerror = () => {
+        databasePromise = null;
+        reject(request.error || new Error('Не удалось открыть хранилище проектов'));
+      };
     });
+
+    return databasePromise;
   }
 
   async function writeProject(key, data, metadata = {}) {
     const database = await openDatabase();
-    try {
-      await new Promise((resolve, reject) => {
-        const transaction = database.transaction(STORE_NAME, 'readwrite');
-        transaction.objectStore(STORE_NAME).put({
-          key,
-          data,
-          savedAt: new Date().toISOString(),
-          ...metadata,
-        });
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error || new Error('Не удалось сохранить проект'));
-        transaction.onabort = () => reject(transaction.error || new Error('Сохранение проекта отменено'));
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction(STORE_NAME, 'readwrite');
+      transaction.objectStore(STORE_NAME).put({
+        key,
+        data,
+        savedAt: new Date().toISOString(),
+        ...metadata,
       });
-    } finally {
-      database.close();
-    }
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error('Не удалось сохранить проект'));
+      transaction.onabort = () => reject(transaction.error || new Error('Сохранение проекта отменено'));
+    });
+  }
+
+  function drainProjectWrites() {
+    if (writeInFlight) return;
+    writeInFlight = true;
+
+    void (async () => {
+      try {
+        while (pendingWrites.size > 0) {
+          const [key, entry] = pendingWrites.entries().next().value;
+          pendingWrites.delete(key);
+          try {
+            await writeProject(key, entry.data, entry.metadata);
+            entry.waiters.forEach(({ resolve }) => resolve());
+          } catch (error) {
+            entry.waiters.forEach(({ reject }) => reject(error));
+          }
+        }
+      } finally {
+        writeInFlight = false;
+        if (pendingWrites.size > 0) drainProjectWrites();
+      }
+    })();
   }
 
   function queueProjectWrite(key, data, metadata = {}) {
-    const operation = writeQueue
-      .catch(() => {})
-      .then(() => writeProject(key, data, metadata));
-    writeQueue = operation;
-    return operation;
+    return new Promise((resolve, reject) => {
+      const pending = pendingWrites.get(key);
+      if (pending) {
+        pending.data = data;
+        pending.metadata = metadata;
+        pending.waiters.push({ resolve, reject });
+      } else {
+        pendingWrites.set(key, {
+          data,
+          metadata,
+          waiters: [{ resolve, reject }],
+        });
+      }
+      drainProjectWrites();
+    });
   }
 
   async function readProject(key) {
     const database = await openDatabase();
-    try {
-      return await new Promise((resolve, reject) => {
-        const transaction = database.transaction(STORE_NAME, 'readonly');
-        const request = transaction.objectStore(STORE_NAME).get(key);
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error || new Error('Не удалось прочитать проект'));
-      });
-    } finally {
-      database.close();
-    }
+    return new Promise((resolve, reject) => {
+      const transaction = database.transaction(STORE_NAME, 'readonly');
+      const request = transaction.objectStore(STORE_NAME).get(key);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error('Не удалось прочитать проект'));
+    });
   }
 
-  function cloneProject(value) {
-    if (typeof structuredClone === 'function') {
-      try {
-        return structuredClone(value);
-      } catch {
-        // JSON fallback below.
-      }
-    }
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  function projectSignature(project) {
-    const comparable = cloneProject(project);
-    delete comparable.savedAt;
-    return JSON.stringify(comparable);
-  }
-
-  function countProjectPhotos(project) {
-    const ids = new Set();
+  function projectStats(project) {
+    const photoIds = new Set();
     const library = Array.isArray(project?.library) ? project.library : [];
     library.forEach((photo) => {
-      if (photo?.id) ids.add(photo.id);
+      if (photo?.id) photoIds.add(photo.id);
     });
+
     const pages = Array.isArray(project?.pages) ? project.pages : [];
     pages.forEach((page) => {
       const frames = Array.isArray(page?.frames) ? page.frames : [];
       frames.forEach((frame) => {
-        if (frame?.photo?.id) ids.add(frame.photo.id);
+        if (frame?.photo?.id) photoIds.add(frame.photo.id);
       });
     });
-    return ids.size;
-  }
 
-  function countProjectDecor(project) {
-    const pages = project?.extraLayers?.pages;
-    if (!pages || typeof pages !== 'object') return 0;
-    return Object.values(pages).reduce((total, page) => (
-      total
-      + (Array.isArray(page?.texts) ? page.texts.length : 0)
-      + (Array.isArray(page?.drawings) ? page.drawings.length : 0)
-      + (Array.isArray(page?.templates) ? page.templates.length : 0)
-    ), 0);
+    const layerPages = project?.extraLayers?.pages;
+    const decorCount = layerPages && typeof layerPages === 'object'
+      ? Object.values(layerPages).reduce((total, page) => (
+          total
+          + (Array.isArray(page?.texts) ? page.texts.length : 0)
+          + (Array.isArray(page?.drawings) ? page.drawings.length : 0)
+          + (Array.isArray(page?.templates) ? page.templates.length : 0)
+        ), 0)
+      : 0;
+
+    return {
+      pageCount: pages.length,
+      photoCount: photoIds.size,
+      decorCount,
+    };
   }
 
   function validateProject(project) {
@@ -183,7 +211,6 @@
     transfer.items.add(file);
     input.files = transfer.files;
     input.dispatchEvent(new Event('change', { bubbles: true }));
-    lastStoredSignature = projectSignature(data);
   }
 
   function getEditorProject() {
@@ -204,26 +231,24 @@
     await waitForEditorCommit();
     const project = getEditorProject();
     validateProject(project);
-    const snapshot = cloneProject(project);
-    snapshot.savedAt = new Date().toISOString();
-    return snapshot;
+    return project?.savedAt ? project : { ...project, savedAt: new Date().toISOString() };
   }
 
-  async function persistCurrentEditorProject({ force = true, source = 'editor' } = {}) {
-    const snapshot = await getFreshEditorSnapshot();
-    const signature = projectSignature(snapshot);
-    if (!force && signature === lastStoredSignature) {
-      return { saved: false, data: snapshot };
-    }
+  async function persistProjectSnapshot(project, { source = 'editor' } = {}) {
+    validateProject(project);
+    const snapshot = project?.savedAt ? project : { ...project, savedAt: new Date().toISOString() };
+    const stats = projectStats(snapshot);
 
     await queueProjectWrite(LATEST_LOCAL_KEY, snapshot, {
       source,
-      pageCount: snapshot.pages.length,
-      photoCount: countProjectPhotos(snapshot),
-      decorCount: countProjectDecor(snapshot),
+      ...stats,
     });
-    lastStoredSignature = signature;
-    return { saved: true, data: snapshot };
+    return { saved: true, data: snapshot, stats };
+  }
+
+  async function persistCurrentEditorProject({ source = 'editor' } = {}) {
+    const snapshot = await getFreshEditorSnapshot();
+    return persistProjectSnapshot(snapshot, { source });
   }
 
   async function openLocalProject() {
@@ -237,7 +262,10 @@
           const data = JSON.parse(raw);
           validateProject(data);
           record = { data };
-          await queueProjectWrite(LATEST_LOCAL_KEY, data, { source: 'localStorage-migration' });
+          await queueProjectWrite(LATEST_LOCAL_KEY, data, {
+            source: 'localStorage-migration',
+            ...projectStats(data),
+          });
         }
       }
 
@@ -285,9 +313,7 @@
         source: 'cloud',
         projectId: project.id,
         title: project.title,
-        pageCount: project.data.pages.length,
-        photoCount: countProjectPhotos(project.data),
-        decorCount: countProjectDecor(project.data),
+        ...projectStats(project.data),
       });
       importIntoEditor(project.data);
 
@@ -309,7 +335,6 @@
     try {
       const existing = await readProject(LATEST_LOCAL_KEY);
       if (existing?.data) {
-        lastStoredSignature = projectSignature(existing.data);
         return;
       }
       const raw = localStorage.getItem(CURRENT_STORAGE_KEY);
@@ -318,11 +343,8 @@
       validateProject(data);
       await queueProjectWrite(LATEST_LOCAL_KEY, data, {
         source: 'localStorage-migration',
-        pageCount: data.pages.length,
-        photoCount: countProjectPhotos(data),
-        decorCount: countProjectDecor(data),
+        ...projectStats(data),
       });
-      lastStoredSignature = projectSignature(data);
     } catch (error) {
       console.warn('Не удалось перенести локальное сохранение в IndexedDB', error);
     }
@@ -330,12 +352,11 @@
 
   async function saveFullProjectSnapshot() {
     try {
-      const result = await persistCurrentEditorProject({ force: true, source: 'manual-save' });
-      const photos = countProjectPhotos(result.data);
-      const decor = countProjectDecor(result.data);
+      const result = await persistCurrentEditorProject({ source: 'manual-save' });
+      const { pageCount, photoCount: photos, decorCount: decor } = result.stats;
       const detail = photos > 0
-        ? `страниц: ${result.data.pages.length}, фото: ${photos}, оформление: ${decor}`
-        : `страниц: ${result.data.pages.length}, без фото, оформление: ${decor}`;
+        ? `страниц: ${pageCount}, фото: ${photos}, оформление: ${decor}`
+        : `страниц: ${pageCount}, без фото, оформление: ${decor}`;
       showToast(`Проект сохранён полностью — ${detail}`);
     } catch (error) {
       console.error(error);
@@ -350,7 +371,7 @@
 
     if (button.closest('.file-actions')) {
       if (label === 'Сохранить') {
-        void saveFullProjectSnapshot();
+        // React handles this click and passes the same snapshot to every storage target.
         return;
       }
 
@@ -370,7 +391,8 @@
   }, true);
 
   window.__collageProjectStorage = {
-    saveFullProject: () => persistCurrentEditorProject({ force: true, source: 'bridge-save' }),
+    saveFullProject: () => persistCurrentEditorProject({ source: 'bridge-save' }),
+    storeSnapshot: (data, options = {}) => persistProjectSnapshot(data, options),
     openLocalProject,
     readLatest: () => readProject(LATEST_LOCAL_KEY),
   };
