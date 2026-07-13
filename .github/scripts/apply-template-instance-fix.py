@@ -36,7 +36,13 @@ new_layers = """      const cleaned = cloneLayerPage({
       });
 """
 
-assert text.count(old_runtime) == 1, f'runtime block count: {text.count(old_runtime)}'
-assert text.count(old_layers) == 1, f'layer block count: {text.count(old_layers)}'
-text = text.replace(old_runtime, new_runtime, 1).replace(old_layers, new_layers, 1)
+runtime_count = text.count(old_runtime)
+layer_count = text.count(old_layers)
+assert runtime_count == 1, f'runtime block count: {runtime_count}'
+assert layer_count == 2, f'layer block count: {layer_count}'
+
+text = text.replace(old_runtime, new_runtime, 1)
+before, separator, after = text.rpartition(old_layers)
+assert separator, 'template application layer block not found'
+text = before + new_layers + after
 path.write_text(text, encoding='utf-8')
