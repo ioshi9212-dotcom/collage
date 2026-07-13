@@ -1,0 +1,50 @@
+name: Apply and verify save-as-new transaction
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'public/cloud-auth.js'
+      - 'public/cloud-auth.test.mjs'
+      - 'package.json'
+      - '.github/scripts/apply_save_as_new.py'
+      - '.github/workflows/verify-save-as-new.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply exact save-as-new patch
+        run: python .github/scripts/apply_save_as_new.py
+      - name: Install dependencies
+        run: npm install --no-package-lock
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Verify focused diff
+        run: |
+          git diff --check
+          test "$(git diff --name-only origin/main...HEAD | grep -Ev '^(public/cloud-auth.js|public/cloud-auth.test.mjs|package.json|.github/scripts/apply_save_as_new.py|.github/workflows/verify-save-as-new.yml)$' | wc -l)" -eq 0
+      - name: Remove generated and temporary files
+        run: |
+          rm -rf node_modules dist package-lock.json
+          git rm .github/scripts/apply_save_as_new.py .github/workflows/verify-save-as-new.yml
+      - name: Commit verified changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/cloud-auth.js
+          git commit -m 'Preserve project binding until save-as-new succeeds'
+          git push origin HEAD:${{ github.head_ref }}
