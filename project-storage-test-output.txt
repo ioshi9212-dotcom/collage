@@ -1,0 +1,315 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: storage click listener must not duplicate the editor save
+    at file:///home/runner/work/collage/collage/src/editor/project-storage.test.mjs:127:8 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: '(() => {\n' +
+    "  const DB_NAME = 'collage-project-storage-v1';\n" +
+    '  const DB_VERSION = 1;\n' +
+    "  const STORE_NAME = 'projects';\n" +
+    "  const LATEST_LOCAL_KEY = 'latest-local';\n" +
+    "  const CURRENT_STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';\n" +
+    "  const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';\n" +
+    "  const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';\n" +
+    '\n' +
+    '  let databasePromise = null;\n' +
+    '  let writeInFlight = false;\n' +
+    '  const pendingWrites = new Map();\n' +
+    '\n' +
+    '  function openDatabase() {\n' +
+    '    if (databasePromise) return databasePromise;\n' +
+    '\n' +
+    '    databasePromise = new Promise((resolve, reject) => {\n' +
+    '      const request = indexedDB.open(DB_NAME, DB_VERSION);\n' +
+    '      request.onupgradeneeded = () => {\n' +
+    '        const database = request.result;\n' +
+    '        if (!database.objectStoreNames.contains(STORE_NAME)) {\n' +
+    "          database.createObjectStore(STORE_NAME, { keyPath: 'key' });\n" +
+    '        }\n' +
+    '      };\n' +
+    '      request.onsuccess = () => {\n' +
+    '        const database = request.result;\n' +
+    '        database.onversionchange = () => {\n' +
+    '          database.close();\n' +
+    '          databasePromise = null;\n' +
+    '        };\n' +
+    '        resolve(database);\n' +
+    '      };\n' +
+    '      request.onerror = () => {\n' +
+    '        databasePromise = null;\n' +
+    "        reject(request.error || new Error('Не удалось открыть хранилище проектов'));\n" +
+    '      };\n' +
+    '    });\n' +
+    '\n' +
+    '    return databasePromise;\n' +
+    '  }\n' +
+    '\n' +
+    '  async function writeProject(key, data, metadata = {}) {\n' +
+    '    const database = await openDatabase();\n' +
+    '    await new Promise((resolve, reject) => {\n' +
+    "      const transaction = database.transaction(STORE_NAME, 'readwrite');\n" +
+    '      transaction.objectStore(STORE_NAME).put({\n' +
+    '        key,\n' +
+    '        data,\n' +
+    '        savedAt: new Date().toISOString(),\n' +
+    '        ...metadata,\n' +
+    '      });\n' +
+    '      transaction.oncomplete = () => resolve();\n' +
+    "      transaction.onerror = () => reject(transaction.error || new Error('Не удалось сохранить проект'));\n" +
+    "      transaction.onabort = () => reject(transaction.error || new Error('Сохранение проекта отменено'));\n" +
+    '    });\n' +
+    '  }\n' +
+    '\n' +
+    '  function drainProjectWrites() {\n' +
+    '    if (writeInFlight) return;\n' +
+    '    writeInFlight = true;\n' +
+    '\n' +
+    '    void (async () => {\n' +
+    '      try {\n' +
+    '        while (pendingWrites.size > 0) {\n' +
+    '          const [key, entry] = pendingWrites.entries().next().value;\n' +
+    '          pendingWrites.delete(key);\n' +
+    '          try {\n' +
+    '            await writeProject(key, entry.data, entry.metadata);\n' +
+    '            entry.waiters.forEach(({ resolve }) => resolve());\n' +
+    '          } catch (error) {\n' +
+    '            entry.waiters.forEach(({ reject }) => reject(error));\n' +
+    '          }\n' +
+    '        }\n' +
+    '      } finally {\n' +
+    '        writeInFlight = false;\n' +
+    '        if (pendingWrites.size > 0) drainProjectWrites();\n' +
+    '      }\n' +
+    '    })();\n' +
+    '  }\n' +
+    '\n' +
+    '  function queueProjectWrite(key, data, metadata = {}) {\n' +
+    '    return new Promise((resolve, reject) => {\n' +
+    '      const pending = pendingWrites.get(key);\n' +
+    '      if (pending) {\n' +
+    '        pending.data = data;\n' +
+    '        pending.metadata = metadata;\n' +
+    '        pending.waiters.push({ resolve, reject });\n' +
+    '      } else {\n' +
+    '        pendingWrites.set(key, {\n' +
+    '          data,\n' +
+    '          metadata,\n' +
+    '          waiters: [{ resolve, reject }],\n' +
+    '        });\n' +
+    '      }\n' +
+    '      drainProjectWrites();\n' +
+    '    });\n' +
+    '  }\n' +
+    '\n' +
+    '  async function readProject(key) {\n' +
+    '    const database = await openDatabase();\n' +
+    '    return new Promise((resolve, reject) => {\n' +
+    "      const transaction = database.transaction(STORE_NAME, 'readonly');\n" +
+    '      const request = transaction.objectStore(STORE_NAME).get(key);\n' +
+    '      request.onsuccess = () => resolve(request.result || null);\n' +
+    "      request.onerror = () => reject(request.error || new Error('Не удалось прочитать проект'));\n" +
+    '    });\n' +
+    '  }\n' +
+    '\n' +
+    '  function projectStats(project) {\n' +
+    '    const photoIds = new Set();\n' +
+    '    const library = Array.isArray(project?.library) ? project.library : [];\n' +
+    '    library.forEach((photo) => {\n' +
+    '      if (photo?.id) photoIds.add(photo.id);\n' +
+    '    });\n' +
+    '\n' +
+    '    const pages = Array.isArray(project?.pages) ? project.pages : [];\n' +
+    '    pages.forEach((page) => {\n' +
+    '      const frames = Array.isArray(page?.frames) ? page.frames : [];\n' +
+    '      frames.forEach((frame) => {\n' +
+    '        if (frame?.photo?.id) photoIds.add(frame.photo.id);\n' +
+    '      });\n' +
+    '    });\n' +
+    '\n' +
+    '    const layerPages = project?.extraLayers?.pages;\n' +
+    "    const decorCount = layerPages && typeof layerPages === 'object'\n" +
+    '      ? Object.values(layerPages).reduce((total, page) => (\n' +
+    '          total\n' +
+    '          + (Array.isArray(page?.texts) ? page.texts.length : 0)\n' +
+    '          + (Array.isArray(page?.drawings) ? page.drawings.length : 0)\n' +
+    '          + (Array.isArray(page?.templates) ? page.templates.length : 0)\n' +
+    '        ), 0)\n' +
+    '      : 0;\n' +
+    '\n' +
+    '    return {\n' +
+    '      pageCount: pages.length,\n' +
+    '      photoCount: photoIds.size,\n' +
+    '      decorCount,\n' +
+    '    };\n' +
+    '  }\n' +
+    '\n' +
+    '  function validateProject(project) {\n' +
+    "    if (!project || typeof project !== 'object') {\n" +
+    "      throw new Error('Редактор не передал данные проекта');\n" +
+    '    }\n' +
+    '    if (!Array.isArray(project.pages) || project.pages.length === 0) {\n' +
+    "      throw new Error('В проекте нет страниц для сохранения');\n" +
+    '    }\n' +
+    '  }\n' +
+    '\n' +
+    '  function showToast(message, isError = false) {\n' +
+    "    let toast = document.querySelector('.project-storage-toast');\n" +
+    '    if (!toast) {\n' +
+    "      toast = document.createElement('div');\n" +
+    "      toast.className = 'project-storage-toast';\n" +
+    '      Object.assign(toast.style, {\n' +
+    "        position: 'fixed',\n" +
+    "        left: '50%',\n" +
+    "        bottom: '28px',\n" +
+    "        transform: 'translateX(-50%)',\n" +
+    "        zIndex: '100000',\n" +
+    "        maxWidth: 'min(560px, calc(100vw - 32px))',\n" +
+    "        padding: '12px 18px',\n" +
+    "        borderRadius: '12px',\n" +
+    "        color: '#fff',\n" +
+    "        font: '600 14px/1.35 Arial, sans-serif',\n" +
+    "        boxShadow: '0 10px 30px rgba(0, 0, 0, .24)',\n" +
+    "        opacity: '0',\n" +
+    "        transition: 'opacity .18s ease',\n" +
+    "        pointerEvents: 'none',\n" +
+    '      });\n' +
+    '      document.body.append(toast);\n' +
+    '    }\n' +
+    '\n' +
+    '    toast.textContent = message;\n' +
+    "    toast.style.background = isError ? '#9f2f2f' : '#2f6f52';\n" +
+    "    toast.style.opacity = '1';\n" +
+    '    clearTimeout(showToast.timer);\n' +
+    '    showToast.timer = setTimeout(() => {\n' +
+    "      toast.style.opacity = '0';\n" +
+    '    }, 3200);\n' +
+    '  }\n' +
+    '\n' +
+    '  function setCloudStatus(message) {\n' +
+    "    const status = document.querySelector('.cloud-auth-status');\n" +
+    '    if (status) status.textContent = message;\n' +
+    '  }\n' +
+    '\n' +
+    '  async function readJsonResponse(response) {\n' +
+    '    const payload = await response.json().catch(() => ({}));\n' +
+    '    if (!response.ok) {\n' +
+    '      throw new Error(payload?.message || payload?.error || `Ошибка запроса (${response.status})`);\n' +
+    '    }\n' +
+    '    return payload;\n' +
+    '  }\n' +
+    '\n' +
+    '  function findJsonInput() {\n' +
+    `    return document.querySelector('input.hidden-input[type="file"][accept*="json"]')\n` +
+    `      || document.querySelector('input[type="file"][accept*="application/json"]');\n` +
+    '  }\n' +
+    '\n' +
+    '  function importIntoEditor(data) {\n' +
+    '    const input = findJsonInput();\n' +
+    "    if (!input) throw new Error('Редактор ещё не готов. Обнови страницу и попробуй снова.');\n" +
+    '\n' +
+    '    const file = new File(\n' +
+    '      [JSON.stringify(data)],\n' +
+    '      `collage-project-${Date.now()}.json`,\n' +
+    "      { type: 'application/json' },\n" +
+    '    );\n' +
+    '    const transfer = new DataTransfer();\n' +
+    '    transfer.items.add(file);\n' +
+    '    input.files = transfer.files;\n' +
+    "    input.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+    '  }\n' +
+    '\n' +
+    '  function getEditorProject() {\n' +
+    '    const bridge = window.__collageApp;\n' +
+    "    if (!bridge || typeof bridge.getProject !== 'function') return null;\n" +
+    '    const project = bridge.getProject();\n' +
+    "    return project && typeof project === 'object' ? project : null;\n" +
+    '  }\n' +
+    '\n' +
+    '  function waitForEditorCommit() {\n' +
+    '    return new Promise((resolve) => {\n' +
+    '      const raf = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));\n' +
+    '      raf(() => raf(resolve));\n' +
+    '    });\n' +
+    '  }\n' +
+    '\n' +
+    '  async function getFreshEditorSnapshot() {\n' +
+    '    await waitForEditorCommit();\n' +
+    '    const project = getEditorProject();\n' +
+    '    validateProject(project);\n' +
+    '    return project?.savedAt ? project : { ...project, savedAt: new Date().toISOString() };\n' +
+    '  }\n' +
+    '\n' +
+    "  async function persistProjectSnapshot(project, { source = 'editor' } = {}) {\n" +
+    '    validateProject(project);\n' +
+    '    const snapshot = project?.savedAt ? project : { ...project, savedAt: new Date().toISOString() };\n' +
+    '    const stats = projectStats(snapshot);\n' +
+    '\n' +
+    '    await queueProjectWrite(LATEST_LOCAL_KEY, snapshot, {\n' +
+    '      source,\n' +
+    '      ...stats,\n' +
+    '    });\n' +
+    '    return { saved: true, data: snapshot, stats };\n' +
+    '  }\n' +
+    '\n' +
+    "  async function persistCurrentEditorProject({ source = 'editor' } = {}) {\n" +
+    '    const snapshot = await getFreshEditorSnapshot();\n' +
+    '    return persistProjectSnapshot(snapshot, { source });\n' +
+    '  }\n' +
+    '\n' +
+    '  async function openLocalProject() {\n' +
+    '    try {\n' +
+    "      setCloudStatus('Открываю сохранённый проект…');\n" +
+    '      let record = await readProject(LATEST_LOCAL_KEY);\n' +
+    '\n' +
+    '      if (!record?.data) {\n' +
+    '        const raw = localStorage.getItem(CURRENT_STORAGE_KEY);\n' +
+    '        if (raw) {\n' +
+    '          const data = JSON.parse(raw);\n' +
+    '          validateProject(data);\n' +
+    '          record = { data };\n' +
+    '          await queueProjectWrite(LATEST_LOCAL_KEY, data, {\n' +
+    "            source: 'localStorage-migration',\n" +
+    '            ...projectStats(data),\n' +
+    '          });\n' +
+    '        }\n' +
+    '      }\n' +
+    '\n' +
+    '      if (!record?.data) {\n' +
+    "        throw new Error('Сохранённого проекта пока нет');\n" +
+    '      }\n' +
+    '\n' +
+    '      validateProject(record.data);\n' +
+    '      importIntoEditor(record.data);\n' +
+    "      setCloudStatus('Сохранённый проект открыт');\n" +
+    "      showToast('Проект открыт полностью: макет, текст, цвета и фото');\n" +
+    '    } catch (error) {\n' +
+    '      console.error(error);\n' +
+    '      setCloudStatus(error.message);\n' +
+    '      showToast(error.message, true);\n' +
+    '    }\n' +
+    '  }\n' +
+    '\n' +
+    '  function cloudProjectCardIndex(button) {\n' +
+    "    const card = button.closest('.cloud-project-card');\n" +
+    '    if (!card) return -1;\n' +
+    "    return Array.from(document.querySelectorAll('.cloud-project-list .cloud-project-card')).indexOf(card);\n" +
+    '  }\n' +
+    '\n' +
+    '  async function openCloudProject(button) {\n' +
+    '    try {\n' +
+    '      const index = cloudProjectCardIndex(button);\n' +
+    "      if (index < 0) throw new Error('Не удалось определить выбранный проект');\n" +
+    '\n' +
+    "      setCloudStatus('Открываю проект…');\n" +
+    "      const listResponse = await fetch('/api/projects', { credentials: 'include' });\n" +
+    '      const listPayload = await readJsonResponse(listResponse);\n' +
+    '      const summary = Array.isArray(listPayload.projects) ? listPaylo'... 3651 more characters,
+  expected: /if \(label === 'Сохранить'\) \{\s*return;/,
+  operator: 'match'
+}
+
+Node.js v20.20.2
+exit_status=1
