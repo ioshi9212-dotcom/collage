@@ -10,6 +10,7 @@ import {
   getProjectQuotaLimits,
   updateProjectWithQuota,
 } from './server/projectQuotas.js';
+import { RequestBodyError, readJsonBody } from './server/requestBody.js';
 
 const { Pool } = pg;
 const port = Number(process.env.PORT || 3000);
@@ -216,31 +217,7 @@ async function ensureDb() {
 }
 
 function readBody(request) {
-  return new Promise((resolveBody, rejectBody) => {
-    let body = '';
-    let size = 0;
-
-    request.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > jsonLimitBytes) {
-        rejectBody(new Error('JSON payload is too large'));
-        request.destroy();
-        return;
-      }
-      body += chunk;
-    });
-
-    request.on('end', () => {
-      if (!body) return resolveBody({});
-      try {
-        resolveBody(JSON.parse(body));
-      } catch {
-        rejectBody(new Error('Invalid JSON'));
-      }
-    });
-
-    request.on('error', rejectBody);
-  });
+  return readJsonBody(request, jsonLimitBytes);
 }
 
 function normalizeEmail(email) {
@@ -488,6 +465,14 @@ const server = createServer(async (request, response) => {
       return;
     }
   } catch (error) {
+    if (error instanceof RequestBodyError) {
+      sendJson(response, error.status, {
+        error: error.code,
+        message: error.message,
+      });
+      return;
+    }
+
     console.error(error);
     sendJson(response, 500, {
       error: 'server_error',
