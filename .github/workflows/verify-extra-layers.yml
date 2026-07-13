@@ -35,13 +35,23 @@ jobs:
       - name: Stop on lint errors
         if: steps.lint.outcome != 'success'
         run: exit 1
-      - name: Test
-        run: npm test
+      - name: Collect test report
+        id: tests
+        continue-on-error: true
+        run: npm test > test-output.txt 2>&1
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: extra-layers-test-report
+          path: test-output.txt
+      - name: Stop on test errors
+        if: steps.tests.outcome != 'success'
+        run: exit 1
       - name: Build
         run: npm run build
       - name: Verify focused diff
         run: |
-          rm -f eslint-report.json
+          rm -f eslint-report.json test-output.txt
           git diff --check
           python - <<'PY'
           import subprocess
@@ -60,7 +70,7 @@ jobs:
       - name: Commit verified extraction
         run: |
           rm -rf node_modules dist
-          rm -f eslint-report.json .github/workflows/verify-extra-layers.yml .github/scripts/extract-extra-layers.py
+          rm -f eslint-report.json test-output.txt .github/workflows/verify-extra-layers.yml .github/scripts/extract-extra-layers.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
