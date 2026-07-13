@@ -279,7 +279,7 @@ for (const failure of [
 }
 
 const source = readFileSync(SOURCE_PATH, 'utf8');
-const saveAsNewBody = source.match(/async function saveAsNew\(\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+const saveAsNewBody = source.match(/async function saveAsNew\(\) \{([\s\S]*?)\n {2}\}/)?.[1] || '';
 assert.doesNotMatch(saveAsNewBody, /removeItem\(CURRENT_PROJECT_ID_KEY\)/);
 assert.match(saveAsNewBody, /saveCloud\(\{\s*forceCreate:\s*true\s*\}\)/);
 assert.match(source, /typeof bridge\?\.openProject === 'function'/);
