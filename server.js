@@ -1,5 +1,5 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { basename, extname, join, normalize, resolve, sep } from 'node:path';
+import { basename, extname, join, resolve } from 'node:path';
 import { createServer } from 'node:http';
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import pg from 'pg';
@@ -11,6 +11,7 @@ import {
   updateProjectWithQuota,
 } from './server/projectQuotas.js';
 import { RequestBodyError, readJsonBody } from './server/requestBody.js';
+import { resolveStaticRequest } from './server/staticFiles.js';
 
 const { Pool } = pg;
 const port = Number(process.env.PORT || 3000);
@@ -93,22 +94,6 @@ function sendFile(response, filePath) {
     'X-Content-Type-Options': 'nosniff',
   });
   createReadStream(filePath).pipe(response);
-}
-
-function safeJoin(baseDir, requestedPath) {
-  let decodedPath = '';
-  try {
-    decodedPath = decodeURIComponent(requestedPath.split('?')[0]);
-  } catch {
-    return null;
-  }
-
-  const cleanPath = normalize(decodedPath).replace(/^[/\\]+/, '');
-  const resolvedPath = resolve(join(baseDir, cleanPath));
-  const baseWithSep = baseDir.endsWith(sep) ? baseDir : `${baseDir}${sep}`;
-
-  if (resolvedPath !== baseDir && !resolvedPath.startsWith(baseWithSep)) return null;
-  return resolvedPath;
 }
 
 function parseCookies(cookieHeader = '') {
@@ -487,19 +472,26 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  const requestedUrl = request.url === '/' ? '/index.html' : request.url || '/index.html';
-  const filePath = safeJoin(distDir, requestedUrl);
+  const staticResult = resolveStaticRequest({
+    distDir,
+    requestUrl: request.url || '/',
+    method: request.method || 'GET',
+  });
 
-  try {
-    if (filePath && existsSync(filePath) && statSync(filePath).isFile()) {
-      sendFile(response, filePath);
-      return;
-    }
-  } catch {
-    // Fallback to SPA entry below.
+  if (staticResult.kind === 'file' || staticResult.kind === 'spa') {
+    sendFile(response, staticResult.path);
+    return;
   }
 
-  sendFile(response, join(distDir, 'index.html'));
+  if (staticResult.kind === 'not_found') {
+    response.writeHead(404, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    response.end('Not found');
+    return;
+  }
 });
 
 server.listen(port, host, () => {
