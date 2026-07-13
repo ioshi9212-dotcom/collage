@@ -640,12 +640,15 @@ function countFramesInLayout(layout) {
 function resolvePageFrameCount(page, fallbackSettings = DEFAULT_SETTINGS) {
   if (page?.isBlankPage) return 0;
   const saved = Number(page?.frameCount);
-  if (Number.isFinite(saved) && saved >= 1) return clamp(saved, 1, 9);
+  if (Number.isFinite(saved) && saved >= 0) return clamp(saved, 0, 9);
   const fromLayout = countFramesInLayout(page?.layout);
   if (fromLayout) return clamp(fromLayout, 1, 9);
   const fromFrames = Array.isArray(page?.frames) ? page.frames.length : 0;
   if (fromFrames) return clamp(fromFrames, 1, 9);
-  return clamp(Number(fallbackSettings.frameCount) || DEFAULT_SETTINGS.frameCount, 1, 9);
+  const fallback = Number(fallbackSettings.frameCount);
+  return Number.isFinite(fallback)
+    ? clamp(fallback, 0, 9)
+    : clamp(DEFAULT_SETTINGS.frameCount, 0, 9);
 }
 
 function settingsForPage(settings, page, explicitFrameCount) {
