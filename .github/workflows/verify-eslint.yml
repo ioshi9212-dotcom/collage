@@ -43,14 +43,25 @@ jobs:
           rm -rf node_modules
           npm ci
           cmp package-lock.json /tmp/package-lock.json
-      - name: Lint
-        run: npm run lint
+      - name: Collect lint report
+        id: lint
+        continue-on-error: true
+        run: npm run lint -- --format json > eslint-report.json
+      - name: Upload lint report
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-report
+          path: eslint-report.json
+      - name: Stop on lint errors
+        if: steps.lint.outcome != 'success'
+        run: exit 1
       - name: Test
         run: npm test
       - name: Build
         run: npm run build
       - name: Verify focused changes
         run: |
+          rm -f eslint-report.json
           python - <<'PY'
           import subprocess
           allowed = {
