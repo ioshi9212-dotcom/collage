@@ -26,10 +26,22 @@ import { saveCloudProject } from './editor/cloudProjects';
 import { compactProjectPhotos, hydrateProjectPhotos } from './editor/photoStorage';
 import { loadCachedImage as loadImage } from './editor/imageCache';
 import { prepareEditorProject } from './editor/projectLoad';
+import {
+  ALBUM_LAYERS_KEY,
+  ALBUM_MODE_KEY,
+  cloneExtraLayerPage,
+  createPageLayerDraft,
+  deleteExtraLayerPage,
+  drawingLayersForPage,
+  insertExtraLayerPage,
+  normalizeAlbumEditorMode,
+  normalizeExtraLayers,
+  pruneExtraLayerPages,
+  reorderExtraLayerPages,
+  textLayersForPage,
+} from './editor/extraLayers';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
-const ALBUM_MODE_KEY = 'collage-album-editor-mode';
-const ALBUM_LAYERS_KEY = 'collage-album-extra-layers-v1';
 const LEGACY_KEYS = [
   'collage-creator-album-live-v10-layer-move-photo',
   'collage-creator-album-live-v9-photo-usage-highlight',
@@ -1039,103 +1051,6 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
   );
 }
 
-function normalizeExtraLayers(value) {
-  return {
-    version: 1,
-    pages: value?.pages && typeof value.pages === 'object' ? value.pages : {},
-  };
-}
-
-function hasAnyExtraLayer(layers) {
-  const pages = layers?.pages;
-  if (!pages || typeof pages !== 'object') return false;
-  return Object.values(pages).some((page) => (
-    (Array.isArray(page?.texts) && page.texts.length > 0)
-    || (Array.isArray(page?.drawings) && page.drawings.length > 0)
-    || (Array.isArray(page?.templates) && page.templates.length > 0)
-  ));
-}
-
-function readExtraLayers() {
-  let localLayers = null;
-
-  try {
-    const raw = localStorage.getItem(ALBUM_LAYERS_KEY);
-    if (raw) localLayers = normalizeExtraLayers(JSON.parse(raw));
-  } catch {
-    // ignore broken local data
-  }
-
-  try {
-    const bridgeLayers = normalizeExtraLayers(globalThis.__collageAlbumLayers?.getLayers?.());
-    if (hasAnyExtraLayer(bridgeLayers) || !hasAnyExtraLayer(localLayers)) return bridgeLayers;
-  } catch {
-    // ignore bridge errors
-  }
-
-  return localLayers ?? normalizeExtraLayers(null);
-}
-
-function writeExtraLayers(value) {
-  const layers = normalizeExtraLayers(value);
-  try {
-    localStorage.setItem(ALBUM_LAYERS_KEY, JSON.stringify(layers));
-  } catch {
-    // ignore localStorage quota/errors
-  }
-
-  try {
-    globalThis.__collageAlbumLayers?.setLayers?.(layers);
-  } catch {
-    // ignore bridge errors
-  }
-
-  try {
-    window.dispatchEvent(new CustomEvent('collage-album-layers-import', { detail: { layers } }));
-    window.requestAnimationFrame?.(() => {
-      window.dispatchEvent(new CustomEvent('collage-album-layers-import', { detail: { layers } }));
-    });
-    window.setTimeout?.(() => {
-      window.dispatchEvent(new CustomEvent('collage-album-layers-import', { detail: { layers } }));
-    }, 120);
-    window.setTimeout?.(() => {
-      window.dispatchEvent(new CustomEvent('collage-album-layers-import', { detail: { layers } }));
-    }, 450);
-  } catch {
-    // ignore event errors
-  }
-
-  return layers;
-}
-
-function applyAlbumEditorMode(value, fallback = 'collage') {
-  const nextMode = ['collage', 'text', 'drawings', 'templates'].includes(value) ? value : fallback;
-  try {
-    localStorage.setItem(ALBUM_MODE_KEY, nextMode);
-  } catch {
-    // ignore localStorage errors
-  }
-  if (document.body?.dataset) document.body.dataset.albumMode = nextMode;
-  try {
-    globalThis.__collageAlbumLayers?.setMode?.(nextMode);
-  } catch {
-    // ignore bridge errors
-  }
-  return nextMode;
-}
-
-function textLayersForPage(extraLayers, pageIndex) {
-  const pageNumber = pageIndex + 1;
-  const page = extraLayers?.pages?.[String(pageNumber)];
-  return Array.isArray(page?.texts) ? page.texts : [];
-}
-
-function drawingLayersForPage(extraLayers, pageIndex) {
-  const pageNumber = pageIndex + 1;
-  const page = extraLayers?.pages?.[String(pageNumber)];
-  return Array.isArray(page?.drawings) ? page.drawings : [];
-}
-
 function textFontFamily(item) {
   return item?.fontFamily || fontById(item?.fontId).family;
 }
@@ -1275,7 +1190,7 @@ export default function App() {
   const [dragOverPageIndex, setDragOverPageIndex] = useState(null);
 
   useEffect(() => {
-    const next = ['collage', 'text', 'drawings', 'templates'].includes(albumMode) ? albumMode : 'collage';
+    const next = normalizeAlbumEditorMode(albumMode);
     if (document.body?.dataset) document.body.dataset.albumMode = next;
     try { localStorage.setItem(ALBUM_MODE_KEY, next); } catch { /* ignore localStorage errors */ }
   }, [albumMode]);
@@ -1391,19 +1306,8 @@ export default function App() {
     setExtraLayers((current) => normalizeExtraLayers(typeof updater === 'function' ? updater(normalizeExtraLayers(current)) : updater));
   }
 
-  function pageLayerDraft(layers, pageNumber) {
-    const key = String(pageNumber);
-    const next = cloneDeep(layers) || { version: 1, pages: {} };
-    if (!next.pages || typeof next.pages !== 'object') next.pages = {};
-    if (!next.pages[key]) next.pages[key] = { texts: [], drawings: [], templates: [] };
-    if (!Array.isArray(next.pages[key].texts)) next.pages[key].texts = [];
-    if (!Array.isArray(next.pages[key].drawings)) next.pages[key].drawings = [];
-    if (!Array.isArray(next.pages[key].templates)) next.pages[key].templates = [];
-    return { next, page: next.pages[key] };
-  }
-
   function setMode(mode) {
-    const next = ['collage', 'text', 'drawings', 'templates'].includes(mode) ? mode : 'collage';
+    const next = normalizeAlbumEditorMode(mode);
     setAlbumMode(next);
     setSelectedFrameId(null);
     setSelectedTextId(null);
@@ -1435,7 +1339,7 @@ export default function App() {
   function addText(presetId = DEFAULT_TEXT_PRESET_ID) {
     const item = createTextItem(presetId);
     updateExtraLayers((layers) => {
-      const { next, page } = pageLayerDraft(layers, activePageNumber());
+      const { next, page } = createPageLayerDraft(layers, activePageNumber());
       page.texts.push(item);
       return next;
     });
@@ -1485,7 +1389,7 @@ export default function App() {
   function addLine() {
     const item = createLineItem();
     updateExtraLayers((layers) => {
-      const { next, page } = pageLayerDraft(layers, activePageNumber());
+      const { next, page } = createPageLayerDraft(layers, activePageNumber());
       page.drawings.push(item);
       return next;
     });
@@ -1818,83 +1722,21 @@ export default function App() {
 
 
 
-  function cloneLayerPage(pageLayers) {
-    if (!pageLayers) return null;
-    const cloned = cloneDeep(pageLayers);
-    ['texts', 'drawings', 'templates'].forEach((key) => {
-      if (Array.isArray(cloned?.[key])) {
-        cloned[key] = cloned[key].map((item) => ({ ...item, id: makeId() }));
-      }
-    });
-    return cloned;
-  }
-
   function shiftExtraLayersForPageInsert(insertIndex, oldPageCount, insertedPageLayers = null) {
-    updateExtraLayers((layers) => {
-      const pagesMap = layers?.pages ?? {};
-      const insertPageNumber = insertIndex + 1;
-      const nextPagesMap = {};
-      for (const [key, value] of Object.entries(pagesMap)) {
-        const pageNumber = Number(key);
-        if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > oldPageCount) {
-          nextPagesMap[key] = value;
-          continue;
-        }
-        const nextPageNumber = pageNumber >= insertPageNumber ? pageNumber + 1 : pageNumber;
-        nextPagesMap[String(nextPageNumber)] = value;
-      }
-      if (insertedPageLayers) nextPagesMap[String(insertPageNumber)] = cloneLayerPage(insertedPageLayers);
-      return { ...layers, pages: nextPagesMap };
-    });
+    updateExtraLayers((layers) => insertExtraLayerPage(layers, insertIndex, oldPageCount, insertedPageLayers, makeId));
   }
 
   function shiftExtraLayersForPageDelete(deleteIndex, oldPageCount) {
-    updateExtraLayers((layers) => {
-      const pagesMap = layers?.pages ?? {};
-      const deletePageNumber = deleteIndex + 1;
-      const nextPagesMap = {};
-      for (const [key, value] of Object.entries(pagesMap)) {
-        const pageNumber = Number(key);
-        if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > oldPageCount) {
-          nextPagesMap[key] = value;
-          continue;
-        }
-        if (pageNumber === deletePageNumber) continue;
-        const nextPageNumber = pageNumber > deletePageNumber ? pageNumber - 1 : pageNumber;
-        nextPagesMap[String(nextPageNumber)] = value;
-      }
-      return { ...layers, pages: nextPagesMap };
-    });
+    updateExtraLayers((layers) => deleteExtraLayerPage(layers, deleteIndex, oldPageCount));
   }
 
   function pruneExtraLayersForPageCount(pageCount) {
-    updateExtraLayers((layers) => {
-      const pagesMap = layers?.pages ?? {};
-      const nextPagesMap = {};
-      for (const [key, value] of Object.entries(pagesMap)) {
-        const pageNumber = Number(key);
-        if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber <= pageCount) nextPagesMap[key] = value;
-      }
-      return { ...layers, pages: nextPagesMap };
-    });
+    updateExtraLayers((layers) => pruneExtraLayerPages(layers, pageCount));
   }
 
   function reorderExtraLayersByPageMove(fromIndex, toIndex, pageCount) {
     if (fromIndex === toIndex) return;
-    updateExtraLayers((layers) => {
-      const pagesMap = layers?.pages ?? {};
-      const orderedLayerPages = Array.from({ length: pageCount }, (_, index) => pagesMap[String(index + 1)] ?? null);
-      const movedLayerPages = moveArrayItem(orderedLayerPages, fromIndex, toIndex);
-      const nextPagesMap = {};
-      movedLayerPages.forEach((pageLayers, index) => {
-        if (pageLayers) nextPagesMap[String(index + 1)] = pageLayers;
-      });
-      for (const [key, value] of Object.entries(pagesMap)) {
-        const numberKey = Number(key);
-        if (!Number.isInteger(numberKey) || numberKey < 1 || numberKey > pageCount) nextPagesMap[key] = value;
-      }
-      return { ...layers, pages: nextPagesMap };
-    });
+    updateExtraLayers((layers) => reorderExtraLayerPages(layers, fromIndex, toIndex, pageCount));
   }
 
 
@@ -2185,7 +2027,7 @@ export default function App() {
       setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
       setBookletPrintSettings(normalizeBookletPrintSettings(data.bookletPrintSettings));
       setExtraLayers(normalizeExtraLayers(data.extraLayers));
-      setAlbumMode(['collage', 'text', 'drawings', 'templates'].includes(data.albumEditorMode) ? data.albumEditorMode : 'collage');
+      setAlbumMode(normalizeAlbumEditorMode(data.albumEditorMode));
       setSelectedFrameId(null);
       setSelectedPhotoId(null);
       setMoveFrameWithPhotoId(null);
@@ -2213,7 +2055,7 @@ export default function App() {
         setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
         setBookletPrintSettings(normalizeBookletPrintSettings(data.bookletPrintSettings));
         setExtraLayers(normalizeExtraLayers(data.extraLayers));
-        setAlbumMode(['collage', 'text', 'drawings', 'templates'].includes(data.albumEditorMode) ? data.albumEditorMode : 'collage');
+        setAlbumMode(normalizeAlbumEditorMode(data.albumEditorMode));
         setSelectedFrameId(null);
         setSelectedPhotoId(null);
         setMoveFrameWithPhotoId(null);
@@ -2505,11 +2347,11 @@ export default function App() {
     for (let i = 0; i < count; i += 1) delete next.pages[String(targetStartIndex + i + 1)];
     for (let i = 0; i < count; i += 1) {
       const sourcePage = record.extraLayers?.pages?.[String(i + 1)];
-      const cleaned = cloneLayerPage({
+      const cleaned = cloneExtraLayerPage({
         texts: Array.isArray(sourcePage?.texts) ? sourcePage.texts : [],
         drawings: Array.isArray(sourcePage?.drawings) ? sourcePage.drawings : [],
         templates: [],
-      });
+      }, makeId);
       if (cleaned.texts.length || cleaned.drawings.length) next.pages[String(targetStartIndex + i + 1)] = cleaned;
     }
     return normalizeExtraLayers(next);
