@@ -57,6 +57,22 @@ const legacyHydrated = hydrateProjectPhotos(legacy.library, legacy.pages);
 assert.equal(legacyHydrated[0].frames[0].photo.src, source);
 assert.equal(legacyHydrated[0].frames[1].photo.src, source);
 
+const repaired = compactProjectPhotos(
+  [{ id: 'damaged-photo', name: 'damaged.jpg', src: '' }],
+  [{ frames: [{ id: 'frame', photo: { id: 'damaged-photo', name: 'damaged.jpg', src: source, zoom: 1.2 } }] }],
+);
+assert.equal(repaired.library.length, 1, 'damaged library record must not be duplicated');
+assert.equal(repaired.library[0].src, source, 'embedded source must repair damaged library record');
+assert.equal(repaired.pages[0].frames[0].photo.src, undefined);
+
+const duplicateLibrary = compactProjectPhotos([
+  { id: 'duplicate-photo', name: '', src: '' },
+  { id: 'duplicate-photo', name: 'kept.jpg', src: source },
+], []);
+assert.equal(duplicateLibrary.library.length, 1, 'duplicate library IDs must collapse to one record');
+assert.equal(duplicateLibrary.library[0].name, 'kept.jpg');
+assert.equal(duplicateLibrary.library[0].src, source);
+
 const unresolved = hydrateProjectPhotos([], [{ frames: [{ id: 'frame', photo: { id: 'missing', zoom: 1 } }] }]);
 assert.equal(unresolved[0].frames[0].photo.src, undefined, 'missing library source must fail safely');
 
