@@ -99,7 +99,7 @@ async function readChunks(chunks, limitBytes, headers = {}) {
 const serverSource = readFileSync(resolve(process.cwd(), 'server.js'), 'utf8');
 assert.match(serverSource, /RequestBodyError/);
 assert.match(serverSource, /readJsonBody\(request, jsonLimitBytes\)/);
-assert.match(serverSource, /payload_too_large/);
+assert.match(serverSource, /sendJson\(response, error\.status/);
 assert.doesNotMatch(serverSource, /request\.destroy\(\)/, 'oversized JSON must not destroy the request socket');
 
 console.log('request body limit checks passed');
