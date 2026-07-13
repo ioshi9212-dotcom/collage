@@ -55,3 +55,11 @@ replace_once(
 )
 
 path.write_text(text, encoding='utf-8')
+
+test_path = Path('server/projectQuotas.test.mjs')
+test_text = test_path.read_text(encoding='utf-8')
+old_test = "const replacementData = { payload: 'x'.repeat(35) };"
+new_test = "const replacementData = { payload: 'x'.repeat(100) };"
+if test_text.count(old_test) != 1:
+    raise SystemExit('quota growth test: expected exactly one old scenario')
+test_path.write_text(test_text.replace(old_test, new_test, 1), encoding='utf-8')
