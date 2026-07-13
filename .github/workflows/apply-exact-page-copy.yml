@@ -1,0 +1,253 @@
+name: Apply exact page copy fix
+
+on:
+  push:
+    branches:
+      - agent/fix-exact-page-copy
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-exact-page-copy
+          fetch-depth: 0
+
+      - name: Apply focused page-copy patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/AppLive.jsx')
+          text = path.read_text(encoding='utf-8')
+
+          blank_block = """function createBlankPage(number, overrides = {}) {
+            return {
+              id: overrides.id ?? makeId(),
+              title: overrides.title ?? `Пустая страница ${number}`,
+              isBlankPage: true,
+              frameCount: 0,
+              layout: null,
+              frames: [],
+            };
+          }
+          """
+
+          blank_replacement = blank_block + """
+          function clonePageForDuplicate(page, number) {
+            const next = cloneDeep(page) || {};
+            const frameIdMap = new Map();
+            const remapFrameId = (frameId) => {
+              if (frameId == null) return makeId();
+              if (!frameIdMap.has(frameId)) frameIdMap.set(frameId, makeId());
+              return frameIdMap.get(frameId);
+            };
+
+            const frames = Array.isArray(next.frames)
+              ? next.frames.map((frame) => ({ ...frame, id: remapFrameId(frame?.id) }))
+              : [];
+
+            let layout = next.layout ?? null;
+            if (layout && Array.isArray(layout.rows)) {
+              layout = {
+                ...layout,
+                rows: layout.rows.map((row) => ({
+                  ...row,
+                  id: makeId(),
+                  columns: Array.isArray(row?.columns)
+                    ? row.columns.map((column) => ({
+                      ...column,
+                      id: makeId(),
+                      frameId: remapFrameId(column?.frameId),
+                    }))
+                    : [],
+                })),
+              };
+            }
+
+            return {
+              ...next,
+              id: makeId(),
+              title: page?.isBlankPage ? `Пустая страница ${number}` : `Страница ${number}`,
+              layout,
+              frames,
+            };
+          }
+          """
+
+          duplicate_block = """  function duplicatePage() {
+              if (!currentPage) return;
+              const index = pages.findIndex((item) => item.id === album.currentPageId);
+              const insertIndex = Math.max(0, index + 1);
+              const currentPageLayers = extraLayers?.pages?.[String(currentPageIndex + 1)] ?? null;
+              const page = currentPage.isBlankPage
+                ? createBlankPage(pages.length + 1)
+                : createPage(canvas, settingsForPage(settings, currentPage, currentPageFrameCount), pages.length + 1, currentPage.frames);
+              shiftExtraLayersForPageInsert(insertIndex, pages.length, currentPageLayers);
+              setAlbum((current) => {
+                const currentIndex = current.pages.findIndex((item) => item.id === current.currentPageId);
+                const next = [...current.pages];
+                next.splice(currentIndex + 1, 0, page);
+                return { pages: next, currentPageId: page.id };
+              });
+              setSelectedFrameId(null);
+              setMoveFrameWithPhotoId(null);
+            }
+          """
+
+          duplicate_replacement = """  function duplicatePage() {
+              if (!currentPage) return;
+              const index = pages.findIndex((item) => item.id === album.currentPageId);
+              const insertIndex = Math.max(0, index + 1);
+              const currentPageLayers = extraLayers?.pages?.[String(currentPageIndex + 1)] ?? null;
+              const page = clonePageForDuplicate(currentPage, insertIndex + 1);
+              shiftExtraLayersForPageInsert(insertIndex, pages.length, currentPageLayers);
+              setAlbum((current) => {
+                const currentIndex = current.pages.findIndex((item) => item.id === current.currentPageId);
+                const next = [...current.pages];
+                next.splice(currentIndex + 1, 0, page);
+                return { pages: next, currentPageId: page.id };
+              });
+              setSelectedFrameId(null);
+              setMoveFrameWithPhotoId(null);
+              show('Страница скопирована точно');
+            }
+          """
+
+          layer_block = """  function cloneLayerPage(pageLayers) {
+              if (!pageLayers) return null;
+              return cloneDeep(pageLayers);
+            }
+          """
+
+          layer_replacement = """  function cloneLayerPage(pageLayers) {
+              if (!pageLayers) return null;
+              const cloned = cloneDeep(pageLayers);
+              ['texts', 'drawings', 'templates'].forEach((key) => {
+                if (Array.isArray(cloned?.[key])) {
+                  cloned[key] = cloned[key].map((item) => ({ ...item, id: makeId() }));
+                }
+              });
+              return cloned;
+            }
+          """
+
+          replacements = [
+              (blank_block, blank_replacement, 'createBlankPage insertion point'),
+              (duplicate_block, duplicate_replacement, 'duplicatePage block'),
+              (layer_block, layer_replacement, 'cloneLayerPage block'),
+          ]
+          for old, new, label in replacements:
+              if old not in text:
+                  raise SystemExit(f'{label} was not found')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify exact-copy behavior
+        shell: bash
+        run: |
+          node <<'NODE'
+          let seq = 0;
+          const makeId = () => `new-${++seq}`;
+          const cloneDeep = (value) => JSON.parse(JSON.stringify(value ?? null));
+          function clonePageForDuplicate(page, number) {
+            const next = cloneDeep(page) || {};
+            const frameIdMap = new Map();
+            const remapFrameId = (frameId) => {
+              if (frameId == null) return makeId();
+              if (!frameIdMap.has(frameId)) frameIdMap.set(frameId, makeId());
+              return frameIdMap.get(frameId);
+            };
+            const frames = Array.isArray(next.frames)
+              ? next.frames.map((frame) => ({ ...frame, id: remapFrameId(frame?.id) }))
+              : [];
+            let layout = next.layout ?? null;
+            if (layout && Array.isArray(layout.rows)) {
+              layout = {
+                ...layout,
+                rows: layout.rows.map((row) => ({
+                  ...row,
+                  id: makeId(),
+                  columns: Array.isArray(row?.columns)
+                    ? row.columns.map((column) => ({ ...column, id: makeId(), frameId: remapFrameId(column?.frameId) }))
+                    : [],
+                })),
+              };
+            }
+            return { ...next, id: makeId(), title: page?.isBlankPage ? `Пустая страница ${number}` : `Страница ${number}`, layout, frames };
+          }
+          function cloneLayerPage(pageLayers) {
+            if (!pageLayers) return null;
+            const cloned = cloneDeep(pageLayers);
+            ['texts', 'drawings', 'templates'].forEach((key) => {
+              if (Array.isArray(cloned?.[key])) cloned[key] = cloned[key].map((item) => ({ ...item, id: makeId() }));
+            });
+            return cloned;
+          }
+
+          const source = {
+            id: 'page-old',
+            title: 'Страница 4',
+            frameCount: 2,
+            customFlag: 'preserve-me',
+            layout: {
+              type: 'grid', padding: 31, gap: 17,
+              rows: [{ id: 'row-old', height: 733, columns: [
+                { id: 'col-a', frameId: 'frame-a', width: 413 },
+                { id: 'col-b', frameId: 'frame-b', width: 777 },
+              ] }],
+            },
+            frames: [
+              { id: 'frame-a', x: 18, y: 29, width: 401, height: 702, zIndex: 8, photo: { id: 'photo-1', src: 'data:image/png;base64,AA', zoom: 1.7, offsetX: -19, offsetY: 12 } },
+              { id: 'frame-b', x: 503, y: 51, width: 801, height: 610, zIndex: 2, photo: null },
+            ],
+          };
+          const before = JSON.stringify(source);
+          const copy = clonePageForDuplicate(source, 5);
+          if (JSON.stringify(source) !== before) throw new Error('source page was mutated');
+          if (copy.id === source.id) throw new Error('page id was reused');
+          if (copy.frames.some((frame, i) => frame.id === source.frames[i].id)) throw new Error('frame id was reused');
+          for (const key of ['x', 'y', 'width', 'height', 'zIndex']) {
+            if (copy.frames[0][key] !== source.frames[0][key]) throw new Error(`frame geometry changed: ${key}`);
+          }
+          if (JSON.stringify(copy.frames[0].photo) !== JSON.stringify(source.frames[0].photo)) throw new Error('photo crop changed');
+          if (copy.customFlag !== 'preserve-me') throw new Error('unknown page property was lost');
+          if (copy.layout.padding !== 31 || copy.layout.gap !== 17 || copy.layout.rows[0].height !== 733) throw new Error('layout geometry changed');
+          if (copy.layout.rows[0].columns[0].width !== 413 || copy.layout.rows[0].columns[1].width !== 777) throw new Error('column geometry changed');
+          if (copy.layout.rows[0].columns[0].frameId !== copy.frames[0].id) throw new Error('layout/frame reference A was not remapped');
+          if (copy.layout.rows[0].columns[1].frameId !== copy.frames[1].id) throw new Error('layout/frame reference B was not remapped');
+
+          const layerSource = { texts: [{ id: 'text-old', text: 'Текст' }], drawings: [{ id: 'line-old', type: 'line', length: 100 }], templates: [{ id: 'template-old' }] };
+          const layerCopy = cloneLayerPage(layerSource);
+          if (layerCopy.texts[0].id === layerSource.texts[0].id) throw new Error('text id was reused');
+          if (layerCopy.drawings[0].id === layerSource.drawings[0].id) throw new Error('drawing id was reused');
+          if (layerCopy.templates[0].id === layerSource.templates[0].id) throw new Error('template layer id was reused');
+          if (layerCopy.texts[0].text !== 'Текст' || layerCopy.drawings[0].length !== 100) throw new Error('layer content changed');
+
+          const blank = clonePageForDuplicate({ id: 'blank-old', title: 'Пустая', isBlankPage: true, frameCount: 0, layout: null, frames: [], note: 'keep' }, 3);
+          if (!blank.isBlankPage || blank.frameCount !== 0 || blank.layout !== null || blank.frames.length !== 0 || blank.note !== 'keep') throw new Error('blank page changed');
+          console.log('exact page copy checks passed');
+          NODE
+
+      - name: Install dependencies and build
+        run: |
+          npm install
+          npm run build
+
+      - name: Commit focused fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/AppLive.jsx
+          git commit -m "Duplicate pages without rebuilding layout"
+          git push origin HEAD:agent/fix-exact-page-copy
