@@ -1,0 +1,38 @@
+name: Validate template instance fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    if: github.head_ref == 'agent/fix-template-instance-ids-v2'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-template-instance-ids-v2
+          fetch-depth: 0
+      - name: Apply focused patch
+        run: python .github/scripts/apply-template-instance-fix.py
+      - name: Verify diff and behavior
+        run: |
+          git diff --check
+          test "$(git diff --name-only)" = "src/AppLive.jsx"
+          node .github/scripts/verify-template-instance-fix.mjs
+      - name: Build
+        run: |
+          npm install
+          npm run build
+      - name: Remove temporary scripts and commit verified fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/scripts/apply-template-instance-fix.py .github/scripts/verify-template-instance-fix.mjs
+          git add src/AppLive.jsx
+          git commit -m "Give template instances unique IDs"
+          git push origin HEAD:agent/fix-template-instance-ids-v2
