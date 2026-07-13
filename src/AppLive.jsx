@@ -23,9 +23,19 @@ import {
   getBookletSide,
 } from './editor/booklet';
 import { saveCloudProject } from './editor/cloudProjects';
-import { compactProjectPhotos, hydrateProjectPhotos } from './editor/photoStorage';
+import { compactProjectPhotos } from './editor/photoStorage';
 import { loadCachedImage as loadImage } from './editor/imageCache';
 import { prepareEditorProject } from './editor/projectLoad';
+import {
+  clonePageForDuplicate,
+  createBlankPage,
+  createInitialAlbum,
+  createPage,
+  createPageFromTemplate,
+  normalizeProjectPages,
+  resolvePageFrameCount,
+  settingsForPage,
+} from './editor/pageModel';
 import {
   ALBUM_LAYERS_KEY,
   ALBUM_MODE_KEY,
@@ -632,95 +642,6 @@ function BookletPrintGuides({ canvas, printSettings, preview = false }) {
 }
 
 
-function countFramesInLayout(layout) {
-  if (!layout?.rows) return 0;
-  return layout.rows.reduce((sum, row) => sum + (Array.isArray(row.columns) ? row.columns.length : 0), 0);
-}
-
-function resolvePageFrameCount(page, fallbackSettings = DEFAULT_SETTINGS) {
-  if (page?.isBlankPage) return 0;
-  const saved = Number(page?.frameCount);
-  if (Number.isFinite(saved) && saved >= 0) return clamp(saved, 0, 9);
-  const fromLayout = countFramesInLayout(page?.layout);
-  if (fromLayout) return clamp(fromLayout, 1, 9);
-  const fromFrames = Array.isArray(page?.frames) ? page.frames.length : 0;
-  if (fromFrames) return clamp(fromFrames, 1, 9);
-  const fallback = Number(fallbackSettings.frameCount);
-  return Number.isFinite(fallback)
-    ? clamp(fallback, 0, 9)
-    : clamp(DEFAULT_SETTINGS.frameCount, 0, 9);
-}
-
-function settingsForPage(settings, page, explicitFrameCount) {
-  return {
-    ...settings,
-    frameCount: explicitFrameCount ?? resolvePageFrameCount(page, settings),
-  };
-}
-
-function createPage(canvas, settings, number, previousFrames = []) {
-  const frameCount = clamp(Number(settings.frameCount) || DEFAULT_SETTINGS.frameCount, 1, 9);
-  const built = buildGridLayout(canvas, { ...settings, frameCount }, previousFrames);
-  return { id: makeId(), title: `Страница ${number}`, frameCount, layout: built.layout, frames: built.frames };
-}
-
-function createBlankPage(number, overrides = {}) {
-  return {
-    id: overrides.id ?? makeId(),
-    title: overrides.title ?? `Пустая страница ${number}`,
-    isBlankPage: true,
-    frameCount: 0,
-    layout: null,
-    frames: [],
-  };
-}
-
-function clonePageForDuplicate(page, number) {
-  const next = cloneDeep(page) || {};
-  const frameIdMap = new Map();
-  const remapFrameId = (frameId) => {
-    if (frameId == null) return makeId();
-    if (!frameIdMap.has(frameId)) frameIdMap.set(frameId, makeId());
-    return frameIdMap.get(frameId);
-  };
-
-  const frames = Array.isArray(next.frames)
-    ? next.frames.map((frame) => ({ ...frame, id: remapFrameId(frame?.id) }))
-    : [];
-
-  let layout = next.layout ?? null;
-  if (layout && Array.isArray(layout.rows)) {
-    layout = {
-      ...layout,
-      rows: layout.rows.map((row) => ({
-        ...row,
-        id: makeId(),
-        columns: Array.isArray(row?.columns)
-          ? row.columns.map((column) => ({
-            ...column,
-            id: makeId(),
-            frameId: remapFrameId(column?.frameId),
-          }))
-          : [],
-      })),
-    };
-  }
-
-  return {
-    ...next,
-    id: makeId(),
-    title: page?.isBlankPage ? `Пустая страница ${number}` : `Страница ${number}`,
-    layout,
-    frames,
-  };
-}
-
-function initialAlbum() {
-  const first = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 1);
-  const second = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 2);
-  return { pages: [first, second], currentPageId: first.id };
-}
-
 function coverRect(image, frame, photo) {
   if (!image || !photo) return null;
   const zoom = photo.zoom ?? 1;
@@ -1158,7 +1079,7 @@ export default function App() {
   const jsonRef = useRef(null);
   const noticeTimerRef = useRef(null);
 
-  const [album, setAlbum] = useState(initialAlbum);
+  const [album, setAlbum] = useState(() => createInitialAlbum(DEFAULT_CANVAS, DEFAULT_SETTINGS));
   const [library, setLibrary] = useState([]);
   const [canvas, setCanvas] = useState(DEFAULT_CANVAS);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -1953,37 +1874,11 @@ export default function App() {
     };
   }, [canvas, settings, library, pages, album.currentPageId, viewMode, bookletSheetsPerBlock, normalizedBookletPrintSettings, albumMode, extraLayers]);
 
-  function normalizePages(data, nextCanvas, nextSettings) {
-    const hydratedPages = hydrateProjectPhotos(data.library, data.pages);
-    if (hydratedPages.length) {
-      return hydratedPages.map((page, index) => {
-        if (page?.isBlankPage) {
-          return createBlankPage(index + 1, { id: page.id, title: page.title });
-        }
-        const frames = Array.isArray(page.frames) ? page.frames.map((frame) => cleanFrame(frame, nextCanvas)) : [];
-        const existingLayoutCount = countFramesInLayout(page.layout);
-        const savedFrameCount = Number(page.frameCount);
-        const frameCount = Number.isFinite(savedFrameCount) && savedFrameCount >= 0 ? clamp(savedFrameCount, 0, 9) : clamp(existingLayoutCount || frames.length || nextSettings.frameCount, 1, 9);
-        if (frameCount <= 0) return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, frameCount: 0, layout: null, frames: [] };
-        const trustLayout = page.layout?.type === 'grid' && existingLayoutCount === frameCount;
-        const pageSettings = { ...nextSettings, frameCount };
-        const layout = trustLayout ? page.layout : buildGridLayout(nextCanvas, pageSettings, frames).layout;
-        return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, frameCount, layout, frames: framesFromLayout(layout, frames) };
-      });
-    }
-    if (Array.isArray(data.frames)) {
-      const [legacyPage] = hydrateProjectPhotos(data.library, [{ frames: data.frames }]);
-      const legacyFrames = legacyPage?.frames ?? data.frames;
-      return [createPage(nextCanvas, nextSettings, 1, legacyFrames.map((frame) => cleanFrame(frame, nextCanvas)))];
-    }
-    return [createPage(nextCanvas, nextSettings, 1), createPage(nextCanvas, nextSettings, 2)];
-  }
-
   function applyProjectData(data, message) {
     const prepared = prepareEditorProject(data, {
       defaultCanvas: DEFAULT_CANVAS,
       defaultSettings: DEFAULT_SETTINGS,
-      normalizePages,
+      normalizePages: normalizeProjectPages,
       normalizeBookletSheets: clampBookletSheetsPerBlock,
       normalizeBookletPrintSettings,
       normalizeExtraLayers,
@@ -2018,7 +1913,7 @@ export default function App() {
       const data = JSON.parse(raw);
       const nextCanvas = data.canvas ?? DEFAULT_CANVAS;
       const nextSettings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
-      const nextPages = normalizePages(data, nextCanvas, nextSettings);
+      const nextPages = normalizeProjectPages(data, nextCanvas, nextSettings);
       setCanvas(nextCanvas);
       setSettings(nextSettings);
       setLibrary(Array.isArray(data.library) ? data.library : []);
@@ -2046,7 +1941,7 @@ export default function App() {
         const data = JSON.parse(reader.result);
         const nextCanvas = data.canvas ?? DEFAULT_CANVAS;
         const nextSettings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
-        const nextPages = normalizePages(data, nextCanvas, nextSettings);
+        const nextPages = normalizeProjectPages(data, nextCanvas, nextSettings);
         setCanvas(nextCanvas);
         setSettings(nextSettings);
         setLibrary(Array.isArray(data.library) ? data.library : []);
@@ -2332,15 +2227,6 @@ export default function App() {
     show(`Шаблон сохранён: ${title}`);
   }
 
-  function runtimePageFromTemplate(page, index) {
-    const next = clonePageForDuplicate(page, index + 1);
-    return {
-      ...next,
-      title: `Страница ${index + 1}`,
-      frames: Array.isArray(next?.frames) ? next.frames.map((frame) => ({ ...frame, photo: null })) : [],
-    };
-  }
-
   function remapTemplateLayers(record, targetStartIndex, count, baseLayers = { version: 1, pages: {} }) {
     const next = cloneDeep(baseLayers) || { version: 1, pages: {} };
     if (!next.pages || typeof next.pages !== 'object') next.pages = {};
@@ -2366,7 +2252,7 @@ export default function App() {
     const nextCanvas = record.canvas || canvas;
     const nextSettings = { ...settings, ...(record.settings || {}) };
     if (mode === 'album') {
-      const nextPages = recordPages.map((page, index) => runtimePageFromTemplate(page, index));
+      const nextPages = recordPages.map((page, index) => createPageFromTemplate(page, index));
       setCanvas(nextCanvas);
       setSettings(nextSettings);
       setLibrary([]);
@@ -2379,7 +2265,7 @@ export default function App() {
     }
     const count = mode === 'spread' ? Math.min(2, recordPages.length) : 1;
     const start = mode === 'spread' ? spreadStart : currentPageIndex;
-    const replacementPages = Array.from({ length: count }, (_, i) => runtimePageFromTemplate(recordPages[i] || recordPages[0], start + i));
+    const replacementPages = Array.from({ length: count }, (_, i) => createPageFromTemplate(recordPages[i] || recordPages[0], start + i));
     setAlbum((current) => {
       const nextPages = [...current.pages];
       replacementPages.forEach((page, i) => {
