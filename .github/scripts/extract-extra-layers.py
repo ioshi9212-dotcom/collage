@@ -9,6 +9,7 @@ new_import = """import { prepareEditorProject } from './editor/projectLoad';
 import {
   ALBUM_LAYERS_KEY,
   ALBUM_MODE_KEY,
+  cloneExtraLayerPage,
   createPageLayerDraft,
   deleteExtraLayerPage,
   drawingLayersForPage,
@@ -83,6 +84,22 @@ layer_wrappers = """  function shiftExtraLayersForPageInsert(insertIndex, oldPag
 """
 text = text[:layer_ops_start] + layer_wrappers + text[layer_ops_end:]
 
+template_clone_old = """      const cleaned = cloneLayerPage({
+        texts: Array.isArray(sourcePage?.texts) ? sourcePage.texts : [],
+        drawings: Array.isArray(sourcePage?.drawings) ? sourcePage.drawings : [],
+        templates: [],
+      });
+"""
+template_clone_new = """      const cleaned = cloneExtraLayerPage({
+        texts: Array.isArray(sourcePage?.texts) ? sourcePage.texts : [],
+        drawings: Array.isArray(sourcePage?.drawings) ? sourcePage.drawings : [],
+        templates: [],
+      }, makeId);
+"""
+if text.count(template_clone_old) != 1:
+    raise SystemExit('Expected template layer cloning call was not found exactly once')
+text = text.replace(template_clone_old, template_clone_new, 1)
+
 old_data_mode = "['collage', 'text', 'drawings', 'templates'].includes(data.albumEditorMode) ? data.albumEditorMode : 'collage'"
 if text.count(old_data_mode) != 2:
     raise SystemExit(f'Expected two saved/imported album mode normalizations, found {text.count(old_data_mode)}')
@@ -97,6 +114,7 @@ for removed in [
     'function drawingLayersForPage(',
     'function pageLayerDraft(',
     'function cloneLayerPage(',
+    'cloneLayerPage(',
 ]:
     if removed in text:
         raise SystemExit(f'Extracted helper still remains in AppLive: {removed}')
@@ -108,6 +126,8 @@ required_snippets = [
     'deleteExtraLayerPage(layers, deleteIndex, oldPageCount)',
     'pruneExtraLayerPages(layers, pageCount)',
     'reorderExtraLayerPages(layers, fromIndex, toIndex, pageCount)',
+    'cloneExtraLayerPage({',
+    '}, makeId);',
 ]
 for snippet in required_snippets:
     if snippet not in text:
