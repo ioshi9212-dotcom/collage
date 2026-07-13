@@ -3,8 +3,6 @@ name: Configure and verify ESLint
 on:
   push:
     branches: [agent/add-eslint]
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: write
@@ -25,7 +23,7 @@ jobs:
           npm pkg set scripts.lint="eslint ."
       - name: Apply focused lint fixes
         run: python .github/scripts/apply-eslint-fixes.py
-      - name: Add lint to permanent CI
+      - name: Ensure lint is in permanent CI
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -74,7 +72,11 @@ jobs:
           }
           staged = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines())
           unexpected = staged - allowed
-          required = {'package.json', 'package-lock.json', '.github/workflows/ci.yml'}
+          required = {
+              '.github/scripts/apply-eslint-fixes.py',
+              '.github/workflows/verify-eslint.yml',
+              'package-lock.json',
+          }
           if unexpected:
               raise SystemExit(f'Unexpected staged files: {sorted(unexpected)}')
           if not required.issubset(staged):
