@@ -1,0 +1,53 @@
+name: Apply and verify direct cloud project opening
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/AppLive.jsx'
+      - 'src/editor/projectLoad.js'
+      - 'src/editor/projectLoad.test.mjs'
+      - 'public/cloud-auth.js'
+      - 'public/cloud-auth.test.mjs'
+      - 'package.json'
+      - '.github/scripts/apply_direct_cloud_open.py'
+      - '.github/workflows/verify-direct-cloud-open.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply exact editor and cloud panel patch
+        run: python .github/scripts/apply_direct_cloud_open.py
+      - name: Install dependencies
+        run: npm install --no-package-lock
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Verify focused diff
+        run: |
+          git diff --check
+          test "$(git diff --name-only origin/main...HEAD | grep -Ev '^(src/AppLive.jsx|src/editor/projectLoad.js|src/editor/projectLoad.test.mjs|public/cloud-auth.js|public/cloud-auth.test.mjs|package.json|.github/scripts/apply_direct_cloud_open.py|.github/workflows/verify-direct-cloud-open.yml)$' | wc -l)" -eq 0
+      - name: Remove generated and temporary files
+        run: |
+          rm -rf node_modules dist package-lock.json
+          git rm .github/scripts/apply_direct_cloud_open.py .github/workflows/verify-direct-cloud-open.yml
+      - name: Commit verified changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/AppLive.jsx public/cloud-auth.js
+          git commit -m 'Open cloud projects directly in the editor'
+          git push origin HEAD:${{ github.head_ref }}
