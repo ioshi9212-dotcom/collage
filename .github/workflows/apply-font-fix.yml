@@ -1,0 +1,43 @@
+name: Apply and verify local font fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    if: github.head_ref == 'agent/fix-local-font-assets'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-local-font-assets
+          fetch-depth: 0
+      - name: Apply focused font patch
+        run: python .github/scripts/apply-font-fix.py
+      - name: Verify focused changes
+        run: |
+          git diff --check
+          test -f public/fonts/ofont.ru_Onest.ttf
+          test "$(find public/fonts -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 19
+      - name: Install dependencies
+        run: npm install
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Verify built font assets
+        run: |
+          test "$(find dist/fonts -maxdepth 1 -type f -name '*.ttf' | wc -l)" -eq 19
+      - name: Commit verified fix and remove temporary files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/scripts/apply-font-fix.py .github/workflows/apply-font-fix.yml
+          git add server.js package.json src/editor/font-assets.test.mjs
+          git commit -m "Restore and verify local fonts"
+          git push origin HEAD:agent/fix-local-font-assets
