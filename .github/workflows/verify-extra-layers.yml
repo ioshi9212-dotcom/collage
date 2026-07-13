@@ -3,6 +3,8 @@ name: Extract and verify extra layers
 on:
   push:
     branches: [agent/extract-extra-layers]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
