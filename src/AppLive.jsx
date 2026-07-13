@@ -24,6 +24,7 @@ import {
 } from './editor/booklet';
 import { saveCloudProject } from './editor/cloudProjects';
 import { compactProjectPhotos, hydrateProjectPhotos } from './editor/photoStorage';
+import { loadCachedImage as loadImage } from './editor/imageCache';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const ALBUM_MODE_KEY = 'collage-album-editor-mode';
@@ -84,8 +85,6 @@ const PRESETS = [
   { id: 'draft', label: 'Черновик', width: 1000, height: 700 },
   { id: 'custom', label: 'Свой размер', width: 1480, height: 2100 },
 ];
-
-const imageCache = new Map();
 
 const TEMPLATE_STORAGE_KEY = 'collage-user-template-packages-v2-react';
 
@@ -536,19 +535,6 @@ function downloadText(filename, text) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }));
   downloadDataUrl(filename, url);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function loadImage(src) {
-  if (imageCache.has(src)) return Promise.resolve(imageCache.get(src));
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => {
-      imageCache.set(src, image);
-      resolve(image);
-    };
-    image.onerror = reject;
-    image.src = src;
-  });
 }
 
 function scaleForPreview(width, height, isSpread) {
