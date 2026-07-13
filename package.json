@@ -8,16 +8,22 @@
     "build": "vite build",
     "test": "node src/editor/layout.test.mjs && node src/editor/font-assets.test.mjs && node src/editor/photoStorage.test.mjs && node src/editor/project-storage.test.mjs && node src/editor/imageCache.test.mjs && node src/editor/projectLoad.test.mjs && node server/projectQuotas.test.mjs && node server/requestBody.test.mjs && node server/staticFiles.test.mjs && node public/cloud-auth.test.mjs",
     "preview": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11",
+    "konva": "^9.3.18",
+    "pg": "^8.13.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "konva": "^9.3.18",
     "react-konva": "^18.2.10",
-    "pg": "^8.13.1"
+    "vite": "^5.4.11"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.7.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.7.0"
+  }
 }
