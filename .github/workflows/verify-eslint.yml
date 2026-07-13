@@ -1,0 +1,75 @@
+name: Configure and verify ESLint
+
+on:
+  push:
+    branches: [agent/add-eslint]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/add-eslint
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install ESLint dependencies
+        run: |
+          npm install --save-dev --save-exact eslint@10.7.0 @eslint/js@10.7.0 eslint-plugin-react-hooks@latest globals@latest
+          npm pkg set scripts.lint="eslint ."
+      - name: Add lint to permanent CI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/ci.yml')
+          text = path.read_text()
+          marker = "      - name: Test\n        run: npm test\n"
+          replacement = "      - name: Lint\n        run: npm run lint\n" + marker
+          if '      - name: Lint\n' not in text:
+              if marker not in text:
+                  raise SystemExit('Expected Test step was not found')
+              text = text.replace(marker, replacement, 1)
+          path.write_text(text)
+          PY
+      - name: Clean install from lockfile
+        run: |
+          cp package-lock.json /tmp/package-lock.json
+          rm -rf node_modules
+          npm ci
+          cmp package-lock.json /tmp/package-lock.json
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Verify focused changes
+        run: |
+          python - <<'PY'
+          import subprocess
+          allowed = {
+              'package.json',
+              'package-lock.json',
+              '.github/workflows/ci.yml',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          unexpected = changed - allowed
+          if unexpected:
+              raise SystemExit(f'Unexpected generated changes: {sorted(unexpected)}')
+          PY
+      - name: Commit verified lint setup
+        run: |
+          rm -rf node_modules dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/verify-eslint.yml
+          git add package.json package-lock.json .github/workflows/ci.yml
+          git diff --cached --stat
+          git commit -m "Add ESLint checks"
+          git push origin HEAD:agent/add-eslint
