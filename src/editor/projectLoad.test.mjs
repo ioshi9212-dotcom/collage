@@ -80,7 +80,7 @@ const appSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8'
 assert.match(appSource, /import \{ prepareEditorProject \} from '\.\/editor\/projectLoad'/);
 assert.match(appSource, /openProject:\s*\(data\)\s*=>\s*\{/);
 assert.match(appSource, /applyProjectData\(data, 'Проект открыт из аккаунта'\)/);
-const applyBody = appSource.match(/function applyProjectData\(data, message\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+const applyBody = appSource.match(/function applyProjectData\(data, message\) \{([\s\S]*?)\n {2}\}/)?.[1] || '';
 assert.match(applyBody, /const prepared = prepareEditorProject\(/);
 assert.ok(
   applyBody.indexOf('const prepared = prepareEditorProject(') < applyBody.indexOf('setCanvas(prepared.canvas)'),

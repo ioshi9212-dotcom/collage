@@ -1,5 +1,5 @@
-import { createReadStream, existsSync, statSync } from 'node:fs';
-import { basename, extname, join, resolve } from 'node:path';
+import { createReadStream, existsSync } from 'node:fs';
+import { basename, extname, resolve } from 'node:path';
 import { createServer } from 'node:http';
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import pg from 'pg';

@@ -124,7 +124,7 @@ assert.equal(readBack.data.marker, 'latest');
 assert.equal(databaseOpenCount, 1, 'reads must reuse the same IndexedDB connection');
 
 assert.doesNotMatch(source, /projectSignature|structuredClone|writeQueue\s*=\s*Promise/, 'old clone/stringify pipeline must be removed');
-const saveClickBlock = source.match(/if \(label === 'Сохранить'\) \{([\s\S]*?)\n      \}/)?.[1] || '';
+const saveClickBlock = source.match(/if \(label === 'Сохранить'\) \{([\s\S]*?)\n {6}\}/)?.[1] || '';
 assert.ok(saveClickBlock, 'storage click listener must keep a save branch');
 assert.doesNotMatch(saveClickBlock, /saveFullProjectSnapshot/, 'storage click listener must not duplicate the editor save');
 assert.match(appSource, /const data = project\(\);[\s\S]{0,900}saveLocalProject\(\{ silent: true, data \}\)/, 'editor save must build one project snapshot');

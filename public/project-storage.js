@@ -350,20 +350,6 @@
     }
   }
 
-  async function saveFullProjectSnapshot() {
-    try {
-      const result = await persistCurrentEditorProject({ source: 'manual-save' });
-      const { pageCount, photoCount: photos, decorCount: decor } = result.stats;
-      const detail = photos > 0
-        ? `страниц: ${pageCount}, фото: ${photos}, оформление: ${decor}`
-        : `страниц: ${pageCount}, без фото, оформление: ${decor}`;
-      showToast(`Проект сохранён полностью — ${detail}`);
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || 'Не удалось сохранить проект полностью', true);
-    }
-  }
-
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('button');
     if (!button) return;
