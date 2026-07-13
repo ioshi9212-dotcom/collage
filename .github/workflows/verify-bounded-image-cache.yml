@@ -1,0 +1,52 @@
+name: Apply and verify bounded image cache
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/AppLive.jsx'
+      - 'src/editor/imageCache.js'
+      - 'src/editor/imageCache.test.mjs'
+      - 'package.json'
+      - '.github/scripts/apply_bounded_image_cache.py'
+      - '.github/workflows/verify-bounded-image-cache.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply exact image cache patch
+        run: python .github/scripts/apply_bounded_image_cache.py
+      - name: Install dependencies
+        run: npm install --no-package-lock
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Verify focused diff
+        run: |
+          git diff --check
+          test "$(git diff --name-only origin/main...HEAD | grep -Ev '^(package.json|src/AppLive.jsx|src/editor/imageCache.js|src/editor/imageCache.test.mjs|.github/scripts/apply_bounded_image_cache.py|.github/workflows/verify-bounded-image-cache.yml)$' | wc -l)" -eq 0
+      - name: Remove generated and temporary files
+        run: |
+          rm -rf node_modules dist package-lock.json
+          rm .github/scripts/apply_bounded_image_cache.py .github/workflows/verify-bounded-image-cache.yml
+      - name: Commit verified changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json src/AppLive.jsx src/editor/imageCache.js src/editor/imageCache.test.mjs
+          git add -u .github/scripts/apply_bounded_image_cache.py .github/workflows/verify-bounded-image-cache.yml
+          git commit -m 'Bound decoded image cache memory'
+          git push origin HEAD:${{ github.head_ref }}
