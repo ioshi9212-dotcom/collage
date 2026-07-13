@@ -23,6 +23,7 @@ import {
   getBookletSide,
 } from './editor/booklet';
 import { saveCloudProject } from './editor/cloudProjects';
+import { compactProjectPhotos, hydrateProjectPhotos } from './editor/photoStorage';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const ALBUM_MODE_KEY = 'collage-album-editor-mode';
@@ -2048,12 +2049,13 @@ export default function App() {
 
 
   function project() {
+    const compactedPhotos = compactProjectPhotos(library, pages);
     return {
-      version: 'live-22-booklet-polish-safety',
+      version: 'live-23-photo-library-references',
       canvas,
       settings,
-      library,
-      pages,
+      library: compactedPhotos.library,
+      pages: compactedPhotos.pages,
       currentPageId: album.currentPageId,
       viewMode,
       bookletSheetsPerBlock,
@@ -2105,8 +2107,9 @@ export default function App() {
   }, [canvas, settings, library, pages, album.currentPageId, viewMode, bookletSheetsPerBlock, normalizedBookletPrintSettings, albumMode, extraLayers]);
 
   function normalizePages(data, nextCanvas, nextSettings) {
-    if (Array.isArray(data.pages) && data.pages.length) {
-      return data.pages.map((page, index) => {
+    const hydratedPages = hydrateProjectPhotos(data.library, data.pages);
+    if (hydratedPages.length) {
+      return hydratedPages.map((page, index) => {
         if (page?.isBlankPage) {
           return createBlankPage(index + 1, { id: page.id, title: page.title });
         }
@@ -2121,7 +2124,11 @@ export default function App() {
         return { id: page.id ?? makeId(), title: page.title ?? `Страница ${index + 1}`, frameCount, layout, frames: framesFromLayout(layout, frames) };
       });
     }
-    if (Array.isArray(data.frames)) return [createPage(nextCanvas, nextSettings, 1, data.frames.map((frame) => cleanFrame(frame, nextCanvas)))];
+    if (Array.isArray(data.frames)) {
+      const [legacyPage] = hydrateProjectPhotos(data.library, [{ frames: data.frames }]);
+      const legacyFrames = legacyPage?.frames ?? data.frames;
+      return [createPage(nextCanvas, nextSettings, 1, legacyFrames.map((frame) => cleanFrame(frame, nextCanvas)))];
+    }
     return [createPage(nextCanvas, nextSettings, 1), createPage(nextCanvas, nextSettings, 2)];
   }
 
