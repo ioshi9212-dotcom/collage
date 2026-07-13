@@ -45,6 +45,8 @@ for (const unsafePath of [
   '/../secret.txt',
   '/%2e%2e/secret.txt',
   '/%2e%2e%2fsecret.txt',
+  '/%2e%2e%5csecret.txt',
+  '/..\\secret.txt',
   '/broken/%E0%A4%A',
   '/zero%00byte',
 ]) {
