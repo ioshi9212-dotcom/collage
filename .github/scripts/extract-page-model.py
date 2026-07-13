@@ -51,7 +51,16 @@ normalize_end = text.find('  function applyProjectData(data, message) {', normal
 if normalize_start < 0 or normalize_end < 0:
     raise SystemExit('Could not locate normalizePages')
 text = text[:normalize_start] + text[normalize_end:]
-text = text.replace('normalizePages', 'normalizeProjectPages')
+
+normalize_call = 'normalizePages(data, nextCanvas, nextSettings)'
+if text.count(normalize_call) != 2:
+    raise SystemExit(f'Expected two normalizePages calls, found {text.count(normalize_call)}')
+text = text.replace(normalize_call, 'normalizeProjectPages(data, nextCanvas, nextSettings)')
+
+normalize_option = '      normalizePages,\n'
+if text.count(normalize_option) != 1:
+    raise SystemExit('Expected prepareEditorProject normalizePages option was not found exactly once')
+text = text.replace(normalize_option, '      normalizePages: normalizeProjectPages,\n', 1)
 
 for removed in [
     'function countFramesInLayout(',
