@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # Keep the extraction mechanical and verify it against the full editor suite.
       - name: Extract page model helpers
         run: python .github/scripts/extract-page-model.py
       - name: Install dependencies
