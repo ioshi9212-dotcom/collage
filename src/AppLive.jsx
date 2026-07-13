@@ -2447,10 +2447,9 @@ export default function App() {
   }
 
   function runtimePageFromTemplate(page, index) {
-    const next = cloneDeep(page);
+    const next = clonePageForDuplicate(page, index + 1);
     return {
       ...next,
-      id: makeId(),
       title: `Страница ${index + 1}`,
       frames: Array.isArray(next?.frames) ? next.frames.map((frame) => ({ ...frame, photo: null })) : [],
     };
@@ -2462,11 +2461,11 @@ export default function App() {
     for (let i = 0; i < count; i += 1) delete next.pages[String(targetStartIndex + i + 1)];
     for (let i = 0; i < count; i += 1) {
       const sourcePage = record.extraLayers?.pages?.[String(i + 1)];
-      const cleaned = {
-        texts: Array.isArray(sourcePage?.texts) ? cloneDeep(sourcePage.texts) : [],
-        drawings: Array.isArray(sourcePage?.drawings) ? cloneDeep(sourcePage.drawings) : [],
+      const cleaned = cloneLayerPage({
+        texts: Array.isArray(sourcePage?.texts) ? sourcePage.texts : [],
+        drawings: Array.isArray(sourcePage?.drawings) ? sourcePage.drawings : [],
         templates: [],
-      };
+      });
       if (cleaned.texts.length || cleaned.drawings.length) next.pages[String(targetStartIndex + i + 1)] = cleaned;
     }
     return normalizeExtraLayers(next);
