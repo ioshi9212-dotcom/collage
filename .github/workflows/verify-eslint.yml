@@ -21,7 +21,7 @@ jobs:
           node-version: 22
       - name: Install ESLint dependencies
         run: |
-          npm install --save-dev --save-exact eslint@10.7.0 @eslint/js@10.7.0 eslint-plugin-react-hooks@latest globals@latest
+          npm install --save-dev --save-exact eslint@10.7.0 @eslint/js@10.0.1 eslint-plugin-react-hooks@latest globals@latest
           npm pkg set scripts.lint="eslint ."
       - name: Add lint to permanent CI
         run: |
