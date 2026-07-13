@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { InvalidProjectError, prepareEditorProject } from './projectLoad.js';
 
 function options(overrides = {}) {
@@ -73,5 +75,16 @@ for (const invalid of [null, [], {}, { pages: [] }, { pages: [null] }, { pages: 
   );
   assert.equal(normalizationCalls, 1);
 }
+
+const appSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8');
+assert.match(appSource, /import \{ prepareEditorProject \} from '\.\/editor\/projectLoad'/);
+assert.match(appSource, /openProject:\s*\(data\)\s*=>\s*\{/);
+assert.match(appSource, /applyProjectData\(data, 'Проект открыт из аккаунта'\)/);
+const applyBody = appSource.match(/function applyProjectData\(data, message\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+assert.match(applyBody, /const prepared = prepareEditorProject\(/);
+assert.ok(
+  applyBody.indexOf('const prepared = prepareEditorProject(') < applyBody.indexOf('setCanvas(prepared.canvas)'),
+  'the complete project must be prepared before the first React state mutation',
+);
 
 console.log('atomic project load planning checks passed');
