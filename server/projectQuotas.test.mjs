@@ -163,7 +163,7 @@ const updatePool = new FakePool([
   { id: 'large', user_id: 3, data_bytes: 70, title: 'Large', data_json: {} },
   { id: 'small', user_id: 3, data_bytes: 20, title: 'Small', data_json: {} },
 ]);
-const replacementData = { payload: 'x'.repeat(35) };
+const replacementData = { payload: 'x'.repeat(100) };
 const replacementBytes = serializeProjectData(replacementData).bytes;
 await assert.rejects(
   updateProjectWithQuota({

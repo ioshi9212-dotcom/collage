@@ -3,6 +3,13 @@ import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { createServer } from 'node:http';
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import pg from 'pg';
+import {
+  ProjectNotFoundError,
+  ProjectQuotaError,
+  createProjectWithQuota,
+  getProjectQuotaLimits,
+  updateProjectWithQuota,
+} from './server/projectQuotas.js';
 
 const { Pool } = pg;
 const port = Number(process.env.PORT || 3000);
@@ -12,6 +19,10 @@ const isProduction = process.env.NODE_ENV === 'production';
 const configuredSessionSecret = process.env.SESSION_SECRET || '';
 const databaseUrl = process.env.DATABASE_URL || '';
 const jsonLimitBytes = Number(process.env.JSON_LIMIT_BYTES || 60 * 1024 * 1024);
+const projectQuotaLimits = getProjectQuotaLimits({
+  MAX_PROJECTS_PER_USER: process.env.MAX_PROJECTS_PER_USER,
+  MAX_USER_STORAGE_BYTES: process.env.MAX_USER_STORAGE_BYTES,
+});
 const publicNoCacheFiles = new Set(['cloud-auth.js', 'cloud-auth.css', 'album-layers.js', 'album-layers.css']);
 
 // In production, SESSION_SECRET is strongly recommended.
@@ -190,9 +201,13 @@ async function ensureDb() {
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title TEXT NOT NULL DEFAULT 'Без названия',
         data_json JSONB NOT NULL,
+        data_bytes BIGINT NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS data_bytes BIGINT NOT NULL DEFAULT 0;
+      UPDATE projects SET data_bytes = OCTET_LENGTH(data_json::text) WHERE data_bytes = 0;
 
       CREATE INDEX IF NOT EXISTS projects_user_updated_idx ON projects(user_id, updated_at DESC);
     `);
@@ -293,6 +308,18 @@ async function requireUser(request, response) {
   return user;
 }
 
+function sendProjectMutationError(response, error) {
+  if (error instanceof ProjectQuotaError || error instanceof ProjectNotFoundError) {
+    sendJson(response, error.status, {
+      error: error.code,
+      message: error.message,
+      ...(error.details ? { quota: error.details } : {}),
+    });
+    return true;
+  }
+  return false;
+}
+
 async function handleApi(request, response) {
   if (!pool) {
     sendJson(response, 503, {
@@ -389,11 +416,20 @@ async function handleApi(request, response) {
     const id = randomUUID();
     const title = String(body.title || 'Без названия').trim().slice(0, 120) || 'Без названия';
     const data = body.data || {};
-    const result = await pool.query(
-      'INSERT INTO projects(id, user_id, title, data_json) VALUES ($1, $2, $3, $4) RETURNING id, title, created_at, updated_at',
-      [id, user.id, title, JSON.stringify(data)]
-    );
-    sendJson(response, 200, { project: result.rows[0] });
+
+    try {
+      const result = await createProjectWithQuota({
+        pool,
+        userId: user.id,
+        id,
+        title,
+        data,
+        limits: projectQuotaLimits,
+      });
+      sendJson(response, 200, result);
+    } catch (error) {
+      if (!sendProjectMutationError(response, error)) throw error;
+    }
     return true;
   }
 
@@ -417,12 +453,20 @@ async function handleApi(request, response) {
       const body = await readBody(request);
       const title = String(body.title || 'Без названия').trim().slice(0, 120) || 'Без названия';
       const data = body.data || {};
-      const result = await pool.query(
-        'UPDATE projects SET title = $1, data_json = $2, updated_at = NOW() WHERE id = $3 AND user_id = $4 RETURNING id, title, created_at, updated_at',
-        [title, JSON.stringify(data), projectId, user.id]
-      );
-      if (!result.rows[0]) return sendJson(response, 404, { error: 'project_not_found' });
-      sendJson(response, 200, { project: result.rows[0] });
+
+      try {
+        const result = await updateProjectWithQuota({
+          pool,
+          userId: user.id,
+          projectId,
+          title,
+          data,
+          limits: projectQuotaLimits,
+        });
+        sendJson(response, 200, result);
+      } catch (error) {
+        if (!sendProjectMutationError(response, error)) throw error;
+      }
       return true;
     }
 
