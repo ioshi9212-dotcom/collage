@@ -191,8 +191,8 @@ const baseLayers = {
 const appSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8');
 assert.match(appSource, /from '\.\/editor\/extraLayers'/, 'AppLive must import the extracted module');
 assert.doesNotMatch(appSource, /function normalizeExtraLayers\(/, 'normalization must no longer live inside AppLive');
-assert.doesNotMatch(appSource, /function shiftExtraLayersForPageInsert\(/, 'page layer shifting must no longer live inside AppLive');
-assert.match(appSource, /insertExtraLayerPage\(layers, insertIndex, oldPageCount, insertedPageLayers, makeId\)/);
+assert.match(appSource, /function shiftExtraLayersForPageInsert\([\s\S]*?insertExtraLayerPage\(layers, insertIndex, oldPageCount, insertedPageLayers, makeId\)/, 'React wrapper must delegate insertion to the extracted pure function');
 assert.match(appSource, /reorderExtraLayerPages\(layers, fromIndex, toIndex, pageCount\)/);
+assert.match(appSource, /cloneExtraLayerPage\([\s\S]*?}, makeId\)/, 'template layers must receive fresh IDs through the extracted clone helper');
 
 console.log('extra layer module checks passed');
