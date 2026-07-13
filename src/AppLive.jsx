@@ -675,6 +675,46 @@ function createBlankPage(number, overrides = {}) {
   };
 }
 
+function clonePageForDuplicate(page, number) {
+  const next = cloneDeep(page) || {};
+  const frameIdMap = new Map();
+  const remapFrameId = (frameId) => {
+    if (frameId == null) return makeId();
+    if (!frameIdMap.has(frameId)) frameIdMap.set(frameId, makeId());
+    return frameIdMap.get(frameId);
+  };
+
+  const frames = Array.isArray(next.frames)
+    ? next.frames.map((frame) => ({ ...frame, id: remapFrameId(frame?.id) }))
+    : [];
+
+  let layout = next.layout ?? null;
+  if (layout && Array.isArray(layout.rows)) {
+    layout = {
+      ...layout,
+      rows: layout.rows.map((row) => ({
+        ...row,
+        id: makeId(),
+        columns: Array.isArray(row?.columns)
+          ? row.columns.map((column) => ({
+            ...column,
+            id: makeId(),
+            frameId: remapFrameId(column?.frameId),
+          }))
+          : [],
+      })),
+    };
+  }
+
+  return {
+    ...next,
+    id: makeId(),
+    title: page?.isBlankPage ? `Пустая страница ${number}` : `Страница ${number}`,
+    layout,
+    frames,
+  };
+}
+
 function initialAlbum() {
   const first = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 1);
   const second = createPage(DEFAULT_CANVAS, DEFAULT_SETTINGS, 2);
@@ -1721,9 +1761,7 @@ export default function App() {
     const index = pages.findIndex((item) => item.id === album.currentPageId);
     const insertIndex = Math.max(0, index + 1);
     const currentPageLayers = extraLayers?.pages?.[String(currentPageIndex + 1)] ?? null;
-    const page = currentPage.isBlankPage
-      ? createBlankPage(pages.length + 1)
-      : createPage(canvas, settingsForPage(settings, currentPage, currentPageFrameCount), pages.length + 1, currentPage.frames);
+    const page = clonePageForDuplicate(currentPage, insertIndex + 1);
     shiftExtraLayersForPageInsert(insertIndex, pages.length, currentPageLayers);
     setAlbum((current) => {
       const currentIndex = current.pages.findIndex((item) => item.id === current.currentPageId);
@@ -1733,6 +1771,7 @@ export default function App() {
     });
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
+    show('Страница скопирована точно');
   }
 
   function deletePage() {
@@ -1793,7 +1832,13 @@ export default function App() {
 
   function cloneLayerPage(pageLayers) {
     if (!pageLayers) return null;
-    return cloneDeep(pageLayers);
+    const cloned = cloneDeep(pageLayers);
+    ['texts', 'drawings', 'templates'].forEach((key) => {
+      if (Array.isArray(cloned?.[key])) {
+        cloned[key] = cloned[key].map((item) => ({ ...item, id: makeId() }));
+      }
+    });
+    return cloned;
   }
 
   function shiftExtraLayersForPageInsert(insertIndex, oldPageCount, insertedPageLayers = null) {
