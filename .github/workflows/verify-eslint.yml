@@ -23,6 +23,57 @@ jobs:
         run: |
           npm install --save-dev --save-exact eslint@10.7.0 @eslint/js@10.0.1 eslint-plugin-react-hooks@latest globals@latest
           npm pkg set scripts.lint="eslint ."
+      - name: Apply focused lint fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              'public/cloud-auth.test.mjs': [
+                  (r"/async function saveAsNew\(\) \{([\s\S]*?)\n  \}/", r"/async function saveAsNew\(\) \{([\s\S]*?)\n {2}\}/"),
+              ],
+              'src/editor/project-storage.test.mjs': [
+                  (r"/if \(label === 'Сохранить'\) \{([\s\S]*?)\n      \}/", r"/if \(label === 'Сохранить'\) \{([\s\S]*?)\n {6}\}/"),
+              ],
+              'src/editor/projectLoad.test.mjs': [
+                  (r"/function applyProjectData\(data, message\) \{([\s\S]*?)\n  \}/", r"/function applyProjectData\(data, message\) \{([\s\S]*?)\n {2}\}/"),
+              ],
+              'server.js': [
+                  ("import { createReadStream, existsSync, statSync } from 'node:fs';", "import { createReadStream, existsSync } from 'node:fs';"),
+                  ("import { basename, extname, join, resolve } from 'node:path';", "import { basename, extname, resolve } from 'node:path';"),
+              ],
+          }
+
+          for filename, pairs in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              for old, new in pairs:
+                  if old not in text:
+                      raise SystemExit(f'Expected text not found in {filename}: {old}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text)
+
+          path = Path('public/project-storage.js')
+          text = path.read_text()
+          old = """  async function saveFullProjectSnapshot() {
+    try {
+      const result = await persistCurrentEditorProject({ source: 'manual-save' });
+      const { pageCount, photoCount: photos, decorCount: decor } = result.stats;
+      const detail = photos > 0
+        ? `страниц: ${pageCount}, фото: ${photos}, оформление: ${decor}`
+        : `страниц: ${pageCount}, без фото, оформление: ${decor}`;
+      showToast(`Проект сохранён полностью — ${detail}`);
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Не удалось сохранить проект полностью', true);
+    }
+  }
+
+"""
+          if old not in text:
+              raise SystemExit('Expected unused saveFullProjectSnapshot function was not found')
+          path.write_text(text.replace(old, '', 1))
+          PY
       - name: Add lint to permanent CI
         run: |
           python - <<'PY'
@@ -68,6 +119,11 @@ jobs:
               'package.json',
               'package-lock.json',
               '.github/workflows/ci.yml',
+              'public/cloud-auth.test.mjs',
+              'public/project-storage.js',
+              'server.js',
+              'src/editor/project-storage.test.mjs',
+              'src/editor/projectLoad.test.mjs',
           }
           changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
           unexpected = changed - allowed
@@ -80,7 +136,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/verify-eslint.yml
-          git add package.json package-lock.json .github/workflows/ci.yml
+          git add package.json package-lock.json .github/workflows/ci.yml public/cloud-auth.test.mjs public/project-storage.js server.js src/editor/project-storage.test.mjs src/editor/projectLoad.test.mjs
           git diff --cached --stat
           git commit -m "Add ESLint checks"
           git push origin HEAD:agent/add-eslint
