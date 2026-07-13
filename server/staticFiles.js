@@ -15,6 +15,9 @@ export function safeStaticPath(baseDir, requestUrl) {
   const decodedPath = decodeRequestPath(requestUrl);
   if (decodedPath === null) return null;
 
+  const pathSegments = decodedPath.replace(/\\/g, '/').split('/');
+  if (pathSegments.includes('..')) return null;
+
   const cleanPath = normalize(decodedPath).replace(/^[/\\]+/, '');
   const resolvedPath = resolve(join(baseDir, cleanPath));
   const baseWithSep = baseDir.endsWith(sep) ? baseDir : `${baseDir}${sep}`;
