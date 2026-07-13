@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   lint-test-build:
@@ -81,13 +81,16 @@ jobs:
           if unexpected:
               raise SystemExit(f'Unexpected generated changes: {sorted(unexpected)}')
           PY
-      - name: Commit verified lint setup
-        run: |
-          rm -rf node_modules dist
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/verify-eslint.yml .github/scripts/apply-eslint-fixes.py
-          git add package.json package-lock.json .github/workflows/ci.yml public/cloud-auth.test.mjs public/project-storage.js server.js src/editor/project-storage.test.mjs src/editor/projectLoad.test.mjs
-          git diff --cached --stat
-          git commit -m "Add ESLint checks"
-          git push origin HEAD:agent/add-eslint
+      - name: Upload verified ESLint files
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-eslint-files
+          path: |
+            package.json
+            package-lock.json
+            .github/workflows/ci.yml
+            public/cloud-auth.test.mjs
+            public/project-storage.js
+            server.js
+            src/editor/project-storage.test.mjs
+            src/editor/projectLoad.test.mjs
