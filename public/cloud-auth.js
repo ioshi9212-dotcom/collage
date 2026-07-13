@@ -167,7 +167,9 @@
     if (shouldRender) render();
   }
 
-  async function saveCloud() {
+  async function saveCloud(options = {}) {
+    if (state.busy) return;
+    const forceCreate = options?.forceCreate === true;
     if (!state.user) return setStatus('Сначала войди в аккаунт');
     state.busy = true;
     setStatus('Сохраняю проект…');
@@ -183,7 +185,7 @@
 
       const titleInput = document.querySelector('.cloud-project-title');
       const title = (titleInput?.value || guessTitle(editorProject.data)).trim() || 'Без названия';
-      const existingId = localStorage.getItem(CURRENT_PROJECT_ID_KEY);
+      const existingId = forceCreate ? '' : localStorage.getItem(CURRENT_PROJECT_ID_KEY);
       const url = existingId ? `/api/projects/${existingId}` : '/api/projects';
       const method = existingId ? 'PUT' : 'POST';
       const payload = JSON.stringify({ title, data: editorProject.data });
@@ -211,8 +213,7 @@
   }
 
   async function saveAsNew() {
-    localStorage.removeItem(CURRENT_PROJECT_ID_KEY);
-    await saveCloud();
+    await saveCloud({ forceCreate: true });
   }
 
   async function openProject(id) {
