@@ -3,6 +3,8 @@ name: Generate and verify package lock
 on:
   push:
     branches: [agent/add-package-lock]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
