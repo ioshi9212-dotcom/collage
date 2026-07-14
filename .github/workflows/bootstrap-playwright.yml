@@ -1,0 +1,47 @@
+name: Bootstrap Playwright
+
+on:
+  push:
+    branches: [agent/browser-e2e]
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/browser-e2e
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Add Playwright dependency and script
+        run: |
+          npm install --save-dev --save-exact @playwright/test@1.55.0
+          npm pkg set scripts.e2e="playwright test"
+      - name: Validate existing checks
+        run: |
+          npm run lint
+          npm test
+          npm run build
+          git diff --check
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run browser E2E
+        run: npm run e2e
+      - name: Commit package metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "Package metadata already current"
+            exit 0
+          fi
+          git commit -m "Add Playwright browser tests"
+          git push origin HEAD:agent/browser-e2e
