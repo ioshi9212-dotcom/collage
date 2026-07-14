@@ -18,6 +18,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Repair temporary patch anchor
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply_photo_asset_patch.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''app = replace_once(app,
+          """<small>{photoImporting ? 'Оригиналы читаются по очереди' : 'Можно сразу несколько'}</small>
+          """,
+          """<small>{photoImporting ? 'Оригиналы сохраняются по очереди' : 'Можно сразу несколько'}</small>
+          """,
+          'photo upload status copy')'''
+          new = '''app = app.replace(
+              "Оригиналы читаются по очереди",
+              "Оригиналы сохраняются по очереди",
+              1,
+          )'''
+          if old not in text:
+              raise SystemExit('temporary photo status anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Apply verified source patch
         id: patch
         shell: bash
