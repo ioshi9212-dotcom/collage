@@ -2,6 +2,19 @@ export const ALBUM_EDITOR_MODES = ['collage', 'text', 'drawings', 'templates'];
 export const ALBUM_MODE_KEY = 'collage-album-editor-mode';
 export const ALBUM_LAYERS_KEY = 'collage-album-extra-layers-v1';
 
+export const MAX_EXTRA_LAYER_PAGES = 500;
+export const MAX_TEXT_LAYERS_PER_PAGE = 250;
+export const MAX_DRAWING_LAYERS_PER_PAGE = 250;
+export const MAX_TEMPLATE_LAYERS_PER_PAGE = 100;
+export const MAX_TEXT_LAYER_CHARACTERS = 20_000;
+
+const MAX_LAYER_ID_LENGTH = 200;
+const MAX_FONT_ID_LENGTH = 100;
+const MAX_FONT_FAMILY_LENGTH = 300;
+const MAX_COLOR_LENGTH = 64;
+const MAX_TEMPLATE_KEYS = 32;
+const MAX_TEMPLATE_STRING_LENGTH = 2_000;
+
 function cloneDeep(value) {
   try {
     return JSON.parse(JSON.stringify(value ?? null));
@@ -21,6 +34,99 @@ function makeLayerId() {
   return globalThis.crypto?.randomUUID?.() ?? `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function objectValue(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function cleanString(value, fallback = '', maxLength = 1_000) {
+  const text = value == null ? fallback : String(value);
+  return text.slice(0, maxLength);
+}
+
+function cleanNumber(value, fallback, min, max) {
+  const number = Number(value);
+  const finite = Number.isFinite(number) ? number : fallback;
+  return Math.min(max, Math.max(min, finite));
+}
+
+function uniqueLayerId(value, usedIds, idFactory) {
+  const base = cleanString(value, '', MAX_LAYER_ID_LENGTH) || cleanString(idFactory(), 'layer', MAX_LAYER_ID_LENGTH);
+  let candidate = base;
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    candidate = `${base.slice(0, Math.max(1, MAX_LAYER_ID_LENGTH - 12))}-${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(candidate);
+  return candidate;
+}
+
+function sanitizeTextLayer(item, usedIds, idFactory) {
+  const source = objectValue(item);
+  if (!source) return null;
+  return {
+    id: uniqueLayerId(source.id, usedIds, idFactory),
+    x: cleanNumber(source.x, 0, -10_000, 10_000),
+    y: cleanNumber(source.y, 0, -10_000, 10_000),
+    width: cleanNumber(source.width, 500, 1, 10_000),
+    text: cleanString(source.text, '', MAX_TEXT_LAYER_CHARACTERS),
+    fontId: cleanString(source.fontId, 'onest', MAX_FONT_ID_LENGTH),
+    fontFamily: cleanString(source.fontFamily, '', MAX_FONT_FAMILY_LENGTH),
+    fontSize: cleanNumber(source.fontSize, 56, 1, 500),
+    fontWeight: Math.round(cleanNumber(source.fontWeight, 500, 100, 900)),
+    fontStyle: source.fontStyle === 'italic' ? 'italic' : 'normal',
+    lineHeight: cleanNumber(source.lineHeight, 1.18, 0.5, 5),
+    color: cleanString(source.color, '#1f2723', MAX_COLOR_LENGTH),
+  };
+}
+
+function sanitizeDrawingLayer(item, usedIds, idFactory) {
+  const source = objectValue(item);
+  if (!source || source.type !== 'line') return null;
+  return {
+    id: uniqueLayerId(source.id, usedIds, idFactory),
+    type: 'line',
+    x: cleanNumber(source.x, 0, -10_000, 10_000),
+    y: cleanNumber(source.y, 0, -10_000, 10_000),
+    length: cleanNumber(source.length, 300, 1, 10_000),
+    angle: cleanNumber(source.angle, 0, -3_600, 3_600),
+    strokeWidth: cleanNumber(source.strokeWidth, 4, 1, 500),
+    color: cleanString(source.color, '#6f6862', MAX_COLOR_LENGTH),
+    opacity: cleanNumber(source.opacity, 1, 0, 1),
+  };
+}
+
+function sanitizeTemplateLayer(item, usedIds, idFactory) {
+  const source = objectValue(item);
+  if (!source) return null;
+  const next = { id: uniqueLayerId(source.id, usedIds, idFactory) };
+  for (const [key, value] of Object.entries(source).slice(0, MAX_TEMPLATE_KEYS)) {
+    if (key === 'id') continue;
+    if (typeof value === 'string') next[key] = value.slice(0, MAX_TEMPLATE_STRING_LENGTH);
+    else if (typeof value === 'boolean') next[key] = value;
+    else if (Number.isFinite(Number(value))) next[key] = cleanNumber(value, 0, -1_000_000, 1_000_000);
+  }
+  return next;
+}
+
+function sanitizeLayerList(items, limit, sanitizer, idFactory) {
+  if (!Array.isArray(items)) return [];
+  const usedIds = new Set();
+  return items
+    .slice(0, limit)
+    .map((item) => sanitizer(item, usedIds, idFactory))
+    .filter(Boolean);
+}
+
+function sanitizeLayerPage(page, idFactory) {
+  const source = objectValue(page) || {};
+  return {
+    texts: sanitizeLayerList(source.texts, MAX_TEXT_LAYERS_PER_PAGE, sanitizeTextLayer, idFactory),
+    drawings: sanitizeLayerList(source.drawings, MAX_DRAWING_LAYERS_PER_PAGE, sanitizeDrawingLayer, idFactory),
+    templates: sanitizeLayerList(source.templates, MAX_TEMPLATE_LAYERS_PER_PAGE, sanitizeTemplateLayer, idFactory),
+  };
+}
+
 export function normalizeAlbumEditorMode(value, fallback = 'collage') {
   return ALBUM_EDITOR_MODES.includes(value) ? value : fallback;
 }
@@ -28,8 +134,22 @@ export function normalizeAlbumEditorMode(value, fallback = 'collage') {
 export function normalizeExtraLayers(value) {
   return {
     version: 1,
-    pages: value?.pages && typeof value.pages === 'object' ? value.pages : {},
+    pages: value?.pages && typeof value.pages === 'object' && !Array.isArray(value.pages) ? value.pages : {},
   };
+}
+
+export function sanitizeExtraLayers(value, options = {}) {
+  const idFactory = typeof options.idFactory === 'function' ? options.idFactory : makeLayerId;
+  const sourcePages = normalizeExtraLayers(value).pages;
+  const pages = {};
+
+  for (const [key, page] of Object.entries(sourcePages)) {
+    const pageNumber = Number(key);
+    if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > MAX_EXTRA_LAYER_PAGES) continue;
+    pages[String(pageNumber)] = sanitizeLayerPage(page, idFactory);
+  }
+
+  return { version: 1, pages };
 }
 
 export function hasAnyExtraLayer(layers) {
@@ -48,24 +168,24 @@ export function readExtraLayers(options = {}) {
   try {
     const storage = options.storage ?? globalThis.localStorage;
     const raw = storage?.getItem?.(ALBUM_LAYERS_KEY);
-    if (raw) localLayers = normalizeExtraLayers(JSON.parse(raw));
+    if (raw) localLayers = sanitizeExtraLayers(JSON.parse(raw), options);
   } catch {
     // ignore broken local data
   }
 
   try {
     const bridge = options.bridge ?? globalThis.__collageAlbumLayers;
-    const bridgeLayers = normalizeExtraLayers(bridge?.getLayers?.());
+    const bridgeLayers = sanitizeExtraLayers(bridge?.getLayers?.(), options);
     if (hasAnyExtraLayer(bridgeLayers) || !hasAnyExtraLayer(localLayers)) return bridgeLayers;
   } catch {
     // ignore bridge errors
   }
 
-  return localLayers ?? normalizeExtraLayers(null);
+  return localLayers ?? sanitizeExtraLayers(null, options);
 }
 
 export function writeExtraLayers(value, options = {}) {
-  const layers = normalizeExtraLayers(value);
+  const layers = sanitizeExtraLayers(value, options);
   try {
     const storage = options.storage ?? globalThis.localStorage;
     storage?.setItem?.(ALBUM_LAYERS_KEY, JSON.stringify(layers));
@@ -131,7 +251,7 @@ export function drawingLayersForPage(extraLayers, pageIndex) {
 export function createPageLayerDraft(layers, pageNumber) {
   const key = String(pageNumber);
   const next = cloneDeep(layers) || { version: 1, pages: {} };
-  if (!next.pages || typeof next.pages !== 'object') next.pages = {};
+  if (!next.pages || typeof next.pages !== 'object' || Array.isArray(next.pages)) next.pages = {};
   if (!next.pages[key]) next.pages[key] = { texts: [], drawings: [], templates: [] };
   if (!Array.isArray(next.pages[key].texts)) next.pages[key].texts = [];
   if (!Array.isArray(next.pages[key].drawings)) next.pages[key].drawings = [];

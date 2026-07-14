@@ -51,12 +51,15 @@ assert.equal(hasAnyExtraLayer({ pages: { 1: { templates: [{ id: 'template' }] } 
 
 {
   const local = { version: 1, pages: { 1: { texts: [{ id: 'local' }] } } };
-  const bridge = { version: 1, pages: { 2: { drawings: [{ id: 'bridge' }] } } };
+  const bridge = { version: 1, pages: { 2: { drawings: [{ id: 'bridge', type: 'line' }] } } };
   const storage = new FakeStorage({ [ALBUM_LAYERS_KEY]: JSON.stringify(local) });
-  assert.deepEqual(readExtraLayers({ storage, bridge: { getLayers: () => bridge } }), bridge, 'non-empty bridge layers must win');
-  assert.deepEqual(readExtraLayers({ storage, bridge: { getLayers: () => ({ pages: {} }) } }), local, 'non-empty local layers must survive an empty bridge');
+  const bridgeResult = readExtraLayers({ storage, bridge: { getLayers: () => bridge } });
+  assert.equal(bridgeResult.pages[2].drawings[0].id, 'bridge', 'non-empty bridge layers must win');
+  const localResult = readExtraLayers({ storage, bridge: { getLayers: () => ({ pages: {} }) } });
+  assert.equal(localResult.pages[1].texts[0].id, 'local', 'non-empty local layers must survive an empty bridge');
   assert.deepEqual(readExtraLayers({ storage: new FakeStorage({ [ALBUM_LAYERS_KEY]: '{broken' }), bridge: { getLayers: () => null } }), { version: 1, pages: {} });
-  assert.deepEqual(readExtraLayers({ storage, bridge: { getLayers() { throw new Error('bridge failed'); } } }), local);
+  const failedBridgeResult = readExtraLayers({ storage, bridge: { getLayers() { throw new Error('bridge failed'); } } });
+  assert.equal(failedBridgeResult.pages[1].texts[0].id, 'local');
 }
 
 {
