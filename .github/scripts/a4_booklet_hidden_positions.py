@@ -3,8 +3,9 @@ p=Path('src/AppLive.jsx')
 s=p.read_text()
 a='const position = getBookletPagePosition(index, canvas, normalizedBookletPrintSettings);'
 b='const position = getBookletPagePosition(index, canvas, bookletExportPrintSettings);'
-if s.count(a)!=1: raise SystemExit('hidden position mismatch')
-s=s.replace(a,b,1)
+if s.count(a)<1: raise SystemExit('hidden position mismatch')
+head, tail=s.rsplit(a,1)
+s=head+b+tail
 a='<BookletPrintGuides canvas={canvas} printSettings={normalizedBookletPrintSettings} />'
 b='<BookletPrintGuides canvas={canvas} printSettings={bookletExportPrintSettings} />'
 if s.count(a)!=1: raise SystemExit('hidden guides mismatch')
