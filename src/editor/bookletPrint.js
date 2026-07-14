@@ -16,6 +16,15 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function createImageFromDataUrl(dataUrl, imageFactory) {
+  return new Promise((resolve, reject) => {
+    const image = imageFactory();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Не удалось прочитать сторону брошюры'));
+    image.src = dataUrl;
+  });
+}
+
 export function normalizeHomeBookletPrintSettings(value = {}) {
   return {
     showFoldLine: Boolean(value.showFoldLine),
@@ -95,6 +104,29 @@ export function buildManualDuplexBookletOrder(plan, settings = {}) {
 export function shouldRotateBookletSide(sideData, settings = {}) {
   const normalized = normalizeHomeBookletPrintSettings(settings);
   return Boolean(sideData?.side === 'back' && normalized.rotateBack180);
+}
+
+export async function rotateRasterDataUrl180(dataUrl, options = {}) {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+    throw new Error('Не найдено изображение стороны брошюры');
+  }
+  const documentRef = options.documentRef ?? globalThis.document;
+  const imageFactory = options.imageFactory ?? (() => new globalThis.Image());
+  if (!documentRef?.createElement || typeof imageFactory !== 'function') {
+    throw new Error('Браузер не поддерживает разворот стороны брошюры');
+  }
+  const image = await createImageFromDataUrl(dataUrl, imageFactory);
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  const canvas = documentRef.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Браузер не поддерживает разворот стороны брошюры');
+  context.translate(width, height);
+  context.rotate(Math.PI);
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL('image/png');
 }
 
 export function estimateFoldedBlockThicknessMm(sheetsPerBlock, settings = {}) {
