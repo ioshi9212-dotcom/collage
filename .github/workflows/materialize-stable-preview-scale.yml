@@ -42,3 +42,5 @@ jobs:
           git add src/AppLive.jsx
           git commit -m "Stabilize preview scale across page switches"
           git push origin HEAD:agent/stable-preview-scale
+
+# The product commit is created only after every verification step succeeds.
