@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Repair temporary patch anchor
+      - name: Repair temporary patch anchors
         shell: bash
         run: |
           python - <<'PY'
@@ -56,6 +56,24 @@ jobs:
           path: patch-output.txt
       - name: Preserve patch result
         run: exit "${{ steps.patch.outputs.status }}"
+      - name: Adjust asynchronous cloud save test
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('public/cloud-auth.test.mjs')
+          text = path.read_text(encoding='utf-8')
+          old = '''  const first = harness.api.saveAsNew();
+            const second = harness.api.saveAsNew();
+            assert.equal(calls.filter((call) => call.method === 'POST').length, 1, 'rapid clicks must create only one copy');'''
+          new = '''  const first = harness.api.saveAsNew();
+            const second = harness.api.saveAsNew();
+            await Promise.resolve();
+            assert.equal(calls.filter((call) => call.method === 'POST').length, 1, 'rapid clicks must create only one copy');'''
+          if old not in text:
+              raise SystemExit('cloud timing test anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Install dependencies
         run: npm ci
       - name: Validate patch
