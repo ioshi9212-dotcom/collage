@@ -1,3 +1,5 @@
+// Pure preview helpers shared by the editor and tests. The preview is scaled
+// to the space that is actually available; export geometry remains unchanged.
 function finite(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
