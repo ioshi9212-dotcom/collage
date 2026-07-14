@@ -62,5 +62,5 @@ test('authenticated cloud save sends a portable photo while local state stays co
   expect(compact.library[0].src).toBeUndefined();
   expect(JSON.stringify(compact)).not.toContain('data:image/');
 
-  await expect(page.locator('.cloud-auth-status')).toHaveText('Сохранено в аккаунт');
+  await expect(page.locator('.cloud-auth-status').first()).toHaveText('Сохранено в аккаунт');
 });
