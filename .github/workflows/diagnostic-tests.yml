@@ -1,0 +1,33 @@
+name: Diagnostic tests
+
+on:
+  push:
+    branches: [agent/audit-critical-fixes]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Capture tests
+        id: tests
+        shell: bash
+        run: |
+          set +e
+          npm test > test-output.txt 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-test-output
+          path: test-output.txt
+      - name: Preserve test result
+        run: exit "${{ steps.tests.outputs.status }}"
