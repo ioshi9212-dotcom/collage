@@ -33,10 +33,10 @@ async function readStageSize(page) {
 }
 
 async function expectStablePageSwitches(page, pageNumbers) {
-  const baseline = await expect.poll(async () => {
+  await expect.poll(async () => {
     const size = await readStageSize(page);
-    return size.width > 200 && size.height > 350 ? size : null;
-  }).not.toBeNull();
+    return size.width > 200 && size.height > 350;
+  }).toBe(true);
   const reference = await readStageSize(page);
 
   for (const pageNumber of pageNumbers) {
@@ -48,8 +48,6 @@ async function expectStablePageSwitches(page, pageNumbers) {
       expect(Math.abs(size.height - reference.height), `page ${pageNumber} height changed after ${delay} ms`).toBeLessThanOrEqual(3);
     }
   }
-
-  expect(baseline).toBeTruthy();
 }
 
 test.describe('booklet pair preview', () => {
