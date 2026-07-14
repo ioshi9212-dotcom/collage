@@ -45,3 +45,16 @@ jobs:
         with:
           name: editor-patch-report
           path: editor-patch-report.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: editor-source-snapshot
+          path: |
+            src
+            public
+            server
+            server.js
+            index.html
+            package.json
+            package-lock.json
+            vite.config.js
+            eslint.config.js
