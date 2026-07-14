@@ -1,0 +1,177 @@
+/* Keep all existing controls stable and directly reachable in the first visual prototype.
+   Real dropdowns will be implemented as React components after visual review. */
+
+.topbar,
+.app-topbar {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  min-height: auto;
+  padding: 8px 14px 0;
+}
+
+.brand-block {
+  align-self: center;
+  min-height: 38px;
+}
+
+.document-panel,
+.settings-bar.document-panel {
+  position: static;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: stretch;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-top: 1px solid var(--ui-line);
+  background: transparent;
+  padding: 7px 0 8px;
+}
+
+.document-panel > .section-title {
+  display: none;
+}
+
+.document-panel .document-grid,
+.document-panel:hover .document-grid,
+.document-panel:focus-within .document-grid {
+  display: grid;
+  position: static;
+  width: 100%;
+  transform: none;
+  grid-template-columns: minmax(190px, 1.6fr) repeat(9, minmax(70px, 1fr));
+  gap: 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.document-panel .field span {
+  font-size: 9px;
+}
+
+.document-panel .field input,
+.document-panel .field select {
+  min-height: 28px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+.document-panel .print-summary {
+  grid-column: 1 / -1;
+  padding: 5px 0 0;
+  font-size: 10px;
+}
+
+.file-panel,
+.topbar-actions.file-panel {
+  position: static;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: end;
+  width: min(760px, 100%);
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.file-panel .file-actions,
+.file-panel:hover .file-actions,
+.file-panel:focus-within .file-actions {
+  display: flex;
+  position: static;
+  width: max-content;
+  min-width: 100%;
+  transform: none;
+  grid-template-columns: none;
+  justify-content: flex-end;
+  gap: 5px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.file-panel .file-actions > button,
+.file-panel .file-actions > button:nth-of-type(n + 3):not(:last-of-type),
+.file-panel:hover .file-actions > button,
+.file-panel:focus-within .file-actions > button {
+  display: inline-flex;
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 10.5px;
+}
+
+.album-bar,
+.album-bar.clean-control-panel {
+  top: 126px;
+}
+
+.mode-strip {
+  top: 172px;
+}
+
+.workspace,
+.workspace.three-columns,
+.three-columns {
+  min-height: calc(100vh - 214px);
+}
+
+.sidebar,
+.album-mode-sidebar,
+.inspector,
+.album-mode-inspector {
+  max-height: calc(100vh - 322px);
+}
+
+.canvas-area {
+  min-height: calc(100vh - 322px);
+}
+
+.photo-grid {
+  max-height: calc(100vh - 450px);
+}
+
+@media (max-width: 1450px) {
+  .document-panel .document-grid {
+    grid-template-columns: minmax(180px, 1.5fr) repeat(5, minmax(70px, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .document-panel {
+    display: block;
+  }
+
+  .topbar,
+  .app-topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-block,
+  .file-panel,
+  .topbar-actions.file-panel,
+  .document-panel {
+    grid-column: 1;
+  }
+
+  .brand-block { grid-row: 1; }
+  .file-panel,
+  .topbar-actions.file-panel { grid-row: 2; justify-self: stretch; width: 100%; }
+  .document-panel { grid-row: 3; }
+
+  .file-panel .file-actions,
+  .file-panel:hover .file-actions,
+  .file-panel:focus-within .file-actions {
+    justify-content: flex-start;
+  }
+
+  .album-bar,
+  .mode-strip {
+    position: static;
+  }
+}
