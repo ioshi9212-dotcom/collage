@@ -1,7 +1,0 @@
-from pathlib import Path
-p=Path('src/AppLive.jsx')
-s=p.read_text()
-a="""              <span>{bookletExportSummary.blocks} блок. · {bookletExportSummary.sheets} лист. · {bookletExportSummary.sides} сторон</span>\n              <span>{bookletExportSummary.pages} стр. проекта · пустых: {bookletExportSummary.blanks}</span>\n              <span>Сгиб: {normalizedBookletPrintSettings.showFoldLine ? 'да' : 'нет'} · Метки: {normalizedBookletPrintSettings.showCropMarks ? 'да' : 'нет'} · Зазор: {normalizedBookletPrintSettings.gap}px · Поля: {normalizedBookletPrintSettings.margin}px</span>\n"""
-b="""              <span>{bookletExportSummary.blocks} блок. · {bookletExportSummary.sheets} лист. A4 · {bookletExportSummary.sides} сторон</span>\n              <span>{bookletExportSummary.pages} стр. проекта · пустых: {bookletExportSummary.blanks}</span>\n              <span>A4 горизонтально 297×210 мм · половина листа 148,5×210 мм · {bookletA4Geometry.outputWidthPx}×{bookletA4Geometry.outputHeightPx} px</span>\n              <span>Обороты: {normalizedBookletPrintSettings.backOrder === BOOKLET_BACK_ORDER_REVERSE ? 'обратный порядок' : 'тот же порядок'} · разворот 180°: {normalizedBookletPrintSettings.rotateBack180 ? 'да' : 'нет'}</span>\n              <span>Примерная толщина сложенного блока: {bookletBlockThicknessMm} мм</span>\n"""
-if s.count(a)!=1: raise SystemExit('summary UI anchor mismatch')
-p.write_text(s.replace(a,b,1))
