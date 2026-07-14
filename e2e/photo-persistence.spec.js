@@ -133,6 +133,7 @@ test.describe('photo persistence safety', () => {
     await page.evaluate(() => window.__collageProjectStorage.openLocalProject());
 
     await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library[0]?.assetId || '')).toBe(uploaded.assetId);
+    await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library[0]?.src || '')).toMatch(/^blob:/);
     await expect(page.locator('.photo-card')).toHaveCount(1);
     const decoded = await decodeRuntimePhoto(page, uploaded.assetId);
     expect(decoded.src).toMatch(/^blob:/);
