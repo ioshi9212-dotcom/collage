@@ -187,7 +187,7 @@ function streamObject(dictionary, bytes) {
 function makeXmp(metadata, pages) {
   const first = pages[0]?.geometry || {};
   const keywords = Array.isArray(metadata.keywords) ? metadata.keywords.join(', ') : String(metadata.keywords || '');
-  return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n` +
+  return `<?xpacket begin="\uFEFF" id="W5M0MpCehiHzreSzNTczkc9d"?>\n` +
     `<x:xmpmeta xmlns:x="adobe:ns:meta/">\n` +
     `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n` +
     `<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:pdf="http://ns.adobe.com/pdf/1.3/" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:collage="https://collage.local/ns/print/1.0/">\n` +
