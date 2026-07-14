@@ -1,0 +1,625 @@
+:root {
+  --ui-bg: #eceeef;
+  --ui-surface: #f8f9f9;
+  --ui-surface-solid: #ffffff;
+  --ui-surface-soft: #f1f3f4;
+  --ui-muted: #70767a;
+  --ui-text: #272b2e;
+  --ui-line: #d2d6d8;
+  --ui-line-strong: #adb4b8;
+  --ui-green: #3e484d;
+  --ui-green-dark: #30393e;
+  --ui-green-soft: #e3e7e9;
+  --ui-danger: #b65050;
+  --ui-danger-bg: #fff5f5;
+  --ui-card-radius: 5px;
+  --ui-control-radius: 4px;
+}
+
+html,
+body,
+#root {
+  background: var(--ui-bg);
+}
+
+body {
+  background: var(--ui-bg);
+}
+
+.app-shell {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+.topbar,
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 58px;
+  margin: 0;
+  border-bottom: 1px solid var(--ui-line);
+  background: rgba(248, 249, 249, 0.98);
+  padding: 8px 16px;
+  backdrop-filter: blur(12px);
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  min-width: 210px;
+  padding: 0;
+}
+
+.brand-block .eyebrow {
+  display: none;
+}
+
+.brand-block h1 {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+}
+
+.document-panel,
+.settings-bar.document-panel {
+  position: relative;
+  justify-self: center;
+  width: min(520px, 100%);
+  max-width: 100%;
+  min-height: 34px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.document-panel > .section-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  margin: 0;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-control-radius);
+  background: #fff;
+  color: var(--ui-text);
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: default;
+}
+
+.document-panel .document-grid {
+  display: none;
+  position: absolute;
+  z-index: 70;
+  top: calc(100% + 7px);
+  left: 50%;
+  width: min(860px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  grid-template-columns: minmax(210px, 1.7fr) repeat(5, minmax(82px, 1fr));
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 6px;
+  background: #fff;
+  padding: 12px;
+  box-shadow: 0 18px 50px rgba(39, 43, 46, 0.16);
+}
+
+.document-panel:hover .document-grid,
+.document-panel:focus-within .document-grid {
+  display: grid;
+}
+
+.file-panel,
+.topbar-actions.file-panel {
+  position: relative;
+  justify-self: end;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.file-panel > .section-title {
+  display: none;
+}
+
+.file-panel .file-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.file-panel .file-actions > button:nth-of-type(n + 3):not(:last-of-type) {
+  display: none;
+}
+
+.file-panel:hover .file-actions,
+.file-panel:focus-within .file-actions {
+  position: absolute;
+  z-index: 75;
+  top: calc(100% + 7px);
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(145px, 1fr));
+  width: 330px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 6px;
+  background: #fff;
+  padding: 10px;
+  box-shadow: 0 18px 50px rgba(39, 43, 46, 0.16);
+}
+
+.file-panel:hover .file-actions > button,
+.file-panel:focus-within .file-actions > button {
+  display: inline-flex;
+}
+
+.file-panel .file-actions > button:first-of-type {
+  border-color: var(--ui-green);
+  background: var(--ui-green);
+  color: #fff;
+}
+
+.file-panel .file-actions > button:first-of-type:hover {
+  border-color: var(--ui-green-dark);
+  background: var(--ui-green-dark);
+}
+
+.top-control-card,
+.file-panel,
+.document-panel,
+.clean-control-panel,
+.mode-strip,
+.settings-bar,
+.album-bar,
+.sidebar,
+.canvas-area,
+.inspector,
+.page-rail,
+.album-mode-sidebar,
+.album-mode-inspector,
+.upload-box,
+.empty-state,
+.photo-name,
+.inspector-block,
+.booklet-control-card,
+.booklet-warning {
+  border-color: var(--ui-line);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-surface);
+  box-shadow: none;
+}
+
+.album-bar,
+.album-bar.clean-control-panel {
+  position: sticky;
+  top: 58px;
+  z-index: 38;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--ui-line);
+  border-radius: 0;
+  background: rgba(248, 249, 249, 0.98);
+  padding: 6px 14px;
+  backdrop-filter: blur(12px);
+}
+
+.album-bar .primary-control-row {
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+.album-head {
+  min-width: 132px;
+  border-right-color: var(--ui-line);
+}
+
+.control-label,
+.section-title,
+.panel-kicker,
+.booklet-control-card > strong,
+.booklet-sheets-control {
+  color: var(--ui-muted);
+}
+
+.mode-strip {
+  position: sticky;
+  top: 105px;
+  z-index: 34;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--ui-line);
+  border-radius: 0;
+  background: rgba(248, 249, 249, 0.98);
+  padding: 5px 14px;
+  box-shadow: none;
+  backdrop-filter: blur(12px);
+}
+
+.button,
+.small-button,
+button.button,
+button.small-button,
+.album-mode-tab,
+.album-mode-button,
+.cloud-auth-button,
+.cloud-auth-toggle {
+  border-color: var(--ui-line);
+  border-radius: var(--ui-control-radius);
+  background: #fff;
+  color: var(--ui-text);
+  box-shadow: none;
+}
+
+.button:hover:not(:disabled),
+.small-button:hover:not(:disabled),
+.album-mode-tab:hover:not(:disabled),
+.album-mode-button:hover:not(:disabled) {
+  border-color: var(--ui-line-strong);
+  background: var(--ui-surface-soft);
+}
+
+.button.accent,
+.accent,
+.active-mode,
+.small-button.active-mode,
+.view-switch .active-mode,
+.spread-actions .active-mode,
+.album-mode-tab.active,
+.album-text-card.active,
+.cloud-project-card.active {
+  border-color: var(--ui-line-strong) !important;
+  background: var(--ui-green-soft) !important;
+  color: var(--ui-text) !important;
+}
+
+.button.primary,
+.primary-accent,
+.album-mode-button.primary,
+.cloud-auth-button.primary {
+  border-color: var(--ui-green) !important;
+  background: var(--ui-green) !important;
+  color: #fff !important;
+}
+
+.danger,
+.danger-button,
+.small-button.danger,
+.album-mode-button.danger,
+.cloud-auth-button.danger {
+  border-color: rgba(182, 80, 80, 0.38) !important;
+  background: var(--ui-danger-bg) !important;
+  color: var(--ui-danger) !important;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--ui-line-strong);
+  box-shadow: 0 0 0 3px rgba(62, 72, 77, 0.12);
+}
+
+.workspace,
+.workspace.three-columns,
+.three-columns {
+  display: grid;
+  grid-template-columns: 255px minmax(0, 1fr) 285px !important;
+  grid-template-areas:
+    "left canvas right"
+    "pages pages pages";
+  justify-content: stretch;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  max-width: none;
+  min-height: calc(100vh - 148px);
+}
+
+.sidebar,
+.album-mode-sidebar {
+  grid-area: left;
+  min-width: 0;
+  max-height: calc(100vh - 260px);
+  border-width: 0 1px 0 0;
+  border-radius: 0;
+  background: #f8f9f9;
+  padding: 12px;
+}
+
+.canvas-area {
+  grid-area: canvas;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: calc(100vh - 260px);
+  border: 0;
+  border-radius: 0;
+  background: #dde1e3;
+  padding: 12px 18px 18px;
+}
+
+.inspector,
+.album-mode-inspector {
+  grid-area: right;
+  min-width: 0;
+  max-height: calc(100vh - 260px);
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  background: #f8f9f9;
+  padding: 12px;
+}
+
+.page-rail {
+  grid-area: pages;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-height: none;
+  min-height: 108px;
+  overflow: hidden;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: #f8f9f9;
+  padding: 9px 14px;
+}
+
+.page-rail .panel-title.compact {
+  margin: 0;
+  border: 0;
+  padding: 0 8px 0 0;
+}
+
+.page-rail .panel-title p {
+  display: none;
+}
+
+.page-rail-list {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 2px 6px;
+}
+
+.page-rail-card {
+  flex: 0 0 104px;
+  min-height: 76px;
+  width: 104px;
+  border-radius: 4px;
+  background: #fff;
+  padding: 7px;
+}
+
+.page-rail-card:hover {
+  border-color: var(--ui-line-strong);
+  background: var(--ui-surface-soft);
+}
+
+.page-rail-card.current-page-rail-card,
+.page-rail-card.booklet-visible-rail-card,
+.page-rail-card.stage-page-rail-card {
+  border-color: var(--ui-green);
+  background: var(--ui-green-soft);
+  box-shadow: inset 0 0 0 1px var(--ui-green);
+}
+
+.page-rail-card.drag-over-page-rail-card {
+  border-color: var(--ui-green-dark);
+  background: #eef1f2;
+}
+
+.stage-frame {
+  width: calc(var(--stage-display-width) + 28px);
+  max-width: 100%;
+  max-height: none;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  background-image: none;
+  padding: 14px;
+}
+
+.konvajs-content {
+  border-radius: 2px;
+  box-shadow: 0 14px 34px rgba(39, 43, 46, 0.18);
+}
+
+.canvas-toolbar {
+  width: min(100%, calc(var(--stage-display-width) + 28px));
+  margin-bottom: 7px;
+}
+
+.canvas-toolbar span,
+.canvas-toolbar em {
+  color: var(--ui-muted);
+}
+
+.panel-title span,
+.album-mode-badge,
+.photo-used-badge {
+  background: var(--ui-green-soft);
+  color: var(--ui-green-dark);
+}
+
+.upload-box {
+  min-height: 68px;
+  border-style: solid;
+  background: #fff;
+  color: var(--ui-text);
+}
+
+.photo-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: calc(100vh - 390px);
+}
+
+.photo-card {
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--ui-line);
+}
+
+.photo-card:hover {
+  outline: 2px solid var(--ui-line-strong);
+}
+
+.photo-card.selected-photo-card {
+  box-shadow: inset 0 0 0 2px var(--ui-green), 0 4px 12px rgba(39, 43, 46, 0.1);
+}
+
+.photo-card.used-photo-card {
+  box-shadow: inset 0 0 0 1px var(--ui-line-strong);
+}
+
+.photo-thumbnail {
+  background: #eef0f1;
+}
+
+.inspector-block {
+  border: 0;
+  border-top: 1px solid var(--ui-line);
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 0 0;
+  box-shadow: none;
+}
+
+.booklet-control-grid {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-bottom: 1px solid var(--ui-line);
+  background: #f8f9f9;
+  padding: 8px 14px;
+}
+
+.booklet-control-card {
+  border-radius: 4px;
+  background: #fff;
+}
+
+.booklet-export-card,
+.booklet-stage,
+.mobile-pick-hint,
+.cloud-project-card.active,
+.album-text-card.active {
+  background: var(--ui-green-soft) !important;
+}
+
+.booklet-stage {
+  background-image: none !important;
+}
+
+.cloud-auth-panel {
+  border-color: var(--ui-line-strong);
+  border-radius: 6px;
+  background: rgba(248, 249, 249, 0.98);
+  box-shadow: 0 18px 50px rgba(39, 43, 46, 0.18);
+}
+
+body[data-album-mode='text'] .three-columns,
+body[data-album-mode='drawings'] .three-columns,
+body[data-album-mode='templates'] .three-columns {
+  grid-template-columns: 255px minmax(0, 1fr) 285px !important;
+  grid-template-areas:
+    "left canvas right"
+    "pages pages pages" !important;
+}
+
+@media (max-width: 1180px) {
+  .topbar,
+  .app-topbar {
+    grid-template-columns: auto 1fr;
+  }
+
+  .document-panel {
+    display: none;
+  }
+
+  .workspace,
+  .workspace.three-columns,
+  .three-columns,
+  body[data-album-mode='text'] .three-columns,
+  body[data-album-mode='drawings'] .three-columns,
+  body[data-album-mode='templates'] .three-columns {
+    grid-template-columns: 220px minmax(0, 1fr) 245px !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .topbar,
+  .app-topbar,
+  .album-bar,
+  .mode-strip {
+    position: static;
+  }
+
+  .workspace,
+  .workspace.three-columns,
+  .three-columns,
+  body[data-album-mode='text'] .three-columns,
+  body[data-album-mode='drawings'] .three-columns,
+  body[data-album-mode='templates'] .three-columns {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "canvas"
+      "pages"
+      "left"
+      "right" !important;
+  }
+
+  .sidebar,
+  .album-mode-sidebar,
+  .inspector,
+  .album-mode-inspector {
+    max-height: none;
+    border-width: 1px 0 0;
+  }
+
+  .canvas-area {
+    min-height: auto;
+  }
+
+  .page-rail {
+    grid-template-columns: 1fr;
+  }
+}
