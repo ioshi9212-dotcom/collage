@@ -31,6 +31,7 @@ import {
   releaseAllPhotoRuntimeUrls,
   releaseUnusedPhotoRuntimeUrls,
 } from './editor/photoAssets';
+import { cleanupOrphanedPhotoAssets } from './editor/photoAssetCleanup';
 import { loadCachedImage as loadImage } from './editor/imageCache';
 import { prepareEditorProject } from './editor/projectLoad';
 import {
@@ -1132,6 +1133,13 @@ export default function App() {
   useEffect(() => () => releaseAllPhotoRuntimeUrls(), []);
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      cleanupPhotoAssetsInBackground(window.__collageApp?.getProject?.());
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     try { localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templateRecords)); } catch { /* ignore localStorage errors */ }
   }, [templateRecords]);
 
@@ -1817,6 +1825,16 @@ export default function App() {
 
 
 
+  function cleanupPhotoAssetsInBackground(currentProject) {
+    void cleanupOrphanedPhotoAssets({ currentProject })
+      .then((result) => {
+        if (!result.deletedCount) return;
+        releaseUnusedPhotoRuntimeUrls(result.activeAssetIds);
+        console.info(`Photo asset cleanup removed ${result.deletedCount} orphaned files`);
+      })
+      .catch((error) => console.warn('Photo asset cleanup skipped', error));
+  }
+
   function liveProject() {
     return {
       canvas,
@@ -1894,6 +1912,7 @@ export default function App() {
     const indexedDb = await storagePromise;
     const outcome = describeSaveResult({ local, indexedDb, cloud, cloudError });
     show(outcome.message);
+    if (outcome.ok) cleanupPhotoAssetsInBackground(data);
     return { ok: outcome.ok, local, indexedDb, cloud, cloudError, data };
   }
 
