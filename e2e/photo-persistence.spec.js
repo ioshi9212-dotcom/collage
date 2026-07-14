@@ -115,7 +115,9 @@ test.describe('photo persistence safety', () => {
     await page.evaluate(() => window.__collageProjectStorage.openLocalProject());
 
     await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library[0]?.assetId || '')).toBe(uploaded.assetId);
-    await expect(page.locator('.photo-card')).toHaveCount(1);
+    const photoCard = page.locator('.photo-card');
+    await expect(photoCard).toHaveCount(1);
+    await photoCard.scrollIntoViewIfNeeded();
     await expect(page.locator('.photo-thumbnail img')).toBeVisible();
     await expect.poll(() => page.locator('.photo-thumbnail img').evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
 
