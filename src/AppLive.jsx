@@ -108,6 +108,17 @@ import {
   buildRasterPrintPdf,
   pngDataUrlToJpegPage,
 } from './editor/printFiles';
+import {
+  BOOKLET_BACK_ORDER_REVERSE,
+  BOOKLET_BACK_ORDER_SAME,
+  buildBookletPrintInstructions,
+  buildManualDuplexBookletOrder,
+  estimateFoldedBlockThicknessMm,
+  getA4BookletPrintGeometry,
+  normalizeHomeBookletPrintSettings,
+  rotateRasterDataUrl180,
+  shouldRotateBookletSide,
+} from './editor/bookletPrint';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const LEGACY_KEYS = [
@@ -154,6 +165,9 @@ const DEFAULT_BOOKLET_PRINT_SETTINGS = {
   showCropMarks: false,
   gap: 0,
   margin: 0,
+  backOrder: BOOKLET_BACK_ORDER_REVERSE,
+  rotateBack180: false,
+  paperThicknessMm: 0.12,
 };
 
 const MAX_BOOKLET_PRINT_GAP = 300;
@@ -614,6 +628,12 @@ function downloadText(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function downloadPlainText(filename, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  downloadDataUrl(filename, url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function scaleForPreview(width, height, isSpread) {
   const maxWidth = isSpread ? 1220 : 880;
   const maxHeight = 720;
@@ -625,6 +645,7 @@ function normalizeBookletPrintSettings(value = {}) {
   const requestedMargin = Number(value.margin ?? DEFAULT_BOOKLET_PRINT_SETTINGS.margin) || 0;
   const minimumMargin = showCropMarks ? CROP_MARK_OFFSET + CROP_MARK_LENGTH : 0;
   return {
+    ...normalizeHomeBookletPrintSettings(value),
     showFoldLine: Boolean(value.showFoldLine),
     showCropMarks,
     gap: Math.round(clamp(value.gap ?? DEFAULT_BOOKLET_PRINT_SETTINGS.gap, 0, MAX_BOOKLET_PRINT_GAP)),
@@ -1251,9 +1272,29 @@ export default function App() {
     () => getBookletPixelRatio(canvas, settings),
     [canvas, settings],
   );
+  const bookletA4Geometry = useMemo(
+    () => getA4BookletPrintGeometry({ canvas, settings }),
+    [canvas, settings],
+  );
+  const bookletManualDuplexOrder = useMemo(
+    () => buildManualDuplexBookletOrder(bookletPlan, normalizedBookletPrintSettings),
+    [bookletPlan, normalizedBookletPrintSettings],
+  );
+  const bookletBlockThicknessMm = useMemo(
+    () => estimateFoldedBlockThicknessMm(bookletSheetsPerBlock, normalizedBookletPrintSettings),
+    [bookletSheetsPerBlock, normalizedBookletPrintSettings],
+  );
   const bookletSheetSize = useMemo(
     () => getBookletSheetSize(canvas, normalizedBookletPrintSettings),
     [canvas, normalizedBookletPrintSettings],
+  );
+  const bookletExportPrintSettings = useMemo(
+    () => normalizeBookletPrintSettings({ ...normalizedBookletPrintSettings, showCropMarks: false, gap: 0, margin: 0 }),
+    [normalizedBookletPrintSettings],
+  );
+  const bookletExportSheetSize = useMemo(
+    () => getBookletSheetSize(canvas, bookletExportPrintSettings),
+    [canvas, bookletExportPrintSettings],
   );
   const stageRealWidth = isBooklet ? bookletSheetSize.width : isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
   const stageRealHeight = isBooklet ? bookletSheetSize.height : canvas.height;
@@ -2261,6 +2302,81 @@ export default function App() {
     return true;
   }
 
+  async function renderBookletSidePng(sideData, { checkResolution = true } = {}) {
+    if (!sideData) throw new Error('Нет стороны брошюры для экспорта');
+    setPrintBookletSideId(sideData.id);
+    await nextPaint();
+    if (checkResolution && !confirmPrintResolution(printBookletRef, bookletA4Geometry.renderPixelRatio)) return null;
+    const raw = printBookletRef.current?.toDataURL({ pixelRatio: bookletA4Geometry.renderPixelRatio, mimeType: 'image/png' });
+    if (!raw) throw new Error('Не получилось собрать сторону брошюры');
+    let raster = await composePrintRaster(raw, bookletA4Geometry);
+    if (shouldRotateBookletSide(sideData, normalizedBookletPrintSettings)) raster = await rotateRasterDataUrl180(raster);
+    return addPngDensityMetadata(raster, bookletA4Geometry.printDpi);
+  }
+
+  function bookletPdfSequence(kind) {
+    if (kind === 'fronts') return bookletManualDuplexOrder.fronts;
+    if (kind === 'backs') return bookletManualDuplexOrder.backs;
+    if (kind === 'test') return bookletManualDuplexOrder.test;
+    return bookletManualDuplexOrder.combined;
+  }
+
+  function bookletPdfFilename(kind) {
+    const base = `booklet-a4-${pages.length}-pages`;
+    if (kind === 'fronts') return `${base}-fronts.pdf`;
+    if (kind === 'backs') return `${base}-backs.pdf`;
+    if (kind === 'test') return `${base}-duplex-test.pdf`;
+    return `${base}-complete.pdf`;
+  }
+
+  function bookletPdfLabel(kind) {
+    if (kind === 'fronts') return 'PDF лицевых сторон A4';
+    if (kind === 'backs') return 'PDF оборотов A4';
+    if (kind === 'test') return 'тест первого листа A4';
+    return 'PDF всей брошюры A4';
+  }
+
+  async function exportBookletPdf(kind = 'combined') {
+    const label = bookletPdfLabel(kind);
+    if (pdfExporting || !ensureBookletReadyForExport(label)) return;
+    const sequence = bookletPdfSequence(kind);
+    if (!sequence.length) return show('Нет листов для PDF брошюры');
+    setPdfExporting(true);
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    try {
+      show(`Проверяю фотографии для ${label}`);
+      const warnings = await collectAlbumResolutionWarnings();
+      if (!confirmResolutionWarnings(warnings)) return;
+      const pdfPages = [];
+      let sourceBytes = 0;
+      for (let index = 0; index < sequence.length; index += 1) {
+        const sideData = sequence[index];
+        show(`Готовлю ${label}: ${index + 1}/${sequence.length}`);
+        const pngDataUrl = await renderBookletSidePng(sideData, { checkResolution: false });
+        const pdfPage = await pngDataUrlToJpegPage(pngDataUrl, bookletA4Geometry, { quality: 0.96 });
+        sourceBytes += pdfPage.jpegBytes.length;
+        if (sourceBytes > MAX_PDF_JPEG_BYTES) throw new Error('PDF брошюры получается слишком большим. Уменьши DPI или печатай блоки отдельно.');
+        pdfPages.push(pdfPage);
+      }
+      downloadPrintPdf(bookletPdfFilename(kind), pdfPages, printPdfMetadata(`${label} · ${sequence.length} сторон`, sequence.length, bookletA4Geometry));
+      show(`Скачан ${label}: ${sequence.length} сторон · A4 297×210 мм`);
+    } catch (error) {
+      console.warn('Booklet PDF export failed', error);
+      show(error?.message || 'Не получилось собрать PDF брошюры');
+    } finally {
+      setPrintBookletSideId(currentBookletSide?.id ?? null);
+      setPrintAlbumPageIndex(null);
+      setPdfExporting(false);
+    }
+  }
+
+  function downloadBookletInstructions() {
+    const instructions = buildBookletPrintInstructions({ plan: bookletPlan, settings: normalizedBookletPrintSettings, dpi: bookletA4Geometry.printDpi });
+    downloadPlainText(`booklet-a4-${pages.length}-pages-instructions.txt`, instructions);
+    show('Скачана инструкция печати брошюры');
+  }
+
   async function exportBookletSide(sideData = currentBookletSide) {
     if (!sideData) return show('Нет стороны брошюры для экспорта');
     setSelectedFrameId(null);
@@ -2780,11 +2896,11 @@ export default function App() {
             <div className="booklet-control-card booklet-settings-card">
               <strong>Настройки брошюры</strong>
               <div className="booklet-inline-controls">
-                <label className="booklet-sheets-control"><span>Листов в блоке</span><select value={bookletSheetsPerBlock} onChange={(event) => updateBookletSheetsPerBlock(event.target.value)}>{[1, 2, 3, 4].map((count) => <option key={count} value={count}>{count} лист. / {count * 4} стр.</option>)}</select></label>
-                <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.showFoldLine} onChange={(event) => updateBookletPrintSetting('showFoldLine', event.target.checked)} /><span>Сгиб</span></label>
-                <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.showCropMarks} onChange={(event) => updateBookletPrintSetting('showCropMarks', event.target.checked)} /><span>Метки реза</span></label>
-                <label className="booklet-sheets-control booklet-number-control"><span>Зазор px</span><SoftNumberInput min={0} max={MAX_BOOKLET_PRINT_GAP} value={normalizedBookletPrintSettings.gap} onValue={(value) => updateBookletPrintSetting('gap', value)} /></label>
-                <label className="booklet-sheets-control booklet-number-control"><span>Поля px</span><SoftNumberInput min={0} max={MAX_BOOKLET_PRINT_MARGIN} value={normalizedBookletPrintSettings.margin} onValue={(value) => updateBookletPrintSetting('margin', value)} /></label>
+                <label className="booklet-sheets-control"><span>Листов в блоке</span><select value={bookletSheetsPerBlock} onChange={(event) => updateBookletSheetsPerBlock(event.target.value)}>{[1, 2, 3, 4, 5, 6, 7, 8].map((count) => <option key={count} value={count}>{count} лист. / {count * 4} стр.</option>)}</select></label>
+                <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.showFoldLine} onChange={(event) => updateBookletPrintSetting('showFoldLine', event.target.checked)} /><span>Печатать линию сгиба</span></label>
+                <label className="booklet-sheets-control"><span>Порядок оборотов</span><select aria-label="Порядок оборотов" value={normalizedBookletPrintSettings.backOrder} onChange={(event) => updateBookletPrintSetting('backOrder', event.target.value)}><option value={BOOKLET_BACK_ORDER_REVERSE}>Обратный</option><option value={BOOKLET_BACK_ORDER_SAME}>Такой же</option></select></label>
+                <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.rotateBack180} onChange={(event) => updateBookletPrintSetting('rotateBack180', event.target.checked)} /><span>Развернуть обороты на 180°</span></label>
+                <label className="booklet-sheets-control booklet-number-control"><span>Толщина бумаги, мм</span><SoftNumberInput min={0.05} max={0.5} step={0.01} value={normalizedBookletPrintSettings.paperThicknessMm} onValue={(value) => updateBookletPrintSetting('paperThicknessMm', value)} /></label>
               </div>
             </div>
 
@@ -2800,9 +2916,11 @@ export default function App() {
 
             <div className="booklet-control-card booklet-summary-card">
               <strong>Сводка</strong>
-              <span>{bookletExportSummary.blocks} блок. · {bookletExportSummary.sheets} лист. · {bookletExportSummary.sides} сторон</span>
+              <span>{bookletExportSummary.blocks} блок. · {bookletExportSummary.sheets} лист. A4 · {bookletExportSummary.sides} сторон</span>
               <span>{bookletExportSummary.pages} стр. проекта · пустых: {bookletExportSummary.blanks}</span>
-              <span>Сгиб: {normalizedBookletPrintSettings.showFoldLine ? 'да' : 'нет'} · Метки: {normalizedBookletPrintSettings.showCropMarks ? 'да' : 'нет'} · Зазор: {normalizedBookletPrintSettings.gap}px · Поля: {normalizedBookletPrintSettings.margin}px</span>
+              <span>A4 горизонтально 297×210 мм · половина листа 148,5×210 мм · {bookletA4Geometry.outputWidthPx}×{bookletA4Geometry.outputHeightPx} px</span>
+              <span>Обороты: {normalizedBookletPrintSettings.backOrder === BOOKLET_BACK_ORDER_REVERSE ? 'обратный порядок' : 'тот же порядок'} · разворот 180°: {normalizedBookletPrintSettings.rotateBack180 ? 'да' : 'нет'}</span>
+              <span>Примерная толщина сложенного блока: {bookletBlockThicknessMm} мм</span>
               {bookletPlan.blankPageCount > 0 && (
                 <div className="booklet-warning">
                   <strong>Внимание:</strong> до полного блока не хватает {bookletPlan.blankPageCount} пуст. стр.
@@ -2814,9 +2932,14 @@ export default function App() {
             <div className="booklet-control-card booklet-export-card">
               <strong>Экспорт брошюры</strong>
               <div className="booklet-export-buttons">
-                <button className="small-button accent soft-accent" onClick={() => exportBookletSide()} disabled={!currentBookletSide}>PNG текущей стороны</button>
-                <button className="small-button accent soft-accent" onClick={exportBookletAll} disabled={!bookletPlan.sides.length}>PNG всех сторон</button>
-                <button className="small-button accent primary-accent" onClick={exportBookletZip} disabled={!bookletPlan.sides.length}>Пакет печати ZIP</button>
+                <button className="small-button accent primary-accent" onClick={() => exportBookletPdf('fronts')} disabled={!bookletPlan.sides.length || pdfExporting}>PDF лицевых A4</button>
+                <button className="small-button accent primary-accent" onClick={() => exportBookletPdf('backs')} disabled={!bookletPlan.sides.length || pdfExporting}>PDF оборотов A4</button>
+                <button className="small-button accent soft-accent" onClick={() => exportBookletPdf('combined')} disabled={!bookletPlan.sides.length || pdfExporting}>PDF вся брошюра A4</button>
+                <button className="small-button accent soft-accent" onClick={() => exportBookletPdf('test')} disabled={!bookletPlan.sides.length || pdfExporting}>Тест первого листа</button>
+                <button className="small-button" onClick={downloadBookletInstructions} disabled={!bookletPlan.sides.length}>Инструкция</button>
+                <button className="small-button" onClick={() => exportBookletSide()} disabled={!currentBookletSide}>PNG текущей стороны</button>
+                <button className="small-button" onClick={exportBookletAll} disabled={!bookletPlan.sides.length}>PNG всех сторон</button>
+                <button className="small-button" onClick={exportBookletZip} disabled={!bookletPlan.sides.length}>Пакет печати ZIP</button>
               </div>
             </div>
           </div>
@@ -3067,12 +3190,12 @@ export default function App() {
             <ExtraPageLayers extraLayers={extraLayers} pageIndex={spreadStart + 1} x={canvas.width} y={0} printMode />
           </Layer>
         </Stage>
-        <Stage ref={printBookletRef} width={bookletSheetSize.width} height={bookletSheetSize.height}>
+        <Stage ref={printBookletRef} width={bookletExportSheetSize.width} height={bookletExportSheetSize.height}>
           <Layer>
-            <BookletSheetBackground canvas={canvas} printSettings={normalizedBookletPrintSettings} />
+            <BookletSheetBackground canvas={canvas} printSettings={bookletExportPrintSettings} />
             {(printBookletSide?.slots ?? []).map((slot, index) => {
               const pageIndex = slot.sourcePageIndex ?? -1;
-              const position = getBookletPagePosition(index, canvas, normalizedBookletPrintSettings);
+              const position = getBookletPagePosition(index, canvas, bookletExportPrintSettings);
               return (
                 <React.Fragment key={`print-booklet-${printBookletSide?.id ?? 'empty'}-${index}`}>
                   <PageLayer
@@ -3086,7 +3209,7 @@ export default function App() {
                 </React.Fragment>
               );
             })}
-            <BookletPrintGuides canvas={canvas} printSettings={normalizedBookletPrintSettings} />
+            <BookletPrintGuides canvas={canvas} printSettings={bookletExportPrintSettings} />
           </Layer>
         </Stage>
       </div>
