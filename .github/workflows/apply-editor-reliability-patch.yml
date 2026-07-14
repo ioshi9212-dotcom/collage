@@ -1,0 +1,42 @@
+name: Apply editor reliability patch
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'agent/editor-reliability-fixes' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/editor-reliability-fixes
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply verified source patch
+        run: python scripts/apply_editor_reliability_patch.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate patch
+        run: |
+          npm run lint
+          npm test
+          npm run build
+          git diff --check
+      - name: Commit patched editor
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/AppLive.jsx src/styles.css
+          if git diff --cached --quiet; then
+            echo "Patch already applied"
+            exit 0
+          fi
+          git commit -m "Apply editor reliability fixes [editor-patch]"
+          git push origin HEAD:agent/editor-reliability-fixes
