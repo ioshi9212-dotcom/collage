@@ -47,6 +47,13 @@ async function openExportMenu(page) {
   if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
 }
 
+async function openPrintSettings(page) {
+  await page.locator('.inspector-tab-v2[data-tab="page"]').click();
+  const details = page.locator('.print-settings-details-v2');
+  if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
+  await expect(details.locator('.print-summary')).toBeAttached();
+}
+
 async function capturePng(page, buttonName) {
   const before = await page.evaluate(() => window.__capturedPrintDownloads.length);
   await openExportMenu(page);
@@ -112,6 +119,7 @@ async function capturePdf(page, buttonName) {
 test.describe('physical print export', () => {
   test('A5 page and spread have exact 300 DPI dimensions with 3 mm bleed and embedded density', async ({ page }) => {
     await waitForEditor(page);
+    await openPrintSettings(page);
 
     await expect(page.locator('.print-summary')).toContainText('148×210 мм');
     await expect(page.locator('.print-summary')).toContainText('300 DPI');
@@ -170,8 +178,7 @@ test.describe('physical print export', () => {
       window.__collageApp.getProject().pages.flatMap((pageData) => pageData.frames.map((frame) => frame.id))
     ));
 
-    await page.locator('.inspector-tab-v2[data-tab="page"]').click();
-    await page.locator('.print-settings-details-v2 > summary').click();
+    await openPrintSettings(page);
     await page.getByLabel('DPI').selectOption('254');
     await page.getByLabel('Вылет мм').fill('0');
     await page.getByLabel('Вылет мм').blur();
