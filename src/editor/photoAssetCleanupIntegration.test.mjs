@@ -18,6 +18,11 @@ assert.match(cleanupSource, /PHOTO_ASSET_CLEANUP_GRACE_MS = 14 \* 24 \* 60 \* 60
 assert.match(cleanupSource, /PHOTO_ASSET_CLEANUP_MAX_DELETE = 50/);
 assert.match(cleanupSource, /typeof bridge\.readLatest !== 'function'/);
 assert.match(cleanupSource, /key === CURRENT_STORAGE_KEY \|\| key\.startsWith\(LEGACY_STORAGE_PREFIX\)/);
+assert.match(cleanupSource, /Array\.isArray\(source\.pages\) \|\| Array\.isArray\(source\.frames\)/, 'only recognized project snapshots may authorize deletion');
+assert.match(cleanupSource, /Array\.isArray\(source\.frames\)[\s\S]{0,120}collectFrameAssetIds\(source\.frames/, 'legacy root frames must protect their assets');
+assert.match(cleanupSource, /openCursor\(\)/, 'cleanup must stream asset metadata instead of loading every Blob at once');
+assert.doesNotMatch(cleanupSource, /\.getAll\(\)/, 'cleanup must not retain all Blob records in one array');
+assert.match(cleanupSource, /delete metadata\.blob;/, 'cursor scans must discard Blob payloads immediately');
 assert.match(cleanupSource, /const storedProjects = await readStoredProjects\(\);[\s\S]{0,500}const records = await listAssets\(\);/, 'project references must be read before photo records are considered');
 assert.match(cleanupSource, /if \(deletedIds\.length\) await deleteAssets\(deletedIds\);/);
 assert.match(cleanupSource, /writeLastRun\(storage, now\);/);
