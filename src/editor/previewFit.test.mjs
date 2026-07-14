@@ -2,8 +2,27 @@ import assert from 'node:assert/strict';
 import {
   getBookletVisiblePageNumbers,
   getPreviewScale,
+  getStablePreviewViewport,
   isBookletPageActive,
 } from './previewFit.js';
+
+assert.deepEqual(getStablePreviewViewport({
+  containerWidth: 900,
+  viewportHeight: 900,
+  horizontalPadding: 24,
+}), { width: 852, height: 576 });
+
+assert.deepEqual(getStablePreviewViewport({
+  containerWidth: 900,
+  viewportHeight: 400,
+  horizontalPadding: 24,
+}), { width: 852, height: 360 });
+
+assert.deepEqual(getStablePreviewViewport({
+  containerWidth: 2000,
+  viewportHeight: 1600,
+  horizontalPadding: 24,
+}), { width: 1220, height: 720 });
 
 assert.equal(getPreviewScale({
   stageWidth: 2960,
@@ -32,4 +51,4 @@ assert.equal(isBookletPageActive(side, 7), true);
 assert.equal(isBookletPageActive(side, 3), false);
 assert.deepEqual([...getBookletVisiblePageNumbers({ slots: [{ pageNumber: null, isBlank: true }] })], []);
 
-console.log('preview fit and booklet pair checks passed');
+console.log('stable preview fit and booklet pair checks passed');
