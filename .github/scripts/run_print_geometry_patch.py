@@ -64,4 +64,8 @@ if 'EXPORT_RATIO' in app:
     'booklet ratio patch block',
 )
 
+if source.count('new_export = """') != 1:
+    raise SystemExit('print export template marker not found exactly once')
+source = source.replace('new_export = """', 'new_export = r"""', 1)
+
 exec(compile(source, str(PATCHER), 'exec'), {'__name__': '__main__'})
