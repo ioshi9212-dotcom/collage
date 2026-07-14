@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/apply_print_geometry.py'
+      - '.github/scripts/run_print_geometry_patch.py'
       - '.github/workflows/check-print-patch.yml'
 
 permissions:
@@ -19,6 +20,6 @@ jobs:
         with:
           ref: agent/print-geometry
       - name: Apply guarded patch
-        run: python .github/scripts/apply_print_geometry.py
+        run: python .github/scripts/run_print_geometry_patch.py
       - name: Show patch
         run: git diff --check && git diff --stat
