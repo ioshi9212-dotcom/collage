@@ -1,14 +1,15 @@
 name: Lint diagnostics
 
 on:
-  push:
-    branches: [agent/layer-safety-and-ci]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
   lint-report:
+    if: github.head_ref == 'agent/layer-safety-and-ci'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
