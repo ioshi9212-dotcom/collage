@@ -1,4 +1,4 @@
-import { compactProjectPhotos } from './photoStorage.js';
+import { createLocalPhotoProject } from './photoAssets.js';
 
 export const MAX_PHOTO_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_PHOTO_UPLOAD_BATCH = 100;
@@ -54,13 +54,11 @@ export function createPreparedProjectSnapshot(prepared, savedAt = new Date().toI
     throw new Error('Подготовленный проект не содержит страниц');
   }
 
-  const compactedPhotos = compactProjectPhotos(prepared.library, prepared.pages);
-  return {
-    version: 'live-23-photo-library-references',
+  return createLocalPhotoProject({
     canvas: prepared.canvas,
     settings: prepared.settings,
-    library: compactedPhotos.library,
-    pages: compactedPhotos.pages,
+    library: prepared.library,
+    pages: prepared.pages,
     currentPageId: prepared.currentPageId,
     viewMode: prepared.viewMode,
     bookletSheetsPerBlock: prepared.bookletSheetsPerBlock,
@@ -68,5 +66,5 @@ export function createPreparedProjectSnapshot(prepared, savedAt = new Date().toI
     extraLayers: prepared.extraLayers,
     albumEditorMode: prepared.albumEditorMode,
     savedAt,
-  };
+  });
 }
