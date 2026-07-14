@@ -5,6 +5,7 @@ on:
     branches: [agent/print-pdf-metadata]
     paths:
       - '.github/scripts/apply_print_pdf.py'
+      - '.github/scripts/fix_print_files_bom.py'
       - '.github/workflows/apply-print-pdf.yml'
 
 permissions:
@@ -27,7 +28,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Apply guarded patch
+      - name: Fix explicit XMP BOM
+        run: python .github/scripts/fix_print_files_bom.py
+      - name: Apply guarded editor patch
         run: python .github/scripts/apply_print_pdf.py
       - name: Check patch
         run: git diff --check
@@ -43,7 +46,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/AppLive.jsx
+          git add src/AppLive.jsx src/editor/printFiles.js
           git diff --cached --check
           git commit -m "Connect print PDF export to editor"
           git push origin HEAD:agent/print-pdf-metadata
