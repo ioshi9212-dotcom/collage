@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - src/editor-shell-v2.css
+      - src/editor/printGeometryIntegration.test.mjs
       - scripts/apply_editor_shell_v2.py
       - .github/workflows/editor-shell-v2-artifact.yml
       - .github/workflows/editor-shell-v2-patch.yml
