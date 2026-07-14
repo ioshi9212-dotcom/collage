@@ -130,7 +130,9 @@ assert.ok(saveClickBlock, 'storage click listener must keep a save branch');
 assert.doesNotMatch(saveClickBlock, /saveFullProjectSnapshot/, 'storage click listener must not duplicate the editor save');
 assert.match(appSource, /const data = project\(\);[\s\S]{0,900}saveLocalProject\(\{ silent: true, data \}\)/, 'editor save must build one project snapshot');
 assert.match(appSource, /saveCloudProject\(data\)/, 'cloud save must reuse the same snapshot');
-assert.match(appSource, /storeSnapshot\?\.\(data, \{ source: 'manual-save' \}\)/, 'IndexedDB save must reuse the same snapshot');
+assert.match(appSource, /const storeSnapshot = window\.__collageProjectStorage\?\.storeSnapshot;/, 'editor save must resolve the IndexedDB target once');
+assert.match(appSource, /storeSnapshot\(data, \{ source: 'manual-save' \}\)/, 'IndexedDB save must reuse the same snapshot');
+assert.match(appSource, /describeSaveResult\(\{ local, indexedDb, cloud, cloudError \}\)/, 'save feedback must reflect confirmed storage outcomes');
 
 assert.doesNotMatch(source, /function cloudProjectCardIndex|function openCloudProject/, 'storage must not duplicate cloud project opening');
 assert.doesNotMatch(source, /cloud-project-actions/, 'cloud card clicks must remain owned by cloud-auth.js');
