@@ -18,6 +18,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Repair temporary patch quoting
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply_layer_safety_patch.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace("\n\"\"\",\n'remove unused page mover')", "\n'',\n'remove unused page mover')")
+          text = text.replace("\n\"\"\",\n'remove unused visible layer page list')", "\n'',\n'remove unused visible layer page list')")
+          path.write_text(text, encoding='utf-8')
+          PY
       - name: Apply verified source patch
         run: python scripts/apply_layer_safety_patch.py
       - name: Install dependencies
