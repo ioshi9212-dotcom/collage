@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  MAX_PROJECT_FRAMES_PER_PAGE,
+  MAX_PROJECT_LIBRARY_ITEMS,
+  MAX_PROJECT_PAGES,
   clonePageForDuplicate,
   countFramesInLayout,
   createBlankPage,
@@ -181,6 +184,37 @@ function ids(prefix = 'id') {
     },
     { x: 40, y: 40, width: 700, height: 800 },
     'locked-mode project loading must continue to derive frame geometry from the grid layout',
+  );
+}
+
+{
+  assert.throws(
+    () => normalizeProjectPages({
+      pages: Array.from({ length: MAX_PROJECT_PAGES + 1 }, (_, index) => ({ id: `page-${index}`, frames: [] })),
+    }, canvas, settings),
+    /слишком много страниц/,
+  );
+  assert.throws(
+    () => normalizeProjectPages({
+      library: Array.from({ length: MAX_PROJECT_LIBRARY_ITEMS + 1 }, (_, index) => ({ id: `photo-${index}` })),
+      pages: [{ id: 'page', frames: [] }],
+    }, canvas, settings),
+    /слишком много фотографий/,
+  );
+  assert.throws(
+    () => normalizeProjectPages({
+      pages: [{
+        id: 'page',
+        frames: Array.from({ length: MAX_PROJECT_FRAMES_PER_PAGE + 1 }, (_, index) => ({
+          id: `frame-${index}`,
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+        })),
+      }],
+    }, canvas, settings),
+    /слишком много фото-окон/,
   );
 }
 
