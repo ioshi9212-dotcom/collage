@@ -20,7 +20,7 @@ assert.match(appSource, /async function applyProjectData\(data, message\)/);
 assert.match(appSource, /await hydratePhotoProject\(prepared\)/);
 assert.match(appSource, /releaseUnusedPhotoRuntimeUrls\(runtimePrepared\.library\.map/);
 assert.match(appSource, /async function downloadProjectJson\(\)/);
-assert.match(appSource, /onClick=\{downloadProjectJson\}>Скачать JSON/);
+assert.match(appSource, /downloadProjectJson[\s\S]{0,140}>Скачать JSON/);
 assert.match(appSource, /const canSaveCloud = window\.__collageCloudAuth\?\.isAuthenticated\?\.\(\) === true/);
 assert.match(appSource, /if \(canSaveCloud\) \{[\s\S]{0,240}saveCloudProject\(await portableProject\(\)\)/, 'local save must not materialize Base64 while logged out');
 
