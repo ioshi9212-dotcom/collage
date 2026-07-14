@@ -39,11 +39,13 @@ async function waitForEditor(page) {
   });
   await page.goto('/');
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
-  await expect(page.getByRole('button', { name: 'PNG страницы' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Экспорт ▾' })).toBeVisible();
 }
 
 async function capturePng(page, buttonName) {
   const before = await page.evaluate(() => window.__capturedPrintDownloads.length);
+  await page.getByRole('button', { name: 'Экспорт ▾' }).click();
+  await page.getByRole('button', { name: 'Экспорт ▾' }).click();
   await page.getByRole('button', { name: buttonName }).click();
   await expect.poll(() => page.evaluate(() => window.__capturedPrintDownloads.length)).toBe(before + 1);
   return page.evaluate(async (index) => {
@@ -163,6 +165,8 @@ test.describe('physical print export', () => {
       window.__collageApp.getProject().pages.flatMap((pageData) => pageData.frames.map((frame) => frame.id))
     ));
 
+    await page.locator('.inspector-tab-v2[data-tab="page"]').click();
+    await page.locator('.print-settings-details-v2 > summary').click();
     await page.getByLabel('DPI').selectOption('254');
     await page.getByLabel('Вылет мм').fill('0');
     await page.getByLabel('Вылет мм').blur();
