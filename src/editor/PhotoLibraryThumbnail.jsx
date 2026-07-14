@@ -25,10 +25,17 @@ export default function PhotoLibraryThumbnail({ photo }) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setFailed(false);
     setPreviewSrc('');
-    if (!visible || !photo?.src) return () => { cancelled = true; };
+    setFailed(false);
+  }, [photo?.src]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!visible) {
+      setPreviewSrc('');
+      return () => { cancelled = true; };
+    }
+    if (!photo?.src || failed) return () => { cancelled = true; };
 
     loadPhotoThumbnail(photo.src)
       .then((src) => {
@@ -40,7 +47,7 @@ export default function PhotoLibraryThumbnail({ photo }) {
       });
 
     return () => { cancelled = true; };
-  }, [visible, photo?.src]);
+  }, [visible, photo?.src, failed]);
 
   return (
     <div ref={holderRef} className={`photo-thumbnail ${failed ? 'photo-thumbnail-failed' : ''}`}>
