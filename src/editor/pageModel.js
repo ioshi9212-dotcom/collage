@@ -53,8 +53,8 @@ function assertProjectCollectionLimits(source) {
 }
 
 export function countFramesInLayout(layout) {
-  if (!layout?.rows) return 0;
-  return layout.rows.reduce((sum, row) => sum + (Array.isArray(row.columns) ? row.columns.length : 0), 0);
+  if (!Array.isArray(layout?.rows)) return 0;
+  return layout.rows.reduce((sum, row) => sum + (Array.isArray(row?.columns) ? row.columns.length : 0), 0);
 }
 
 export function resolvePageFrameCount(page, fallbackSettings = { frameCount: DEFAULT_PAGE_FRAME_COUNT }) {
@@ -159,7 +159,9 @@ export function normalizeProjectPages(data, nextCanvas, nextSettings, idFactory 
       if (page?.isBlankPage) {
         return createBlankPage(index + 1, { id: page.id, title: page.title }, idFactory);
       }
-      const frames = Array.isArray(page?.frames) ? page.frames.map((frame) => cleanFrame(frame, nextCanvas)) : [];
+      const frames = Array.isArray(page?.frames)
+        ? page.frames.filter((frame) => frame && typeof frame === 'object').map((frame) => cleanFrame(frame, nextCanvas))
+        : [];
       const existingLayoutCount = countFramesInLayout(page?.layout);
       const savedFrameCount = Number(page?.frameCount);
       const frameCount = Number.isFinite(savedFrameCount) && savedFrameCount >= 0
@@ -190,7 +192,9 @@ export function normalizeProjectPages(data, nextCanvas, nextSettings, idFactory 
 
   if (Array.isArray(source.frames)) {
     const [legacyPage] = hydrateProjectPhotos(source.library, [{ frames: source.frames }]);
-    const legacyFrames = legacyPage?.frames ?? source.frames;
+    const legacyFrames = Array.isArray(legacyPage?.frames)
+      ? legacyPage.frames.filter((frame) => frame && typeof frame === 'object')
+      : [];
     return [createPage(
       nextCanvas,
       nextSettings,
