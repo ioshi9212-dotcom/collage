@@ -20,6 +20,7 @@ cloud = replace_once(
     """    const forceCreate = options?.forceCreate === true;
     if (!state.user) return setStatus('Сначала войди в аккаунт');
     const requestedTitle = document.querySelector('.cloud-project-title')?.value || '';
+    let finalStatus = '';
     state.busy = true;
 """,
     'capture cloud title before render',
@@ -32,6 +33,33 @@ cloud = replace_once(
     """      const title = (requestedTitle || guessTitle(editorProject.data)).trim() || 'Без названия';
 """,
     'use captured cloud title',
+)
+cloud = replace_once(
+    cloud,
+    """      setStatus(editorProject.source === 'bridge' ? 'Сохранено в аккаунт' : 'Сохранено в аккаунт из локального сохранения');
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      state.busy = false;
+      render();
+    }
+  }
+
+  async function saveAsNew() {
+""",
+    """      finalStatus = editorProject.source === 'bridge' ? 'Сохранено в аккаунт' : 'Сохранено в аккаунт из локального сохранения';
+    } catch (error) {
+      finalStatus = error.message;
+    } finally {
+      state.busy = false;
+      render();
+      setStatus(finalStatus);
+    }
+  }
+
+  async function saveAsNew() {
+""",
+    'preserve cloud save result after render',
 )
 cloud_path.write_text(cloud, encoding='utf-8')
 
@@ -88,3 +116,16 @@ for (const failure of [
 """
 test = replace_once(test, anchor, insert, 'cloud title regression test')
 test_path.write_text(test, encoding='utf-8')
+
+
+e2e_path = Path('e2e/cloud-save.spec.mjs')
+e2e = e2e_path.read_text(encoding='utf-8')
+e2e = replace_once(
+    e2e,
+    """  await expect(page.locator('.cloud-auth-status')).toHaveText('Сохранено в аккаунт');
+""",
+    """  await expect(page.locator('.cloud-auth-status').first()).toHaveText('Сохранено в аккаунт');
+""",
+    'scope primary cloud status',
+)
+e2e_path.write_text(e2e, encoding='utf-8')
