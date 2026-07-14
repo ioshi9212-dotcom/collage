@@ -709,8 +709,33 @@ textarea:focus {
   box-shadow: inset 0 0 0 1px var(--ui-line);
   cursor: pointer;
   user-select: none;
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: 96px 132px;
 }
 .photo-card:hover { outline: 3px solid rgba(79, 143, 116, 0.22); }
+.photo-thumbnail {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  place-items: center;
+  background: linear-gradient(145deg, #f4f7f5, #e7eeea);
+  pointer-events: none;
+}
+.photo-thumbnail-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: #87918c;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.photo-thumbnail-failed .photo-thumbnail-placeholder { color: #9f5b52; }
+.disabled-upload-box { opacity: .62; cursor: progress; }
 .photo-card img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; pointer-events: none; }
 .photo-card span {
   display: block;
