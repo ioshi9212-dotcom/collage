@@ -43,10 +43,7 @@ async function waitForBookletEditor(page) {
 async function capturePdf(page, buttonName) {
   const before = await page.evaluate(() => window.__capturedBookletPdfs.length);
   await page.getByRole('button', { name: buttonName }).click();
-  await expect.poll(
-    () => page.evaluate(() => window.__capturedBookletPdfs.length),
-    { timeout: 180_000 },
-  ).toBe(before + 1);
+  await expect.poll(() => page.evaluate(() => window.__capturedBookletPdfs.length), { timeout: 180_000 }).toBe(before + 1);
 
   return page.evaluate(async (index) => {
     const item = window.__capturedBookletPdfs[index];
@@ -92,10 +89,11 @@ test.describe('A4 folded booklet home printing', () => {
 
     const project = await page.evaluate(() => window.__collageApp.getProject());
     const sheetCount = Math.ceil(project.pages.length / 4);
+    const summary = page.locator('.booklet-summary-card');
 
-    await expect(page.locator('.booklet-export-summary')).toContainText('A4 горизонтально 297×210 мм');
-    await expect(page.locator('.booklet-export-summary')).toContainText('половина листа 148,5×210 мм');
-    await expect(page.locator('.booklet-export-summary')).toContainText('3508×2480 px');
+    await expect(summary).toContainText('A4 горизонтально 297×210 мм');
+    await expect(summary).toContainText('половина листа 148,5×210 мм');
+    await expect(summary).toContainText('3508×2480 px');
 
     const fronts = await capturePdf(page, 'PDF лицевых A4');
     expect(fronts.filename).toBe(`booklet-a4-${project.pages.length}-pages-fronts.pdf`);
@@ -124,11 +122,7 @@ test.describe('A4 folded booklet home printing', () => {
     await page.getByLabel('Толщина бумаги, мм').blur();
 
     const project = await page.evaluate(() => window.__collageApp.getProject());
-    expect(project.bookletPrintSettings).toMatchObject({
-      backOrder: 'same',
-      rotateBack180: true,
-      paperThicknessMm: 0.15,
-    });
+    expect(project.bookletPrintSettings).toMatchObject({ backOrder: 'same', rotateBack180: true, paperThicknessMm: 0.15 });
     expect(project.pages.map((item) => item.id)).toEqual(pageIdsBefore);
   });
 });
