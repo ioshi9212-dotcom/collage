@@ -11,6 +11,11 @@ import {
 
 test.describe.configure({ mode: 'serial' });
 
+async function openExportMenu(page) {
+  const trigger = page.getByRole('button', { name: 'Экспорт ▾' });
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+}
+
 test('photo survives save, reload and local reopen through IndexedDB', async ({ page }) => {
   await openEditor(page);
   const uploaded = await uploadTinyPhoto(page, 'saved-photo.png');
@@ -26,7 +31,7 @@ test('photo survives save, reload and local reopen through IndexedDB', async ({ 
   });
   expect(assetBeforeSave.blobSize).toBeGreaterThan(0);
 
-  await page.locator('.file-actions').getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
   const localSnapshot = await waitForLocalProject(page);
 
   expect(localSnapshot.version).toBe('live-24-indexeddb-photo-assets');
@@ -37,7 +42,7 @@ test('photo survives save, reload and local reopen through IndexedDB', async ({ 
 
   await page.reload();
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
-  await page.locator('.file-actions').getByRole('button', { name: 'Открыть', exact: true }).click();
+  await page.getByRole('button', { name: 'Открыть', exact: true }).click();
   await page.waitForFunction((assetId) => window.__collageApp?.getProject?.().library?.[0]?.assetId === assetId, uploaded.assetId);
 
   const reopenedLocal = await page.evaluate(() => window.__collageApp.getProject());
@@ -82,7 +87,8 @@ test('legacy Base64 JSON migrates to Blob storage and downloads as a portable pr
     };
   }, TINY_PNG_DATA_URL);
 
-  await page.locator('.file-actions input[type="file"][accept*="json"]').setInputFiles({
+  await openExportMenu(page);
+  await page.locator('.export-popover-v2 input[type="file"][accept*="json"]').setInputFiles({
     name: 'legacy-project.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(legacyProject)),
@@ -101,7 +107,8 @@ test('legacy Base64 JSON migrates to Blob storage and downloads as a portable pr
   expect(asset).toMatchObject({ id: assetId, schema: 'indexeddb-blob-v1', hasBlob: true });
 
   const downloadPromise = page.waitForEvent('download');
-  await page.locator('.file-actions').getByRole('button', { name: 'Скачать JSON', exact: true }).click();
+  await openExportMenu(page);
+  await page.getByRole('button', { name: 'Скачать JSON', exact: true }).click();
   const download = await downloadPromise;
   const downloadPath = await download.path();
   expect(downloadPath).toBeTruthy();
