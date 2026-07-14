@@ -1,100 +1,121 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import vm from 'node:vm';
 
-const root = process.cwd();
-const source = readFileSync(resolve(root, 'public/project-storage.js'), 'utf8');
-const appSource = readFileSync(resolve(root, 'src/AppLive.jsx'), 'utf8');
-const indexSource = readFileSync(resolve(root, 'index.html'), 'utf8');
+const SOURCE_PATH = new URL('../../public/project-storage.js', import.meta.url);
+const APP_SOURCE_PATH = new URL('../AppLive.jsx', import.meta.url);
+const INDEX_PATH = new URL('../../index.html', import.meta.url);
+const source = readFileSync(SOURCE_PATH, 'utf8');
+const appSource = readFileSync(APP_SOURCE_PATH, 'utf8');
+const indexSource = readFileSync(INDEX_PATH, 'utf8');
+
+class FakeStorage {
+  constructor(entries = {}) {
+    this.map = new Map(Object.entries(entries));
+  }
+
+  getItem(key) {
+    return this.map.has(key) ? this.map.get(key) : null;
+  }
+
+  setItem(key, value) {
+    this.map.set(String(key), String(value));
+  }
+
+  removeItem(key) {
+    this.map.delete(String(key));
+  }
+
+  key(index) {
+    return [...this.map.keys()][index] ?? null;
+  }
+
+  get length() {
+    return this.map.size;
+  }
+}
 
 const records = new Map();
 const puts = [];
 let databaseOpenCount = 0;
 let stringifyCount = 0;
-
-const database = {
-  objectStoreNames: { contains: () => true },
-  close() {},
-  transaction(_storeName, mode) {
-    const transaction = {
-      error: null,
-      oncomplete: null,
-      onerror: null,
-      onabort: null,
-      objectStore() {
-        return {
-          put(record) {
-            puts.push(record);
-            setTimeout(() => {
-              records.set(record.key, record);
-              transaction.oncomplete?.();
-            }, 12);
-          },
-          get(key) {
-            const request = { result: null, error: null, onsuccess: null, onerror: null };
-            setTimeout(() => {
-              request.result = records.get(key) || null;
-              request.onsuccess?.();
-            }, 0);
-            return request;
-          },
-        };
-      },
-    };
-    assert.ok(mode === 'readwrite' || mode === 'readonly');
-    return transaction;
+const nativeStringify = JSON.stringify;
+const json = {
+  parse: JSON.parse,
+  stringify(...args) {
+    stringifyCount += 1;
+    return nativeStringify(...args);
   },
+};
+
+function transaction() {
+  const tx = {
+    error: null,
+    objectStore() {
+      return {
+        put(record) {
+          puts.push(record);
+          records.set(record.key, record);
+        },
+        get(key) {
+          const request = {};
+          queueMicrotask(() => {
+            request.result = records.get(key);
+            request.onsuccess?.();
+          });
+          return request;
+        },
+      };
+    },
+  };
+  queueMicrotask(() => tx.oncomplete?.());
+  return tx;
+}
+
+const fakeDatabase = {
+  objectStoreNames: { contains: () => true },
+  transaction,
+  close() {},
 };
 
 const indexedDB = {
   open() {
     databaseOpenCount += 1;
-    const request = { result: database, error: null, onsuccess: null, onerror: null, onupgradeneeded: null };
-    setTimeout(() => request.onsuccess?.(), 0);
+    const request = {};
+    queueMicrotask(() => {
+      request.result = fakeDatabase;
+      request.onsuccess?.();
+    });
     return request;
   },
 };
 
-const countedJson = {
-  parse: JSON.parse,
-  stringify(...args) {
-    stringifyCount += 1;
-    return JSON.stringify(...args);
-  },
-};
-
+const window = { requestAnimationFrame: (callback) => callback() };
 const document = {
-  readyState: 'loading',
-  body: { append() {} },
-  addEventListener() {},
+  readyState: 'complete',
   querySelector() { return null; },
-  querySelectorAll() { return []; },
-  createElement() {
-    return { style: {}, append() {}, remove() {}, set textContent(_value) {} };
-  },
+  addEventListener() {},
+  body: { append() {} },
+  createElement() { return { style: {}, remove() {} }; },
 };
 
-const context = {
-  window: {},
+const context = vm.createContext({
+  window,
   document,
+  localStorage: new FakeStorage(),
   indexedDB,
-  localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
+  JSON: json,
+  File: class {},
+  DataTransfer: class {},
+  Event: class {},
   console,
-  Date,
-  Map,
-  Set,
-  Promise,
-  JSON: countedJson,
-  setTimeout,
-  clearTimeout,
-};
-context.globalThis = context;
-vm.createContext(context);
+  setTimeout: (callback) => callback(),
+  clearTimeout() {},
+  queueMicrotask,
+});
 vm.runInContext(source, context, { filename: 'project-storage.js' });
-
-const storage = context.window.__collageProjectStorage;
-assert.equal(typeof storage?.storeSnapshot, 'function', 'storage bridge must accept an existing snapshot');
+const storage = window.__collageProjectStorage;
+assert.ok(storage);
 
 function snapshot(marker) {
   return {
@@ -128,10 +149,11 @@ assert.doesNotMatch(source, /projectSignature|structuredClone|writeQueue\s*=\s*P
 const saveClickBlock = source.match(/if \(label === 'Сохранить'\) \{([\s\S]*?)\n {6}\}/)?.[1] || '';
 assert.ok(saveClickBlock, 'storage click listener must keep a save branch');
 assert.doesNotMatch(saveClickBlock, /saveFullProjectSnapshot/, 'storage click listener must not duplicate the editor save');
-assert.match(appSource, /const data = project\(\);[\s\S]{0,900}saveLocalProject\(\{ silent: true, data \}\)/, 'editor save must build one project snapshot');
-assert.match(appSource, /saveCloudProject\(data\)/, 'cloud save must reuse the same snapshot');
+assert.match(appSource, /const data = project\(\);[\s\S]{0,900}saveLocalProject\(\{ silent: true, data \}\)/, 'editor save must build one compact local snapshot');
+assert.match(appSource, /saveCloudProject\(await portableProject\(\)\)/, 'cloud save must materialize a separate portable snapshot');
+assert.match(appSource, /getPortableProject: \(\) => portableProject\(\)/, 'cloud panel must receive a portable project bridge');
 assert.match(appSource, /const storeSnapshot = window\.__collageProjectStorage\?\.storeSnapshot;/, 'editor save must resolve the IndexedDB target once');
-assert.match(appSource, /storeSnapshot\(data, \{ source: 'manual-save' \}\)/, 'IndexedDB save must reuse the same snapshot');
+assert.match(appSource, /storeSnapshot\(data, \{ source: 'manual-save' \}\)/, 'IndexedDB save must reuse the compact local snapshot');
 assert.match(appSource, /describeSaveResult\(\{ local, indexedDb, cloud, cloudError \}\)/, 'save feedback must reflect confirmed storage outcomes');
 
 assert.doesNotMatch(source, /function cloudProjectCardIndex|function openCloudProject/, 'storage must not duplicate cloud project opening');
