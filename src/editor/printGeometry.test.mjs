@@ -30,7 +30,7 @@ assert.ok(Math.abs(pixelsToMm(1748, 300) - 148) < 0.05);
   assert.equal(geometry.trimHeightPx, 2480);
   assert.equal(geometry.outputWidthPx, 1819);
   assert.equal(geometry.outputHeightPx, 2551);
-  assert.ok(Math.abs(geometry.renderPixelRatio - (2480 / 2100)) < 1e-9);
+  assert.ok(Math.abs(geometry.renderPixelRatio - Math.max(1748 / 1480, 2480 / 2100)) < 1e-9);
   assert.equal(formatPrintSummary(geometry), '148×210 мм · 300 DPI · PNG 1819×2551 px');
 }
 
@@ -77,7 +77,7 @@ assert.ok(Math.abs(pixelsToMm(1748, 300) - 148) < 0.05);
     { width: 1480, height: 2100 },
     { presetId: 'a5-portrait', printDpi: 300 },
   );
-  assert.ok(Math.abs(pixelRatio - (2480 / 2100)) < 1e-9);
+  assert.ok(Math.abs(pixelRatio - Math.max(1748 / 1480, 2480 / 2100)) < 1e-9);
 }
 
 assert.equal(estimateEffectiveDpi({
