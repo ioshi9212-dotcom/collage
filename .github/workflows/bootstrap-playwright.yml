@@ -34,6 +34,16 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run browser E2E
         run: npm run e2e
+      - name: Upload failed browser report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-playwright-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Commit package metadata
         run: |
           git config user.name "github-actions[bot]"
