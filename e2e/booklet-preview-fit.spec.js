@@ -7,6 +7,15 @@ async function waitForEditor(page) {
   await expect(page.locator('.booklet-canvas-area')).toBeVisible();
 }
 
+async function ensurePageCount(page, targetCount) {
+  let pageCount = await page.evaluate(() => window.__collageApp.getProject().pages.length);
+  while (pageCount < targetCount) {
+    await page.getByRole('button', { name: '+ Страница', exact: true }).click();
+    pageCount += 1;
+  }
+  await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().pages.length)).toBe(targetCount);
+}
+
 function pageCard(page, pageNumber) {
   return page.locator('.page-rail-card').filter({
     has: page.locator('.page-rail-card-top b', { hasText: new RegExp(`^${pageNumber}$`) }),
@@ -17,6 +26,7 @@ test.describe('booklet pair preview', () => {
   test('clicking page 2 keeps both page 2 and its printed neighbour 7 active', async ({ page }) => {
     await page.setViewportSize({ width: 1640, height: 900 });
     await waitForEditor(page);
+    await ensurePageCount(page, 8);
     await page.getByLabel('Листов в блоке').selectOption('2');
 
     await pageCard(page, 2).click();
