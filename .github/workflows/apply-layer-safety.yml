@@ -1,15 +1,15 @@
 name: Apply layer safety patch
 
 on:
-  push:
-    branches: [agent/layer-safety-and-ci]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'agent/layer-safety-and-ci' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
