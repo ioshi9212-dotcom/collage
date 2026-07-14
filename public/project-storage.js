@@ -4,12 +4,40 @@
   const STORE_NAME = 'projects';
   const LATEST_LOCAL_KEY = 'latest-local';
   const CURRENT_STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
+  const LEGACY_STORAGE_PREFIX = 'collage-creator-album';
+  const ALBUM_LAYERS_KEY = 'collage-album-extra-layers-v1';
   const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
   const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';
 
   let databasePromise = null;
   let writeInFlight = false;
   const pendingWrites = new Map();
+
+  function readLegacyExtraLayers() {
+    try {
+      const raw = localStorage.getItem(ALBUM_LAYERS_KEY);
+      if (!raw) return null;
+      const layers = JSON.parse(raw);
+      return layers?.pages && typeof layers.pages === 'object'
+        ? { version: 1, pages: layers.pages }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // This script is loaded before the React module so legacy layers are captured
+  // before the editor removes the obsolete standalone key.
+  const startupLegacyExtraLayers = readLegacyExtraLayers();
+
+  function attachLegacyExtraLayers(project) {
+    if (!project || typeof project !== 'object') return { data: project, migrated: false };
+    if (project.extraLayers?.pages || !startupLegacyExtraLayers) return { data: project, migrated: false };
+    return {
+      data: { ...project, extraLayers: startupLegacyExtraLayers },
+      migrated: true,
+    };
+  }
 
   function openDatabase() {
     if (databasePromise) return databasePromise;
@@ -185,17 +213,45 @@
     if (status) status.textContent = message;
   }
 
-  async function readJsonResponse(response) {
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.message || payload?.error || `Ошибка запроса (${response.status})`);
+  function clearCloudProjectBinding() {
+    localStorage.removeItem(CURRENT_PROJECT_ID_KEY);
+    localStorage.removeItem(CURRENT_PROJECT_TITLE_KEY);
+    const titleInput = document.querySelector('.cloud-project-title');
+    if (titleInput) titleInput.value = '';
+  }
+
+  function parseStoredProject(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      validateProject(parsed);
+      const attached = attachLegacyExtraLayers(parsed);
+      return {
+        key,
+        data: attached.data,
+        migratedLayers: attached.migrated,
+        savedAt: Date.parse(parsed.savedAt || '') || 0,
+      };
+    } catch {
+      return null;
     }
-    return payload;
+  }
+
+  function findLatestLocalStorageProject() {
+    const current = parseStoredProject(CURRENT_STORAGE_KEY);
+    if (current) return current;
+
+    return Object.keys(localStorage)
+      .filter((key) => key !== CURRENT_STORAGE_KEY && key.startsWith(LEGACY_STORAGE_PREFIX))
+      .map(parseStoredProject)
+      .filter(Boolean)
+      .sort((left, right) => right.savedAt - left.savedAt)[0] || null;
   }
 
   function findJsonInput() {
-    return document.querySelector('input.hidden-input[type="file"][accept*="json"]')
-      || document.querySelector('input[type="file"][accept*="application/json"]');
+    return document.querySelector('.file-actions input.hidden-input[type="file"][accept*="json"]')
+      || document.querySelector('.file-actions input[type="file"][accept*="application/json"]');
   }
 
   function importIntoEditor(data) {
@@ -251,21 +307,32 @@
     return persistProjectSnapshot(snapshot, { source });
   }
 
+  async function persistMigratedRecord(record, source) {
+    const attached = attachLegacyExtraLayers(record?.data);
+    if (!attached.migrated) return record;
+    await queueProjectWrite(LATEST_LOCAL_KEY, attached.data, {
+      source,
+      ...projectStats(attached.data),
+    });
+    localStorage.removeItem(ALBUM_LAYERS_KEY);
+    return { ...record, data: attached.data };
+  }
+
   async function openLocalProject() {
     try {
       setCloudStatus('Открываю сохранённый проект…');
       let record = await readProject(LATEST_LOCAL_KEY);
+      if (record?.data) record = await persistMigratedRecord(record, 'indexeddb-layer-migration');
 
       if (!record?.data) {
-        const raw = localStorage.getItem(CURRENT_STORAGE_KEY);
-        if (raw) {
-          const data = JSON.parse(raw);
-          validateProject(data);
-          record = { data };
-          await queueProjectWrite(LATEST_LOCAL_KEY, data, {
-            source: 'localStorage-migration',
-            ...projectStats(data),
+        const localProject = findLatestLocalStorageProject();
+        if (localProject?.data) {
+          record = { data: localProject.data };
+          await queueProjectWrite(LATEST_LOCAL_KEY, localProject.data, {
+            source: localProject.key === CURRENT_STORAGE_KEY ? 'localStorage-migration' : 'legacy-localStorage-migration',
+            ...projectStats(localProject.data),
           });
+          if (localProject.migratedLayers) localStorage.removeItem(ALBUM_LAYERS_KEY);
         }
       }
 
@@ -274,56 +341,10 @@
       }
 
       validateProject(record.data);
+      clearCloudProjectBinding();
       importIntoEditor(record.data);
-      setCloudStatus('Сохранённый проект открыт');
-      showToast('Проект открыт полностью: макет, текст, цвета и фото');
-    } catch (error) {
-      console.error(error);
-      setCloudStatus(error.message);
-      showToast(error.message, true);
-    }
-  }
-
-  function cloudProjectCardIndex(button) {
-    const card = button.closest('.cloud-project-card');
-    if (!card) return -1;
-    return Array.from(document.querySelectorAll('.cloud-project-list .cloud-project-card')).indexOf(card);
-  }
-
-  async function openCloudProject(button) {
-    try {
-      const index = cloudProjectCardIndex(button);
-      if (index < 0) throw new Error('Не удалось определить выбранный проект');
-
-      setCloudStatus('Открываю проект…');
-      const listResponse = await fetch('/api/projects', { credentials: 'include' });
-      const listPayload = await readJsonResponse(listResponse);
-      const summary = Array.isArray(listPayload.projects) ? listPayload.projects[index] : null;
-      if (!summary?.id) throw new Error('Проект не найден. Нажми «Обновить» и попробуй снова.');
-
-      const projectResponse = await fetch(`/api/projects/${encodeURIComponent(summary.id)}`, {
-        credentials: 'include',
-      });
-      const projectPayload = await readJsonResponse(projectResponse);
-      const project = projectPayload.project;
-      if (!project?.data) throw new Error('В сохранении нет данных проекта');
-      validateProject(project.data);
-
-      await queueProjectWrite(LATEST_LOCAL_KEY, project.data, {
-        source: 'cloud',
-        projectId: project.id,
-        title: project.title,
-        ...projectStats(project.data),
-      });
-      importIntoEditor(project.data);
-
-      localStorage.setItem(CURRENT_PROJECT_ID_KEY, project.id);
-      localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, project.title || 'Без названия');
-      const titleInput = document.querySelector('.cloud-project-title');
-      if (titleInput) titleInput.value = project.title || '';
-
-      setCloudStatus('Проект открыт');
-      showToast('Проект открыт полностью из аккаунта');
+      setCloudStatus('Сохранённый проект открыт как локальная копия');
+      showToast('Проект открыт локально. Следующее облачное сохранение создаст новый проект.');
     } catch (error) {
       console.error(error);
       setCloudStatus(error.message);
@@ -333,22 +354,31 @@
 
   async function migrateCurrentLocalProject() {
     try {
-      const existing = await readProject(LATEST_LOCAL_KEY);
+      let existing = await readProject(LATEST_LOCAL_KEY);
       if (existing?.data) {
-        return;
+        existing = await persistMigratedRecord(existing, 'indexeddb-layer-migration');
+        return existing;
       }
-      const raw = localStorage.getItem(CURRENT_STORAGE_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      validateProject(data);
-      await queueProjectWrite(LATEST_LOCAL_KEY, data, {
-        source: 'localStorage-migration',
-        ...projectStats(data),
+
+      const localProject = findLatestLocalStorageProject();
+      if (!localProject?.data) return null;
+      await queueProjectWrite(LATEST_LOCAL_KEY, localProject.data, {
+        source: localProject.key === CURRENT_STORAGE_KEY ? 'localStorage-migration' : 'legacy-localStorage-migration',
+        ...projectStats(localProject.data),
       });
+      if (localProject.migratedLayers) localStorage.removeItem(ALBUM_LAYERS_KEY);
+      return localProject;
     } catch (error) {
       console.warn('Не удалось перенести локальное сохранение в IndexedDB', error);
+      return null;
     }
   }
+
+  document.addEventListener('change', (event) => {
+    const input = event.target;
+    if (!input?.closest?.('.file-actions')) return;
+    if (String(input.accept || '').includes('json')) clearCloudProjectBinding();
+  }, true);
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('button');
@@ -365,14 +395,7 @@
         event.preventDefault();
         event.stopImmediatePropagation();
         void openLocalProject();
-        return;
       }
-    }
-
-    if (label === 'Открыть' && button.closest('.cloud-project-actions')) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void openCloudProject(button);
     }
   }, true);
 

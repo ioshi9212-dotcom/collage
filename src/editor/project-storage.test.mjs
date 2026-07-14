@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const root = process.cwd();
 const source = readFileSync(resolve(root, 'public/project-storage.js'), 'utf8');
 const appSource = readFileSync(resolve(root, 'src/AppLive.jsx'), 'utf8');
+const indexSource = readFileSync(resolve(root, 'index.html'), 'utf8');
 
 const records = new Map();
 const puts = [];
@@ -130,5 +131,18 @@ assert.doesNotMatch(saveClickBlock, /saveFullProjectSnapshot/, 'storage click li
 assert.match(appSource, /const data = project\(\);[\s\S]{0,900}saveLocalProject\(\{ silent: true, data \}\)/, 'editor save must build one project snapshot');
 assert.match(appSource, /saveCloudProject\(data\)/, 'cloud save must reuse the same snapshot');
 assert.match(appSource, /storeSnapshot\?\.\(data, \{ source: 'manual-save' \}\)/, 'IndexedDB save must reuse the same snapshot');
+
+assert.doesNotMatch(source, /function cloudProjectCardIndex|function openCloudProject/, 'storage must not duplicate cloud project opening');
+assert.doesNotMatch(source, /cloud-project-actions/, 'cloud card clicks must remain owned by cloud-auth.js');
+assert.match(source, /function clearCloudProjectBinding\(\)/, 'local imports must have an explicit cloud unlink operation');
+assert.match(source, /clearCloudProjectBinding\(\);\s*importIntoEditor\(record\.data\)/, 'opening a local project must unlink it before importing');
+assert.match(source, /input\?\.closest\?\.\('\.file-actions'\)[\s\S]{0,180}clearCloudProjectBinding\(\)/, 'manual project JSON imports must unlink the previous cloud project');
+assert.match(source, /LEGACY_STORAGE_PREFIX[\s\S]{0,5000}findLatestLocalStorageProject/, 'local opening must retain legacy-project discovery');
+assert.match(source, /const startupLegacyExtraLayers = readLegacyExtraLayers\(\)/, 'legacy layers must be captured synchronously at script startup');
+assert.match(source, /attachLegacyExtraLayers[\s\S]{0,9000}localStorage\.removeItem\(ALBUM_LAYERS_KEY\)/, 'legacy layer key must only be removed after migration code persists it');
+assert.ok(
+  indexSource.indexOf('/project-storage.js') < indexSource.indexOf('/src/main.jsx'),
+  'project storage must load before React so obsolete standalone layers can be captured safely',
+);
 
 console.log('project storage performance checks passed');

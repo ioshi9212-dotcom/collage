@@ -98,7 +98,9 @@ async function readChunks(chunks, limitBytes, headers = {}) {
 
 const serverSource = readFileSync(resolve(process.cwd(), 'server.js'), 'utf8');
 assert.match(serverSource, /RequestBodyError/);
-assert.match(serverSource, /readJsonBody\(request, jsonLimitBytes\)/);
+assert.match(serverSource, /function readBody\(request, limitBytes = jsonLimitBytes\)/);
+assert.match(serverSource, /readJsonBody\(request, limitBytes\)/);
+assert.match(serverSource, /readBody\(request, authJsonLimitBytes\)/, 'auth routes must use the smaller dedicated request limit');
 assert.match(serverSource, /sendJson\(response, error\.status/);
 assert.doesNotMatch(serverSource, /request\.destroy\(\)/, 'oversized JSON must not destroy the request socket');
 
