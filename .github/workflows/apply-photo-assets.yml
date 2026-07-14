@@ -69,6 +69,7 @@ jobs:
           new = '''  const first = harness.api.saveAsNew();
             const second = harness.api.saveAsNew();
             await Promise.resolve();
+            await Promise.resolve();
             assert.equal(calls.filter((call) => call.method === 'POST').length, 1, 'rapid clicks must create only one copy');'''
           if old not in text:
               raise SystemExit('cloud timing test anchor not found')
