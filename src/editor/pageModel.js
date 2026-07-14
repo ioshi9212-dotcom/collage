@@ -2,6 +2,11 @@ import { buildGridLayout, clamp, cleanFrame, framesFromLayout } from './layout.j
 import { hydrateProjectPhotos } from './photoStorage.js';
 
 export const DEFAULT_PAGE_FRAME_COUNT = 5;
+export const MAX_PROJECT_PAGES = 500;
+export const MAX_PROJECT_LIBRARY_ITEMS = 5000;
+export const MAX_PROJECT_FRAMES_PER_PAGE = 100;
+export const MAX_PROJECT_LAYOUT_ROWS = 50;
+export const MAX_PROJECT_LAYOUT_COLUMNS = 100;
 
 function cloneDeep(value) {
   try {
@@ -13,6 +18,38 @@ function cloneDeep(value) {
 
 function makePageId() {
   return globalThis.crypto?.randomUUID?.() ?? `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function assertProjectCollectionLimits(source) {
+  const library = Array.isArray(source?.library) ? source.library : [];
+  if (library.length > MAX_PROJECT_LIBRARY_ITEMS) {
+    throw new Error(`В проекте слишком много фотографий: максимум ${MAX_PROJECT_LIBRARY_ITEMS}.`);
+  }
+
+  const pages = Array.isArray(source?.pages) ? source.pages : [];
+  if (pages.length > MAX_PROJECT_PAGES) {
+    throw new Error(`В проекте слишком много страниц: максимум ${MAX_PROJECT_PAGES}.`);
+  }
+
+  pages.forEach((page, pageIndex) => {
+    const frames = Array.isArray(page?.frames) ? page.frames : [];
+    if (frames.length > MAX_PROJECT_FRAMES_PER_PAGE) {
+      throw new Error(`На странице ${pageIndex + 1} слишком много фото-окон.`);
+    }
+
+    const rows = Array.isArray(page?.layout?.rows) ? page.layout.rows : [];
+    if (rows.length > MAX_PROJECT_LAYOUT_ROWS) {
+      throw new Error(`На странице ${pageIndex + 1} повреждена сетка.`);
+    }
+    const columnCount = rows.reduce((sum, row) => sum + (Array.isArray(row?.columns) ? row.columns.length : 0), 0);
+    if (columnCount > MAX_PROJECT_LAYOUT_COLUMNS) {
+      throw new Error(`На странице ${pageIndex + 1} повреждена сетка.`);
+    }
+  });
+
+  if (Array.isArray(source?.frames) && source.frames.length > MAX_PROJECT_FRAMES_PER_PAGE) {
+    throw new Error('В старом проекте слишком много фото-окон.');
+  }
 }
 
 export function countFramesInLayout(layout) {
@@ -115,6 +152,7 @@ export function createInitialAlbum(canvas, settings, idFactory = makePageId) {
 
 export function normalizeProjectPages(data, nextCanvas, nextSettings, idFactory = makePageId) {
   const source = data && typeof data === 'object' ? data : {};
+  assertProjectCollectionLimits(source);
   const hydratedPages = hydrateProjectPhotos(source.library, source.pages);
   if (hydratedPages.length) {
     return hydratedPages.map((page, index) => {
