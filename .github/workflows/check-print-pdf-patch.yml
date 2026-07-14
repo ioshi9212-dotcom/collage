@@ -29,15 +29,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Lint
-        run: npm run lint
+        id: lint
+        continue-on-error: true
+        run: npm run lint 2>&1 | tee lint-report.txt
+      - name: Upload patched editor and lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: print-pdf-patched-editor
+          path: |
+            src/AppLive.jsx
+            lint-report.txt
+          if-no-files-found: error
+          retention-days: 1
+      - name: Stop on lint failure
+        if: steps.lint.outcome == 'failure'
+        run: exit 1
       - name: Test
         run: npm test
       - name: Build
         run: npm run build
-      - name: Upload patched editor
-        uses: actions/upload-artifact@v4
-        with:
-          name: print-pdf-patched-editor
-          path: src/AppLive.jsx
-          if-no-files-found: error
-          retention-days: 1
