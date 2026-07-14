@@ -3,6 +3,9 @@ import { expect, test } from '@playwright/test';
 async function waitForEditor(page) {
   await page.goto('/');
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
+}
+
+async function openBooklet(page) {
   await page.getByRole('button', { name: 'Брошюра' }).click();
   await expect(page.locator('.booklet-canvas-area')).toBeVisible();
 }
@@ -27,6 +30,7 @@ test.describe('booklet pair preview', () => {
     await page.setViewportSize({ width: 1640, height: 900 });
     await waitForEditor(page);
     await ensurePageCount(page, 8);
+    await openBooklet(page);
     await page.getByLabel('Листов в блоке').selectOption('2');
 
     await pageCard(page, 2).click();
@@ -44,6 +48,7 @@ test.describe('booklet pair preview', () => {
   test('booklet canvas fits inside its frame without internal scrollbars', async ({ page }) => {
     await page.setViewportSize({ width: 1640, height: 900 });
     await waitForEditor(page);
+    await openBooklet(page);
 
     await expect.poll(async () => page.locator('.stage-frame').evaluate((frame) => {
       const shell = frame.querySelector('.stage-scale-shell');
