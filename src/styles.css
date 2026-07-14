@@ -406,17 +406,32 @@ button.small-button {
 .settings-bar.document-panel {
   display: block;
   width: fit-content;
-  max-width: 760px;
+  max-width: 1120px;
   margin: 0 0 7px;
   padding: 9px 10px;
 }
 
 .document-grid {
   display: grid;
-  grid-template-columns: 255px 92px 92px 88px 78px 78px;
+  grid-template-columns: minmax(220px, 1.8fr) repeat(5, minmax(82px, 1fr));
   align-items: end;
   gap: 7px;
 }
+
+.document-grid .wide-field { grid-column: span 1; }
+
+.print-summary {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--ui-line);
+  margin-top: 2px;
+  padding-top: 7px;
+  color: var(--ui-muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.print-summary strong { color: var(--ui-green-dark); }
 
 .field,
 .range-row { display: grid; gap: 4px; }
