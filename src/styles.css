@@ -1341,15 +1341,18 @@ body[data-album-mode='templates'] .three-columns {
   body[data-album-mode='text'] .three-columns,
   body[data-album-mode='drawings'] .three-columns,
   body[data-album-mode='templates'] .three-columns {
-    grid-template-columns: 210px max-content !important;
+    grid-template-columns: 210px minmax(0, 1fr) !important;
     grid-template-areas:
       "photos pages"
-      "photos canvas" !important;
+      "photos canvas"
+      "inspector inspector" !important;
   }
 
-  .inspector,
-  .album-mode-inspector {
-    display: none !important;
+  .workspace > .inspector {
+    display: grid !important;
+    grid-area: inspector;
+    width: 100%;
+    max-height: none;
   }
 }
 
@@ -1504,16 +1507,20 @@ body[data-album-mode='templates'] .page-rail-card b {
   body[data-album-mode='text'] .three-columns,
   body[data-album-mode='drawings'] .three-columns,
   body[data-album-mode='templates'] .three-columns {
-    grid-template-columns: 210px max-content !important;
+    grid-template-columns: 210px minmax(0, 1fr) !important;
     grid-template-areas:
       "mode-sidebar pages"
-      "mode-sidebar canvas" !important;
+      "mode-sidebar canvas"
+      "mode-inspector mode-inspector" !important;
   }
 
   body[data-album-mode='text'] .workspace > .album-mode-inspector,
   body[data-album-mode='drawings'] .workspace > .album-mode-inspector,
   body[data-album-mode='templates'] .workspace > .album-mode-inspector {
-    display: none !important;
+    display: grid !important;
+    grid-area: mode-inspector;
+    width: 100%;
+    max-height: none;
   }
 }
 
@@ -1536,6 +1543,13 @@ body[data-album-mode='templates'] .page-rail-card b {
   body[data-album-mode='drawings'] .workspace > .page-rail,
   body[data-album-mode='templates'] .workspace > .page-rail {
     width: 100%;
+  }
+
+  .workspace > .inspector,
+  .workspace > .album-mode-inspector {
+    display: grid !important;
+    width: 100%;
+    max-height: none;
   }
 }
 

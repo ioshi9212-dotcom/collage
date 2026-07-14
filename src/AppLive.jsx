@@ -26,6 +26,13 @@ import { compactProjectPhotos } from './editor/photoStorage';
 import { loadCachedImage as loadImage } from './editor/imageCache';
 import { prepareEditorProject } from './editor/projectLoad';
 import {
+  MAX_LIBRARY_PHOTOS,
+  createPreparedProjectSnapshot,
+  describeSaveResult,
+  projectJsonFileError,
+  selectPhotoUploads,
+} from './editor/reliability';
+import {
   clonePageForDuplicate,
   createBlankPage,
   createInitialAlbum,
@@ -104,7 +111,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const DEFAULT_BOOKLET_PRINT_SETTINGS = {
-  showFoldLine: true,
+  showFoldLine: false,
   showCropMarks: false,
   gap: 0,
   margin: 0,
@@ -113,6 +120,7 @@ const DEFAULT_BOOKLET_PRINT_SETTINGS = {
 const MAX_BOOKLET_PRINT_GAP = 300;
 const MAX_BOOKLET_PRINT_MARGIN = 300;
 const CROP_MARK_LENGTH = 56;
+const CROP_MARK_OFFSET = 18;
 
 
 const PRESETS = [
@@ -229,7 +237,6 @@ function SoftNumberInput({ value, onValue, min, max, step = 1, disabled = false,
       onChange={(event) => {
         const raw = event.target.value;
         setDraft(raw);
-        commit(raw, false);
       }}
       onBlur={(event) => {
         setEditing(false);
@@ -582,11 +589,14 @@ function scaleForPreview(width, height, isSpread) {
 }
 
 function normalizeBookletPrintSettings(value = {}) {
+  const showCropMarks = Boolean(value.showCropMarks);
+  const requestedMargin = Number(value.margin ?? DEFAULT_BOOKLET_PRINT_SETTINGS.margin) || 0;
+  const minimumMargin = showCropMarks ? CROP_MARK_OFFSET + CROP_MARK_LENGTH : 0;
   return {
-    showFoldLine: value.showFoldLine !== false,
-    showCropMarks: Boolean(value.showCropMarks),
+    showFoldLine: Boolean(value.showFoldLine),
+    showCropMarks,
     gap: Math.round(clamp(value.gap ?? DEFAULT_BOOKLET_PRINT_SETTINGS.gap, 0, MAX_BOOKLET_PRINT_GAP)),
-    margin: Math.round(clamp(value.margin ?? DEFAULT_BOOKLET_PRINT_SETTINGS.margin, 0, MAX_BOOKLET_PRINT_MARGIN)),
+    margin: Math.round(clamp(Math.max(requestedMargin, minimumMargin), 0, MAX_BOOKLET_PRINT_MARGIN)),
   };
 }
 
@@ -612,10 +622,12 @@ function BookletSheetBackground({ canvas, printSettings }) {
 }
 
 function CropMark({ x, y, horizontalDirection, verticalDirection }) {
+  const horizontalStart = x + horizontalDirection * CROP_MARK_OFFSET;
+  const verticalStart = y + verticalDirection * CROP_MARK_OFFSET;
   return (
     <>
-      <Line points={[x, y, x + horizontalDirection * CROP_MARK_LENGTH, y]} stroke="#222222" strokeWidth={2} listening={false} />
-      <Line points={[x, y, x, y + verticalDirection * CROP_MARK_LENGTH]} stroke="#222222" strokeWidth={2} listening={false} />
+      <Line points={[horizontalStart, y, horizontalStart + horizontalDirection * CROP_MARK_LENGTH, y]} stroke="#222222" strokeWidth={2} listening={false} />
+      <Line points={[x, verticalStart, x, verticalStart + verticalDirection * CROP_MARK_LENGTH]} stroke="#222222" strokeWidth={2} listening={false} />
     </>
   );
 }
@@ -646,10 +658,10 @@ function BookletPrintGuides({ canvas, printSettings, preview = false }) {
         const top = page.y;
         const bottom = page.y + canvas.height;
         return [
-          <CropMark key={`crop-${pageIndex}-tl`} x={left} y={top} horizontalDirection={1} verticalDirection={1} />,
-          <CropMark key={`crop-${pageIndex}-tr`} x={right} y={top} horizontalDirection={-1} verticalDirection={1} />,
-          <CropMark key={`crop-${pageIndex}-bl`} x={left} y={bottom} horizontalDirection={1} verticalDirection={-1} />,
-          <CropMark key={`crop-${pageIndex}-br`} x={right} y={bottom} horizontalDirection={-1} verticalDirection={-1} />,
+          <CropMark key={`crop-${pageIndex}-tl`} x={left} y={top} horizontalDirection={-1} verticalDirection={-1} />,
+          <CropMark key={`crop-${pageIndex}-tr`} x={right} y={top} horizontalDirection={1} verticalDirection={-1} />,
+          <CropMark key={`crop-${pageIndex}-bl`} x={left} y={bottom} horizontalDirection={-1} verticalDirection={1} />,
+          <CropMark key={`crop-${pageIndex}-br`} x={right} y={bottom} horizontalDirection={1} verticalDirection={1} />,
         ];
       })}
     </Group>
@@ -1431,14 +1443,47 @@ export default function App() {
 
   function uploadPhotos(event) {
     const files = Array.from(event.target.files ?? []);
-    files.forEach((file) => {
-      if (!file.type.startsWith('image/')) return;
+    const selection = selectPhotoUploads(files, library.length);
+    event.target.value = '';
+
+    if (!selection.accepted.length) {
+      if (selection.rejectedSize) return show('Фото слишком большие. Максимум 25 МБ на файл.');
+      if (selection.rejectedLimit) return show(`В библиотеке можно хранить не больше ${MAX_LIBRARY_PHOTOS} фото`);
+      return show('Подходящих изображений не найдено');
+    }
+
+    let completed = 0;
+    let loaded = 0;
+    let failed = 0;
+    const skipped = selection.rejectedType + selection.rejectedSize + selection.rejectedLimit;
+    const finish = () => {
+      completed += 1;
+      if (completed !== selection.accepted.length) return;
+      const suffix = skipped || failed ? ` · пропущено: ${skipped + failed}` : '';
+      show(`Фото загружены: ${loaded}${suffix}`);
+    };
+
+    selection.accepted.forEach((file) => {
       const reader = new FileReader();
-      reader.onload = () => setLibrary((current) => [...current, { id: makeId(), name: file.name, src: reader.result }]);
+      reader.onload = () => {
+        if (typeof reader.result !== 'string') {
+          failed += 1;
+          finish();
+          return;
+        }
+        setLibrary((current) => (current.length >= MAX_LIBRARY_PHOTOS
+          ? current
+          : [...current, { id: makeId(), name: file.name, src: reader.result }]));
+        loaded += 1;
+        finish();
+      };
+      reader.onerror = () => {
+        failed += 1;
+        finish();
+      };
       reader.readAsDataURL(file);
     });
-    event.target.value = '';
-    if (files.length) show('Фото загружены');
+    show(`Загружаю фото: ${selection.accepted.length}`);
   }
 
   function putPhoto(pageId, frameId, photo) {
@@ -1806,27 +1851,29 @@ export default function App() {
   async function save() {
     const data = project();
     const local = saveLocalProject({ silent: true, data });
-    const storagePromise = Promise.resolve(
-      window.__collageProjectStorage?.storeSnapshot?.(data, { source: 'manual-save' }),
-    ).catch((error) => {
-      console.warn('IndexedDB project save failed', error);
-      return null;
-    });
+    const storeSnapshot = window.__collageProjectStorage?.storeSnapshot;
+    const storagePromise = typeof storeSnapshot === 'function'
+      ? Promise.resolve(storeSnapshot(data, { source: 'manual-save' }))
+          .then(() => ({ ok: true }))
+          .catch((error) => {
+            console.warn('IndexedDB project save failed', error);
+            return { ok: false, error };
+          })
+      : Promise.resolve({ ok: false, skipped: true });
 
+    let cloud = null;
+    let cloudError = null;
     try {
-      const result = await saveCloudProject(data);
-      await storagePromise;
-      if (result?.id) {
-        show('Альбом сохранён в аккаунт');
-      } else {
-        show('Альбом сохранён локально');
-      }
+      cloud = await saveCloudProject(data);
     } catch (error) {
-      console.error(error);
-      await storagePromise;
-      show('Локально сохранено. Облако недоступно');
+      cloudError = error;
+      console.warn('Cloud project save failed', error);
     }
-    return local;
+
+    const indexedDb = await storagePromise;
+    const outcome = describeSaveResult({ local, indexedDb, cloud, cloudError });
+    show(outcome.message);
+    return { ok: outcome.ok, local, indexedDb, cloud, cloudError, data };
   }
 
   useEffect(() => {
@@ -1835,9 +1882,10 @@ export default function App() {
       saveLocal: () => saveLocalProject({ silent: true }),
       openProject: (data) => {
         const prepared = applyProjectData(data, 'Проект открыт из аккаунта');
-        saveLocalProject({ silent: true, data });
+        const snapshot = createPreparedProjectSnapshot(prepared);
+        saveLocalProject({ silent: true, data: snapshot });
         Promise.resolve(
-          window.__collageProjectStorage?.storeSnapshot?.(data, { source: 'cloud-open' }),
+          window.__collageProjectStorage?.storeSnapshot?.(snapshot, { source: 'cloud-open' }),
         ).catch((error) => console.warn('IndexedDB cloud project save failed', error));
         return { ok: true, currentPageId: prepared.currentPageId };
       },
@@ -1885,56 +1933,32 @@ export default function App() {
     if (!raw) return show('Сохранённого проекта пока нет');
     try {
       const data = JSON.parse(raw);
-      const nextCanvas = data.canvas ?? DEFAULT_CANVAS;
-      const nextSettings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
-      const nextPages = normalizeProjectPages(data, nextCanvas, nextSettings);
-      setCanvas(nextCanvas);
-      setSettings(nextSettings);
-      setLibrary(Array.isArray(data.library) ? data.library : []);
-      setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
-      setViewMode(['single', 'spread', 'booklet'].includes(data.viewMode) ? data.viewMode : 'spread');
-      setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
-      setBookletPrintSettings(normalizeBookletPrintSettings(data.bookletPrintSettings));
-      setExtraLayers(normalizeExtraLayers(data.extraLayers));
-      setAlbumMode(normalizeAlbumEditorMode(data.albumEditorMode));
-      setSelectedFrameId(null);
-      setSelectedPhotoId(null);
-      setMoveFrameWithPhotoId(null);
-      show('Альбом загружен');
-    } catch {
+      applyProjectData(data, 'Альбом загружен');
+    } catch (error) {
+      console.warn('Local project load failed', error);
       show('Не получилось открыть сохранение');
     }
   }
 
   function importJson(event) {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
+    const fileError = projectJsonFileError(file);
+    if (fileError) return show(fileError);
+
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
-        const nextCanvas = data.canvas ?? DEFAULT_CANVAS;
-        const nextSettings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
-        const nextPages = normalizeProjectPages(data, nextCanvas, nextSettings);
-        setCanvas(nextCanvas);
-        setSettings(nextSettings);
-        setLibrary(Array.isArray(data.library) ? data.library : []);
-        setAlbum({ pages: nextPages, currentPageId: nextPages.some((page) => page.id === data.currentPageId) ? data.currentPageId : nextPages[0].id });
-        setViewMode(['single', 'spread', 'booklet'].includes(data.viewMode) ? data.viewMode : 'spread');
-        setBookletSheetsPerBlock(clampBookletSheetsPerBlock(data.bookletSheetsPerBlock));
-        setBookletPrintSettings(normalizeBookletPrintSettings(data.bookletPrintSettings));
-        setExtraLayers(normalizeExtraLayers(data.extraLayers));
-        setAlbumMode(normalizeAlbumEditorMode(data.albumEditorMode));
-        setSelectedFrameId(null);
-        setSelectedPhotoId(null);
-        setMoveFrameWithPhotoId(null);
-        show('JSON открыт');
-      } catch {
+        applyProjectData(data, 'JSON открыт');
+      } catch (error) {
+        console.warn('Project JSON import failed', error);
         show('Файл не похож на проект');
       }
     };
+    reader.onerror = () => show('Не удалось прочитать JSON');
     reader.readAsText(file);
-    event.target.value = '';
   }
 
   async function waitForFonts() {
