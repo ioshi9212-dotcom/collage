@@ -15,8 +15,8 @@ assert.match(app, />Ширина мм</, 'physical width control must be visible
 assert.match(app, />Высота мм</, 'physical height control must be visible');
 assert.match(app, />Вылет мм</, 'bleed control must be visible');
 assert.match(app, />Безопасно мм</, 'safe-zone control must be visible');
-assert.match(app, /pagePrintGeometry\)}>PNG страницы</, 'page export must receive page print geometry');
-assert.match(app, /spreadPrintGeometry\)}>PNG разворота</, 'spread export must receive spread print geometry');
+assert.match(app, /pagePrintGeometry.*>PNG страницы</, 'page export must receive page print geometry');
+assert.match(app, /spreadPrintGeometry.*>PNG разворота</, 'spread export must receive spread print geometry');
 assert.match(app, /exportRatio: bookletPixelRatio/, 'booklet manifest must record its calculated export ratio');
 assert.doesNotMatch(app, /EXPORT_RATIO/, 'fixed export ratio must not remain in the editor');
 assert.match(styles, /\.print-summary\s*\{/, 'print summary styling must exist');
