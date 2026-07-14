@@ -1,4 +1,3 @@
-/* global window, localStorage, indexedDB */
 import { expect, test } from '@playwright/test';
 
 const PHOTO_DB_NAME = 'collage-photo-assets-v1';
