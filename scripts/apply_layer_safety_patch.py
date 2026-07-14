@@ -56,6 +56,39 @@ app = replace_once(app,
 'project load layer sanitization')
 
 app = replace_once(app,
+"""  function movePage(direction) {
+    setAlbum((current) => {
+      const index = current.pages.findIndex((page) => page.id === current.currentPageId);
+      const target = direction === 'left' ? index - 1 : index + 1;
+      if (target < 0 || target >= current.pages.length) return current;
+      const next = [...current.pages];
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...current, pages: next };
+    });
+    setMoveFrameWithPhotoId(null);
+  }
+
+
+""",
+""",
+'remove unused page mover')
+
+app = replace_once(app,
+"""  }, [canvas, settings, library, pages, album.currentPageId, viewMode, bookletSheetsPerBlock, normalizedBookletPrintSettings, albumMode, extraLayers]);
+""",
+"""  });
+""",
+'bridge effect dependency cleanup')
+
+app = replace_once(app,
+"""  const visibleLayerPageNumbers = entries
+    .map((entry) => entry.pageIndex + 1)
+    .filter((number) => Number.isFinite(number) && number > 0);
+""",
+""",
+'remove unused visible layer page list')
+
+app = replace_once(app,
 """    const record = {
       version: 2,
       id: makeId(),
