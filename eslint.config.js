@@ -19,6 +19,8 @@ export default [
       'dist/**',
       'node_modules/**',
       'coverage/**',
+      'playwright-report/**',
+      'test-results/**',
       'public/fonts/**',
       'public/template-assets/**',
       'public/templates/**',
@@ -59,7 +61,15 @@ export default [
     },
   },
   {
-    files: ['server.js', 'server/**/*.{js,mjs}', '**/*.test.mjs', 'vite.config.js', 'eslint.config.js'],
+    files: [
+      'server.js',
+      'server/**/*.{js,mjs}',
+      '**/*.test.mjs',
+      'e2e/**/*.mjs',
+      'playwright.config.mjs',
+      'vite.config.js',
+      'eslint.config.js',
+    ],
     languageOptions: {
       globals: {
         ...globals.node,

@@ -128,6 +128,7 @@ function createHarness(fetchImpl, options = {}) {
 
   return {
     api: window.__cloudAuthTest,
+    document,
     localStorage,
     getReloadCount: () => reloadCount,
   };
@@ -152,6 +153,27 @@ function createHarness(fetchImpl, options = {}) {
   ]);
   assert.equal(harness.localStorage.getItem(CURRENT_PROJECT_ID_KEY), 'new-project');
   assert.equal(harness.localStorage.getItem(CURRENT_PROJECT_TITLE_KEY), 'Исходный альбом');
+}
+
+{
+  let submittedTitle = '';
+  const harness = createHarness(async (url, options = {}) => {
+    if (url === '/api/projects' && options.method === 'POST') {
+      submittedTitle = JSON.parse(options.body).title;
+      return jsonResponse(201, { project: { id: 'named-project', title: submittedTitle } });
+    }
+    if (url === '/api/projects') return jsonResponse(200, { projects: [] });
+    throw new Error(`Unexpected request: ${options.method || 'GET'} ${url}`);
+  });
+  const titleInput = harness.document.createElement('input');
+  titleInput.className = 'cloud-project-title';
+  titleInput.value = 'Мой семейный альбом';
+  harness.document.register(titleInput);
+
+  await harness.api.saveAsNew();
+
+  assert.equal(submittedTitle, 'Мой семейный альбом', 'cloud save must read the title before busy-state render replaces the input');
+  assert.equal(harness.localStorage.getItem(CURRENT_PROJECT_TITLE_KEY), 'Мой семейный альбом');
 }
 
 for (const failure of [

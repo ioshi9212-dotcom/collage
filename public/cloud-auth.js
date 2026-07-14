@@ -184,6 +184,8 @@
     if (state.busy) return;
     const forceCreate = options?.forceCreate === true;
     if (!state.user) return setStatus('Сначала войди в аккаунт');
+    const requestedTitle = document.querySelector('.cloud-project-title')?.value || '';
+    let finalStatus = '';
     state.busy = true;
     setStatus('Сохраняю проект…');
     render();
@@ -196,8 +198,7 @@
         setStatus('Сохраняю последний локальный проект…');
       }
 
-      const titleInput = document.querySelector('.cloud-project-title');
-      const title = (titleInput?.value || guessTitle(editorProject.data)).trim() || 'Без названия';
+      const title = (requestedTitle || guessTitle(editorProject.data)).trim() || 'Без названия';
       const existingId = forceCreate ? '' : localStorage.getItem(CURRENT_PROJECT_ID_KEY);
       const url = existingId ? `/api/projects/${existingId}` : '/api/projects';
       const method = existingId ? 'PUT' : 'POST';
@@ -216,12 +217,13 @@
       localStorage.setItem(CURRENT_PROJECT_ID_KEY, result.project.id);
       localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, result.project.title);
       await loadProjects(false);
-      setStatus(editorProject.source === 'bridge' ? 'Сохранено в аккаунт' : 'Сохранено в аккаунт из локального сохранения');
+      finalStatus = editorProject.source === 'bridge' ? 'Сохранено в аккаунт' : 'Сохранено в аккаунт из локального сохранения';
     } catch (error) {
-      setStatus(error.message);
+      finalStatus = error.message;
     } finally {
       state.busy = false;
       render();
+      setStatus(finalStatus);
     }
   }
 
