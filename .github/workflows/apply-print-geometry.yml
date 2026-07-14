@@ -5,6 +5,7 @@ on:
     branches: [agent/print-geometry]
     paths:
       - '.github/scripts/apply_print_geometry.py'
+      - '.github/scripts/run_print_geometry_patch.py'
       - '.github/workflows/apply-print-geometry.yml'
 
 permissions:
@@ -24,7 +25,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply guarded patch
-        run: python .github/scripts/apply_print_geometry.py
+        run: python .github/scripts/run_print_geometry_patch.py
       - name: Install dependencies
         run: npm ci
       - name: Lint
@@ -41,5 +42,3 @@ jobs:
           git diff --cached --check
           git commit -m "Connect physical print geometry to editor"
           git push origin HEAD:agent/print-geometry
-
-# rerun after print geometry assertion fix
