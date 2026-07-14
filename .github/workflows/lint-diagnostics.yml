@@ -30,5 +30,12 @@ jobs:
         with:
           name: lint-output
           path: lint-output.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: layer-patch-source
+          path: |
+            src/AppLive.jsx
+            src/editor/extraLayers.test.mjs
+            scripts/apply_layer_safety_patch.py
       - name: Preserve lint result
         run: exit "${{ steps.lint.outputs.status }}"
