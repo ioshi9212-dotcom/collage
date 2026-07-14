@@ -39,7 +39,7 @@ source = replace_source_block(
     source,
     "if 'EXPORT_RATIO' not in app:\n",
     "    raise SystemExit('booklet export ratios: leftover EXPORT_RATIO')\n",
-    '''app = replace_once(
+    r'''app = replace_once(
     app,
     "function buildBookletManifestJson({ plan, canvas, sheetsPerBlock, printSettings, imageEntries }) {",
     "function buildBookletManifestJson({ plan, canvas, sheetsPerBlock, printSettings, exportRatio, imageEntries }) {",
