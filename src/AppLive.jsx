@@ -88,6 +88,21 @@ import {
   sanitizeTemplateRecords,
   templateJsonFileError,
 } from './editor/templateRecords';
+import {
+  DEFAULT_BLEED_MM,
+  DEFAULT_PRINT_DPI,
+  DEFAULT_SAFE_MM,
+  PRINT_ONLY_SETTING_KEYS,
+  PRINT_PRESETS,
+  composePrintRaster,
+  estimateEffectiveDpi,
+  formatPrintSummary,
+  getBookletPixelRatio,
+  getPrintGuideGeometry,
+  getPrintPixelGeometry,
+  normalizePrintSettings,
+  settingsForPrintPreset,
+} from './editor/printGeometry';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const LEGACY_KEYS = [
@@ -112,7 +127,6 @@ const LEGACY_KEYS = [
 ];
 
 const SPREAD_GAP = 90;
-const EXPORT_RATIO = 2;
 const HANDLE = 28;
 const DEFAULT_CANVAS = { width: 1480, height: 2100 };
 const DEFAULT_SETTINGS = {
@@ -124,6 +138,9 @@ const DEFAULT_SETTINGS = {
   borderColor: '#ffffff',
   showGuides: true,
   frameMode: 'free',
+  printDpi: DEFAULT_PRINT_DPI,
+  bleedMm: DEFAULT_BLEED_MM,
+  safeMm: DEFAULT_SAFE_MM,
 };
 
 const DEFAULT_BOOKLET_PRINT_SETTINGS = {
@@ -139,14 +156,7 @@ const CROP_MARK_LENGTH = 56;
 const CROP_MARK_OFFSET = 18;
 
 
-const PRESETS = [
-  { id: 'a5-portrait', label: 'A5 вертикальный', width: 1480, height: 2100 },
-  { id: 'a5-landscape', label: 'A5 горизонтальный', width: 2100, height: 1480 },
-  { id: 'a4-portrait', label: 'A4 вертикальный', width: 2100, height: 2970 },
-  { id: 'square', label: 'Квадрат', width: 2000, height: 2000 },
-  { id: 'draft', label: 'Черновик', width: 1000, height: 700 },
-  { id: 'custom', label: 'Свой размер', width: 1480, height: 2100 },
-];
+const PRESETS = PRINT_PRESETS;
 
 const TEMPLATE_STORAGE_KEY = 'collage-user-template-packages-v2-react';
 
@@ -385,7 +395,7 @@ function buildBookletCsv(imageEntries) {
   return `${lines.join('\n')}\n`;
 }
 
-function buildBookletManifestJson({ plan, canvas, sheetsPerBlock, printSettings, imageEntries }) {
+function buildBookletManifestJson({ plan, canvas, sheetsPerBlock, printSettings, exportRatio, imageEntries }) {
   return JSON.stringify({
     type: 'collage-booklet-print-package',
     version: 'live-22-booklet-polish-safety',
@@ -397,7 +407,7 @@ function buildBookletManifestJson({ plan, canvas, sheetsPerBlock, printSettings,
     pagesPerBlock: plan.pagesPerBlock,
     blockCount: plan.blockCount,
     canvas,
-    exportRatio: EXPORT_RATIO,
+    exportRatio,
     printSettings,
     files: imageEntries.map(({ name, sideData }) => ({
       file: name,
@@ -689,6 +699,8 @@ function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhoto
   if (!frame.photo || !rect) return null;
   return (
     <KonvaImage
+      name="print-photo"
+      photoName={frame.photo?.name || 'Фото'}
       image={image}
       x={rect.x}
       y={rect.y}
@@ -877,7 +889,7 @@ function GridHandles({ layout, onColumnResize, onRowResize, onActivate }) {
 }
 
 
-function PageVisualGuides({ canvas, safe, locked, pageIndex, active }) {
+function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, active }) {
   const pageColor = locked ? '#2f7d52' : '#c27b4f';
   const centerColor = '#2f7d52';
   const quarters = [0.25, 0.75];
@@ -890,22 +902,36 @@ function PageVisualGuides({ canvas, safe, locked, pageIndex, active }) {
         width={canvas.width}
         height={canvas.height}
         stroke={pageColor}
-        strokeWidth={1.5}
-        strokeScaleEnabled={false}
-        dash={[18, 14]}
-        opacity={0.18}
-        listening={false}
-      />
-      <Rect
-        x={safe}
-        y={safe}
-        width={Math.max(0, canvas.width - safe * 2)}
-        height={Math.max(0, canvas.height - safe * 2)}
-        stroke={pageColor}
         strokeWidth={2}
         strokeScaleEnabled={false}
         dash={[18, 14]}
-        opacity={0.32}
+        opacity={0.42}
+        listening={false}
+      />
+      {layoutInset > 0 && (
+        <Rect
+          x={layoutInset}
+          y={layoutInset}
+          width={Math.max(0, canvas.width - layoutInset * 2)}
+          height={Math.max(0, canvas.height - layoutInset * 2)}
+          stroke={pageColor}
+          strokeWidth={1.5}
+          strokeScaleEnabled={false}
+          dash={[12, 12]}
+          opacity={0.22}
+          listening={false}
+        />
+      )}
+      <Rect
+        x={printGuide.safeInsetX}
+        y={printGuide.safeInsetY}
+        width={printGuide.safeWidth}
+        height={printGuide.safeHeight}
+        stroke="#2f7d52"
+        strokeWidth={2.5}
+        strokeScaleEnabled={false}
+        dash={[22, 14]}
+        opacity={0.48}
         listening={false}
       />
       {quarters.map((part) => (
@@ -926,18 +952,28 @@ function PageVisualGuides({ canvas, safe, locked, pageIndex, active }) {
         opacity={0.82}
         listening={false}
       />
+      <Text
+        x={28}
+        y={canvas.height - 54}
+        text={`Безопасная зона ${printGuide.safeMm} мм · вылет ${printGuide.bleedMm} мм добавится к PNG`}
+        fontSize={22}
+        fill="#2f7d52"
+        opacity={0.64}
+        listening={false}
+      />
     </>
   );
 }
 
 function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
-  const safe = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
+  const layoutInset = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
+  const printGuide = getPrintGuideGeometry(canvas, settings);
   if (!page || page.isBlankPage) {
     return (
       <Group x={x} y={y}>
         <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
-        {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} safe={safe} locked={locked} pageIndex={pageIndex} active={page?.id === activePageId} />}
+        {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} layoutInset={layoutInset} printGuide={printGuide} locked={locked} pageIndex={pageIndex} active={page?.id === activePageId} />}
         {page?.isBlankPage && !printMode && !collagePreviewOnly && (
           <Text x={42} y={78} text="Пустая страница" fontSize={34} fill="#b49a87" fontStyle="bold" opacity={0.62} listening={false} />
         )}
@@ -948,7 +984,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
   return (
     <Group x={x} y={y}>
       <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
-      {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} safe={safe} locked={locked} pageIndex={pageIndex} active={page.id === activePageId} />}
+      {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} layoutInset={layoutInset} printGuide={printGuide} locked={locked} pageIndex={pageIndex} active={page.id === activePageId} />}
       {orderedFrames.map((frame) => (
         <CollageFrame
           key={frame.id}
@@ -1189,6 +1225,22 @@ export default function App() {
     () => normalizeBookletPrintSettings(bookletPrintSettings),
     [bookletPrintSettings],
   );
+  const normalizedPrintSettings = useMemo(
+    () => normalizePrintSettings(settings, canvas),
+    [settings, canvas],
+  );
+  const pagePrintGeometry = useMemo(
+    () => getPrintPixelGeometry({ canvas, settings, kind: 'page' }),
+    [canvas, settings],
+  );
+  const spreadPrintGeometry = useMemo(
+    () => getPrintPixelGeometry({ canvas, settings, kind: 'spread' }),
+    [canvas, settings],
+  );
+  const bookletPixelRatio = useMemo(
+    () => getBookletPixelRatio(canvas, settings),
+    [canvas, settings],
+  );
   const bookletSheetSize = useMemo(
     () => getBookletSheetSize(canvas, normalizedBookletPrintSettings),
     [canvas, normalizedBookletPrintSettings],
@@ -1426,7 +1478,7 @@ export default function App() {
     const next = { ...settings, [key]: value };
     setSettings(next);
 
-    if (key === 'showGuides' || key === 'borderColor' || key === 'borderWidth') return;
+    if (key === 'showGuides' || key === 'borderColor' || key === 'borderWidth' || PRINT_ONLY_SETTING_KEYS.has(key)) return;
 
     if (key === 'frameMode') {
       setMoveFrameWithPhotoId(null);
@@ -1439,12 +1491,22 @@ export default function App() {
 
 
 
-  function updateCanvas(width, height, presetId = settings.presetId) {
+  function updateCanvas(width, height, presetId = settings.presetId, settingsPatch = {}) {
     const nextCanvas = { width: clamp(width, 300, 5000), height: clamp(height, 300, 5000) };
-    const nextSettings = { ...settings, presetId };
+    const nextSettings = { ...settings, ...settingsPatch, presetId };
     setCanvas(nextCanvas);
     setSettings(nextSettings);
     rebuildAll(nextCanvas, nextSettings);
+  }
+
+  function applyDocumentPreset(presetId) {
+    const preset = PRESETS.find((item) => item.id === presetId) ?? PRESETS[0];
+    const nextSettings = settingsForPrintPreset(settings, preset.id);
+    updateCanvas(preset.width, preset.height, preset.id, nextSettings);
+  }
+
+  function updatePhysicalSize(key, value) {
+    setSettings((current) => ({ ...current, presetId: 'custom', [key]: value }));
   }
 
   function updateLayoutPage(pageId, layoutUpdater) {
@@ -2012,15 +2074,51 @@ export default function App() {
     }
   }
 
-  function exportPng(stageRefToExport, filename, message) {
+  function lowResolutionWarnings(stageRefToExport, pixelRatio, minimumDpi = 180) {
+    const nodes = stageRefToExport.current?.find?.('.print-photo') ?? [];
+    return nodes.map((node) => {
+      const source = node.image?.();
+      if (!source) return null;
+      const effectiveDpi = estimateEffectiveDpi({
+        sourceWidth: source.naturalWidth || source.width,
+        sourceHeight: source.naturalHeight || source.height,
+        renderedWidth: node.width?.(),
+        renderedHeight: node.height?.(),
+        pixelRatio,
+        targetDpi: normalizedPrintSettings.printDpi,
+      });
+      return effectiveDpi < minimumDpi
+        ? { name: node.getAttr?.('photoName') || 'Фото', effectiveDpi }
+        : null;
+    }).filter(Boolean);
+  }
+
+  function confirmPrintResolution(stageRefToExport, pixelRatio) {
+    const warnings = lowResolutionWarnings(stageRefToExport, pixelRatio);
+    if (!warnings.length) return true;
+    const lines = warnings.slice(0, 6).map((item) => `• ${item.name}: примерно ${item.effectiveDpi} DPI`);
+    const suffix = warnings.length > 6 ? `\n• и ещё ${warnings.length - 6}` : '';
+    return window.confirm(
+      `Некоторые фото могут быть размыты при печати:\n\n${lines.join('\n')}${suffix}\n\nПродолжить экспорт?`,
+    );
+  }
+
+  function exportPng(stageRefToExport, filename, message, geometry) {
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
     requestAnimationFrame(() => requestAnimationFrame(async () => {
-      await waitForFonts();
-      const uri = stageRefToExport.current?.toDataURL({ pixelRatio: EXPORT_RATIO, mimeType: 'image/png' });
-      if (!uri) return show('Не получилось собрать PNG');
-      downloadDataUrl(filename, uri);
-      show(message);
+      try {
+        await waitForFonts();
+        if (!confirmPrintResolution(stageRefToExport, geometry.renderPixelRatio)) return;
+        const raw = stageRefToExport.current?.toDataURL({ pixelRatio: geometry.renderPixelRatio, mimeType: 'image/png' });
+        if (!raw) return show('Не получилось собрать PNG');
+        const uri = await composePrintRaster(raw, geometry);
+        downloadDataUrl(filename, uri);
+        show(`${message} · ${geometry.outputWidthPx}×${geometry.outputHeightPx} px`);
+      } catch (error) {
+        console.warn('Print PNG export failed', error);
+        show(error?.message || 'Не получилось собрать печатный PNG');
+      }
     }));
   }
 
@@ -2059,7 +2157,7 @@ export default function App() {
     setMoveFrameWithPhotoId(null);
     setPrintBookletSideId(sideData.id);
     await nextPaint();
-    const uri = printBookletRef.current?.toDataURL({ pixelRatio: EXPORT_RATIO, mimeType: 'image/png' });
+    const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
     if (!uri) return show('Не получилось собрать PNG брошюры');
     downloadDataUrl(bookletSideFilename(sideData), uri);
     show(`Скачана сторона: ${sideData.title}`);
@@ -2075,7 +2173,7 @@ export default function App() {
     for (const sideData of bookletPlan.sides) {
       setPrintBookletSideId(sideData.id);
       await nextPaint();
-      const uri = printBookletRef.current?.toDataURL({ pixelRatio: EXPORT_RATIO, mimeType: 'image/png' });
+      const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
       if (!uri) {
         show(`Не получилось собрать: ${sideData.title}`);
         return;
@@ -2102,7 +2200,7 @@ export default function App() {
     for (const sideData of bookletPlan.sides) {
       setPrintBookletSideId(sideData.id);
       await nextPaint();
-      const uri = printBookletRef.current?.toDataURL({ pixelRatio: EXPORT_RATIO, mimeType: 'image/png' });
+      const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
       if (!uri) {
         show(`Не получилось собрать: ${sideData.title}`);
         return;
@@ -2121,6 +2219,7 @@ export default function App() {
       canvas,
       sheetsPerBlock: bookletSheetsPerBlock,
       printSettings: normalizedBookletPrintSettings,
+      exportRatio: bookletPixelRatio,
       imageEntries,
     };
 
@@ -2499,12 +2598,18 @@ export default function App() {
         <section className="document-panel top-control-card">
           <div className="section-title">Документ</div>
           <div className="document-grid">
-            <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => { const preset = PRESETS.find((item) => item.id === event.target.value) ?? PRESETS[0]; updateCanvas(preset.width, preset.height, preset.id); }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
-            <label className="field small-field"><span>Ширина px</span><SoftNumberInput min={300} max={5000} value={canvas.width} onValue={(value) => updateCanvas(value, canvas.height, 'custom')} /></label>
-            <label className="field small-field"><span>Высота px</span><SoftNumberInput min={300} max={5000} value={canvas.height} onValue={(value) => updateCanvas(canvas.width, value, 'custom')} /></label>
+            <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => applyDocumentPreset(event.target.value)}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+            <label className="field small-field"><span>Ширина мм</span><SoftNumberInput min={10} max={1000} step={0.1} value={normalizedPrintSettings.trimWidthMm} onValue={(value) => updatePhysicalSize('trimWidthMm', value)} /></label>
+            <label className="field small-field"><span>Высота мм</span><SoftNumberInput min={10} max={1000} step={0.1} value={normalizedPrintSettings.trimHeightMm} onValue={(value) => updatePhysicalSize('trimHeightMm', value)} /></label>
+            <label className="field small-field"><span>DPI</span><select value={normalizedPrintSettings.printDpi} onChange={(event) => updateSetting('printDpi', Number(event.target.value))}>{[150, 254, 300, 600].map((dpi) => <option key={dpi} value={dpi}>{dpi}</option>)}</select></label>
+            <label className="field small-field"><span>Вылет мм</span><SoftNumberInput min={0} max={30} step={0.5} value={normalizedPrintSettings.bleedMm} onValue={(value) => updateSetting('bleedMm', value)} /></label>
+            <label className="field small-field"><span>Безопасно мм</span><SoftNumberInput min={0} max={100} step={0.5} value={normalizedPrintSettings.safeMm} onValue={(value) => updateSetting('safeMm', value)} /></label>
+            <label className="field small-field"><span>Макет шир. px</span><SoftNumberInput min={300} max={5000} value={canvas.width} onValue={(value) => updateCanvas(value, canvas.height, 'custom')} /></label>
+            <label className="field small-field"><span>Макет выс. px</span><SoftNumberInput min={300} max={5000} value={canvas.height} onValue={(value) => updateCanvas(canvas.width, value, 'custom')} /></label>
             <label className="field small-field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage) || albumMode !== 'collage'} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count === 0 ? 'нет' : count}</option>)}</select></label>
             <label className="field small-field"><span>Зазор</span><SoftNumberInput min={0} max={200} value={settings.gap} onValue={(value) => updateSetting('gap', value)} /></label>
-            <label className="field small-field"><span>Поля</span><SoftNumberInput min={0} max={300} value={settings.padding} onValue={(value) => updateSetting('padding', value)} /></label>
+            <label className="field small-field"><span>Поля макета</span><SoftNumberInput min={0} max={300} value={settings.padding} onValue={(value) => updateSetting('padding', value)} /></label>
+            <div className="print-summary"><strong>Печать:</strong> {formatPrintSummary(pagePrintGeometry)} · вылет по {normalizedPrintSettings.bleedMm} мм · safe zone {normalizedPrintSettings.safeMm} мм</div>
           </div>
         </section>
 
@@ -2516,8 +2621,8 @@ export default function App() {
             <button className="button" onClick={downloadProjectJson}>Скачать JSON</button>
             <button className="button" onClick={() => jsonRef.current?.click()}>Загрузить JSON</button>
             <input ref={jsonRef} className="hidden-input" type="file" accept="application/json" onChange={importJson} />
-            <button className="button accent" onClick={() => exportPng(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.png`, 'Скачана страница')}>PNG страницы</button>
-            <button className="button accent" onClick={() => exportPng(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.png`, 'Скачан разворот')}>PNG разворота</button>
+            <button className="button accent" onClick={() => exportPng(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.png`, 'Скачана страница', pagePrintGeometry)}>PNG страницы</button>
+            <button className="button accent" onClick={() => exportPng(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.png`, 'Скачан разворот', spreadPrintGeometry)}>PNG разворота</button>
           </div>
         </section>
       </header>
@@ -2770,7 +2875,7 @@ export default function App() {
         <section className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px` }}>
           <div className="canvas-toolbar">
             <div>
-              <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${stageRealWidth}×${stageRealHeight}px` : isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)} · ${canvas.width}×${canvas.height}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px`}</strong>
+              <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${stageRealWidth}×${stageRealHeight}px` : isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)} · ${canvas.width}×${canvas.height}px · печать ${spreadPrintGeometry.outputWidthPx}×${spreadPrintGeometry.outputHeightPx}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px · печать ${pagePrintGeometry.outputWidthPx}×${pagePrintGeometry.outputHeightPx}px`}</strong>
               <span>{isBooklet ? 'Просмотр физической стороны А4: слева и справа показаны страницы, которые будут напечатаны рядом.' : locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span>
               <em>{isBooklet ? 'Это режим просмотра и PNG-экспорта брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.'}</em>
             </div>
