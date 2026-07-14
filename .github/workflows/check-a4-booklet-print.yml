@@ -22,20 +22,30 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Apply guarded editor patches
-        run: |
-          python .github/scripts/a4_booklet_imports.py
-          python .github/scripts/a4_booklet_defaults.py
-          python .github/scripts/a4_booklet_download.py
-          python .github/scripts/a4_booklet_normalize.py
-          python .github/scripts/a4_booklet_derived.py
-          python .github/scripts/a4_booklet_export_helpers.py
-          python .github/scripts/a4_booklet_export_pdf.py
-          python .github/scripts/a4_booklet_ui_settings.py
-          python .github/scripts/a4_booklet_ui_summary.py
-          python .github/scripts/a4_booklet_ui_export.py
-          python .github/scripts/a4_booklet_hidden_size.py
-          python .github/scripts/a4_booklet_hidden_positions.py
+      - name: Patch imports
+        run: python .github/scripts/a4_booklet_imports.py
+      - name: Patch defaults
+        run: python .github/scripts/a4_booklet_defaults.py
+      - name: Patch downloads
+        run: python .github/scripts/a4_booklet_download.py
+      - name: Patch normalization
+        run: python .github/scripts/a4_booklet_normalize.py
+      - name: Patch derived geometry
+        run: python .github/scripts/a4_booklet_derived.py
+      - name: Patch export helpers
+        run: python .github/scripts/a4_booklet_export_helpers.py
+      - name: Patch PDF export
+        run: python .github/scripts/a4_booklet_export_pdf.py
+      - name: Patch settings UI
+        run: python .github/scripts/a4_booklet_ui_settings.py
+      - name: Patch summary UI
+        run: python .github/scripts/a4_booklet_ui_summary.py
+      - name: Patch export UI
+        run: python .github/scripts/a4_booklet_ui_export.py
+      - name: Patch hidden stage size
+        run: python .github/scripts/a4_booklet_hidden_size.py
+      - name: Patch hidden stage positions
+        run: python .github/scripts/a4_booklet_hidden_positions.py
       - name: Check patch
         run: git diff --check
       - name: Install dependencies
