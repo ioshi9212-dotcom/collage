@@ -58,6 +58,24 @@ async function readAsset(page, assetId) {
   }), { dbName: PHOTO_DB_NAME, storeName: PHOTO_STORE_NAME, id: assetId });
 }
 
+async function decodeRuntimePhoto(page, assetId) {
+  return page.evaluate((expectedAssetId) => new Promise((resolve, reject) => {
+    const photo = window.__collageApp.getProject().library.find((item) => item?.assetId === expectedAssetId);
+    if (!photo?.src?.startsWith('blob:')) {
+      reject(new Error('restored photo has no Blob URL'));
+      return;
+    }
+    const image = new Image();
+    image.onload = () => resolve({
+      src: photo.src,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+    });
+    image.onerror = () => reject(new Error('restored Blob URL did not decode'));
+    image.src = photo.src;
+  }), assetId);
+}
+
 async function ageAssetAndCreateOrphan(page, activeAssetId, orphanAssetId) {
   await page.evaluate(({ dbName, storeName, schema, activeId, orphanId }) => new Promise((resolve, reject) => {
     const open = indexedDB.open(dbName, 1);
@@ -115,11 +133,11 @@ test.describe('photo persistence safety', () => {
     await page.evaluate(() => window.__collageProjectStorage.openLocalProject());
 
     await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library[0]?.assetId || '')).toBe(uploaded.assetId);
-    const photoCard = page.locator('.photo-card');
-    await expect(photoCard).toHaveCount(1);
-    await photoCard.scrollIntoViewIfNeeded();
-    await expect(page.locator('.photo-thumbnail img')).toBeVisible();
-    await expect.poll(() => page.locator('.photo-thumbnail img').evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+    await expect(page.locator('.photo-card')).toHaveCount(1);
+    const decoded = await decodeRuntimePhoto(page, uploaded.assetId);
+    expect(decoded.src).toMatch(/^blob:/);
+    expect(decoded.width).toBeGreaterThan(0);
+    expect(decoded.height).toBeGreaterThan(0);
 
     const storedAfterReload = await readAsset(page, uploaded.assetId);
     expect(storedAfterReload).toMatchObject({ id: uploaded.assetId, schema: PHOTO_SCHEMA });
