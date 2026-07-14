@@ -1,4 +1,4 @@
-import { DEFAULT_PRINT_DPI, mmToPixels, normalizePrintSettings } from './printGeometry';
+import { DEFAULT_PRINT_DPI, mmToPixels, normalizePrintSettings } from './printGeometry.js';
 
 export const BOOKLET_SHEET_WIDTH_MM = 297;
 export const BOOKLET_SHEET_HEIGHT_MM = 210;
