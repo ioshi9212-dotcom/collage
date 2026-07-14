@@ -116,6 +116,71 @@ const recentDate = new Date(NOW - PHOTO_ASSET_CLEANUP_GRACE_MS + DAY).toISOStrin
 
 {
   const storage = new FakeStorage({
+    'collage-creator-album-live-v11-preserve-mode-layout': JSON.stringify({
+      library: [{ assetId: 'active-local-storage' }],
+      pages: [],
+    }),
+    'collage-creator-album-live-v7-frame-drag-bounds': JSON.stringify({
+      pages: [{ frames: [{ photo: { assetId: 'active-legacy-storage' } }] }],
+    }),
+    'unrelated-setting': '{broken but ignored',
+  });
+  const deleted = [];
+  const result = await cleanupOrphanedPhotoAssets({
+    now: NOW,
+    force: true,
+    storage,
+    currentProject: { library: [{ assetId: 'active-editor' }], pages: [] },
+    projectStorageBridge: {
+      readLatest: async () => ({ data: { library: [{ assetId: 'active-indexeddb-project' }], pages: [] } }),
+    },
+    listAssets: async () => [
+      ...[
+        'active-editor',
+        'active-indexeddb-project',
+        'active-local-storage',
+        'active-legacy-storage',
+        'orphan-default-scan',
+      ].map((id) => ({ id, schema: PHOTO_ASSET_SCHEMA, updatedAt: oldDate, size: 1 })),
+    ],
+    deleteAssets: async (ids) => deleted.push(...ids),
+  });
+
+  assert.deepEqual(deleted, ['orphan-default-scan']);
+  assert.equal(result.deletedCount, 1);
+  assert.deepEqual(new Set(result.activeAssetIds), new Set([
+    'active-editor',
+    'active-indexeddb-project',
+    'active-local-storage',
+    'active-legacy-storage',
+  ]));
+}
+
+{
+  const storage = new FakeStorage({
+    'collage-creator-album-live-v6-page-frame-count': '{not-json',
+  });
+  let deleteCalled = false;
+  await assert.rejects(
+    cleanupOrphanedPhotoAssets({
+      now: NOW,
+      force: true,
+      storage,
+      currentProject: { pages: [] },
+      projectStorageBridge: { readLatest: async () => ({ data: { pages: [] } }) },
+      listAssets: async () => [{ id: 'orphan', schema: PHOTO_ASSET_SCHEMA, updatedAt: oldDate }],
+      deleteAssets: async () => {
+        deleteCalled = true;
+      },
+    }),
+    /Не удалось проверить локальный проект/,
+  );
+  assert.equal(deleteCalled, false, 'malformed legacy JSON must stop cleanup before asset deletion');
+  assert.equal(storage.getItem(PHOTO_ASSET_CLEANUP_LAST_RUN_KEY), null);
+}
+
+{
+  const storage = new FakeStorage({
     [PHOTO_ASSET_CLEANUP_LAST_RUN_KEY]: String(NOW - 1000),
   });
   let scanned = false;
