@@ -1,6 +1,23 @@
-function clonePhotoReference(photo) {
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function normalizePhoto(photo) {
   if (!photo || typeof photo !== 'object') return photo ?? null;
-  const { src: _embeddedSource, ...reference } = photo;
+  return {
+    ...photo,
+    name: String(photo.name || 'Фото').slice(0, 500),
+    zoom: Math.min(10, Math.max(0.1, finiteNumber(photo.zoom, 1))),
+    offsetX: Math.round(finiteNumber(photo.offsetX, 0)),
+    offsetY: Math.round(finiteNumber(photo.offsetY, 0)),
+  };
+}
+
+function clonePhotoReference(photo) {
+  const normalized = normalizePhoto(photo);
+  if (!normalized || typeof normalized !== 'object') return normalized;
+  const { src: _embeddedSource, ...reference } = normalized;
   return reference;
 }
 
@@ -11,7 +28,7 @@ function cloneLibrary(library) {
   const byId = new Map();
   for (const item of library) {
     if (!item || typeof item !== 'object') continue;
-    const copy = { ...item };
+    const copy = { ...item, name: String(item.name || 'Фото').slice(0, 500) };
     if (copy.id == null) {
       next.push(copy);
       continue;
@@ -59,7 +76,7 @@ export function compactProjectPhotos(library = [], pages = []) {
         ...page,
         frames: Array.isArray(page?.frames)
           ? page.frames.map((frame) => {
-              const photo = frame?.photo;
+              const photo = normalizePhoto(frame?.photo);
               if (!photo || typeof photo !== 'object') return { ...frame, photo: photo ?? null };
 
               let normalizedPhoto = photo;
@@ -69,7 +86,7 @@ export function compactProjectPhotos(library = [], pages = []) {
                   const id = makeRecoveredPhotoId(libraryById, nextLibrary.length + 1);
                   recovered = {
                     id,
-                    name: photo.name || 'Фото',
+                    name: photo.name,
                     src: photo.src,
                   };
                   nextLibrary.push(recovered);
@@ -93,7 +110,7 @@ export function compactProjectPhotos(library = [], pages = []) {
                 } else if (!existing) {
                   const recovered = {
                     id: normalizedPhoto.id,
-                    name: normalizedPhoto.name || 'Фото',
+                    name: normalizedPhoto.name,
                     src: normalizedPhoto.src,
                   };
                   nextLibrary.push(recovered);
@@ -123,10 +140,11 @@ export function hydrateProjectPhotos(library = [], pages = []) {
         ...page,
         frames: Array.isArray(page?.frames)
           ? page.frames.map((frame) => {
-              const photo = frame?.photo;
-              if (!photo || typeof photo !== 'object' || photo.src || photo.id == null) return { ...frame };
+              const photo = normalizePhoto(frame?.photo);
+              if (!photo || typeof photo !== 'object') return { ...frame, photo: photo ?? null };
+              if (photo.src || photo.id == null) return { ...frame, photo };
               const src = sourceById.get(String(photo.id));
-              return src ? { ...frame, photo: { ...photo, src } } : { ...frame };
+              return src ? { ...frame, photo: { ...photo, src } } : { ...frame, photo };
             })
           : [],
       }))
