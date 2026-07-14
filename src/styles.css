@@ -1836,3 +1836,42 @@ body[data-album-mode='templates'] .page-rail-card b {
   display: grid;
   gap: 7px;
 }
+
+
+/* Responsive booklet pair preview: keep both pages active and fit the canvas without internal scrollbars. */
+.workspace.three-columns,
+.three-columns {
+  grid-template-columns: 220px minmax(320px, 1fr) 250px !important;
+  width: 100%;
+  justify-content: stretch;
+}
+
+.canvas-area {
+  width: 100%;
+  justify-self: stretch;
+}
+
+.stage-frame {
+  width: min(100%, calc(var(--stage-display-width) + 24px));
+  height: calc(var(--stage-display-height) + 24px);
+  max-height: none;
+  overflow: hidden; /* fitted preview: no internal scrollbars */
+}
+
+.stage-scale-shell {
+  overflow: hidden;
+}
+
+.page-rail-card.booklet-visible-rail-card,
+.page-rail-card.current-page-rail-card.booklet-visible-rail-card {
+  border-color: var(--ui-green-dark);
+  background: var(--ui-green-soft);
+  box-shadow: inset 0 0 0 2px rgba(47, 125, 82, 0.26), 0 5px 14px rgba(47, 125, 82, 0.1);
+}
+
+@media (max-width: 1180px) {
+  .workspace.three-columns,
+  .three-columns {
+    grid-template-columns: 210px minmax(0, 1fr) !important;
+  }
+}

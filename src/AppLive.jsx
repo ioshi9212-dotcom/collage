@@ -119,6 +119,10 @@ import {
   rotateRasterDataUrl180,
   shouldRotateBookletSide,
 } from './editor/bookletPrint';
+import {
+  getBookletVisiblePageNumbers,
+  getPreviewScale,
+} from './editor/previewFit';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const LEGACY_KEYS = [
@@ -634,12 +638,6 @@ function downloadPlainText(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function scaleForPreview(width, height, isSpread) {
-  const maxWidth = isSpread ? 1220 : 880;
-  const maxHeight = 720;
-  return Math.min(1, maxWidth / width, maxHeight / height);
-}
-
 function normalizeBookletPrintSettings(value = {}) {
   const showCropMarks = Boolean(value.showCropMarks);
   const requestedMargin = Number(value.margin ?? DEFAULT_BOOKLET_PRINT_SETTINGS.margin) || 0;
@@ -1149,6 +1147,7 @@ export default function App() {
   const printBookletRef = useRef(null);
   const jsonRef = useRef(null);
   const noticeTimerRef = useRef(null);
+  const canvasAreaRef = useRef(null);
   const photoUploadInFlightRef = useRef(false);
 
   const [album, setAlbum] = useState(() => createInitialAlbum(DEFAULT_CANVAS, DEFAULT_SETTINGS));
@@ -1184,6 +1183,7 @@ export default function App() {
   const templateJsonRef = useRef(null);
   const [dragPageIndex, setDragPageIndex] = useState(null);
   const [dragOverPageIndex, setDragOverPageIndex] = useState(null);
+  const [previewViewport, setPreviewViewport] = useState({ width: 1220, height: 720 });
 
   useEffect(() => {
     const next = normalizeAlbumEditorMode(albumMode);
@@ -1207,6 +1207,41 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templateRecords)); } catch { /* ignore localStorage errors */ }
   }, [templateRecords]);
+
+  useEffect(() => {
+    const node = canvasAreaRef.current;
+    if (!node) return undefined;
+
+    let animationFrame = 0;
+    const measure = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const rect = node.getBoundingClientRect();
+        const styles = window.getComputedStyle(node);
+        const horizontalPadding = (Number.parseFloat(styles.paddingLeft) || 0) + (Number.parseFloat(styles.paddingRight) || 0);
+        const verticalPadding = (Number.parseFloat(styles.paddingTop) || 0) + (Number.parseFloat(styles.paddingBottom) || 0);
+        const toolbarHeight = node.querySelector('.canvas-toolbar')?.getBoundingClientRect().height || 0;
+        const width = Math.max(260, Math.min(1220, rect.width - horizontalPadding - 24));
+        const height = Math.max(260, Math.min(720, window.innerHeight - Math.max(0, rect.top) - toolbarHeight - verticalPadding - 36));
+        setPreviewViewport((current) => (
+          Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1
+            ? current
+            : { width, height }
+        ));
+      });
+    };
+
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    observer?.observe(node);
+    window.addEventListener('resize', measure);
+    measure();
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [viewMode, bookletSideId, canvas.width, canvas.height]);
 
   const collagePreviewOnly = albumMode !== 'collage';
 
@@ -1240,10 +1275,10 @@ export default function App() {
     }
     return currentBookletSide ?? bookletPlan.sides[0];
   }, [bookletPlan, printBookletSideId, currentBookletSide]);
-  const visibleBookletPageNumbers = useMemo(() => {
-    if (!currentBookletSide) return new Set();
-    return new Set(currentBookletSide.slots.filter((slot) => !slot.isBlank && slot.pageNumber).map((slot) => slot.pageNumber));
-  }, [currentBookletSide]);
+  const visibleBookletPageNumbers = useMemo(
+    () => getBookletVisiblePageNumbers(currentBookletSide),
+    [currentBookletSide],
+  );
   const trailingBlankPageCount = useMemo(() => {
     let count = 0;
     for (let index = pages.length - 1; index >= 0; index -= 1) {
@@ -1298,7 +1333,12 @@ export default function App() {
   );
   const stageRealWidth = isBooklet ? bookletSheetSize.width : isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
   const stageRealHeight = isBooklet ? bookletSheetSize.height : canvas.height;
-  const previewScale = scaleForPreview(stageRealWidth, stageRealHeight, isSpread || isBooklet);
+  const previewScale = getPreviewScale({
+    stageWidth: stageRealWidth,
+    stageHeight: stageRealHeight,
+    viewportWidth: previewViewport.width,
+    viewportHeight: previewViewport.height,
+  });
   const stageDisplayWidth = stageRealWidth * previewScale;
   const stageDisplayHeight = stageRealHeight * previewScale;
   const bookletExportSummary = useMemo(() => ({
@@ -2471,7 +2511,7 @@ export default function App() {
         y={entry.y ?? 0}
         canvas={canvas}
         settings={settings}
-        activePageId={album.currentPageId}
+        activePageId={isBooklet ? entry.page?.id ?? null : album.currentPageId}
         collagePreviewOnly={collagePreviewOnly || isBooklet}
         selectedFrameId={selectedFrameId}
         moveFrameWithPhotoId={moveFrameWithPhotoId}
@@ -2948,8 +2988,9 @@ export default function App() {
         <div className="page-strip">{pages.map((page, index) => {
           const pageNumber = index + 1;
           const isVisibleInBooklet = isBooklet && visibleBookletPageNumbers.has(pageNumber);
+          const isActivePage = isBooklet ? isVisibleInBooklet : page.id === album.currentPageId;
           return (
-            <button key={page.id} type="button" className={`page-chip ${page.id === album.currentPageId ? 'active-page-chip' : ''} ${isVisibleInBooklet ? 'booklet-visible-page' : ''}`} onClick={() => selectPageByIndex(index)}>
+            <button key={page.id} type="button" className={`page-chip ${isActivePage ? 'active-page-chip' : ''} ${isVisibleInBooklet ? 'booklet-visible-page' : ''}`} onClick={() => selectPageByIndex(index)}>
               <b>{pageNumber}</b>
               <span>{page.isBlankPage ? 'пустая' : `${page.frames.filter((frame) => frame.photo).length}/${resolvePageFrameCount(page, settings)}`}</span>
               <small>{isBooklet ? (bookletPlan.pageMap[String(pageNumber)]?.pairPageNumber ? `с ${bookletPlan.pageMap[String(pageNumber)].pairPageNumber}` : 'пусто') : page.isBlankPage ? 'белая' : index % 2 === 0 ? 'левая' : 'правая'}</small>
@@ -3063,9 +3104,9 @@ export default function App() {
               const frameTotal = resolvePageFrameCount(page, settings);
               const filledFrames = isBlankPage ? 0 : page.frames.filter((frame) => frame.photo).length;
               const bookletInfo = bookletPlan.pageMap[String(pageNumber)];
-              const isCurrent = page.id === album.currentPageId;
-              const isSpreadPage = isSpread && (index === spreadStart || index === spreadStart + 1);
               const isVisibleInBooklet = isBooklet && visibleBookletPageNumbers.has(pageNumber);
+              const isCurrent = isBooklet ? isVisibleInBooklet : page.id === album.currentPageId;
+              const isSpreadPage = isSpread && (index === spreadStart || index === spreadStart + 1);
               const isOnStage = isBooklet ? isVisibleInBooklet : isSpread ? isSpreadPage : isCurrent;
               const metaText = isBooklet
                 ? (bookletInfo ? `${bookletInfo.sideLabel} · л.${bookletInfo.sheetNumber}` : 'не в блоке')
@@ -3108,7 +3149,7 @@ export default function App() {
           )}
         </aside>
 
-        <section className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px` }}>
+        <section ref={canvasAreaRef} className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px`, '--stage-display-height': `${stageDisplayHeight}px` }}>
           <div className="canvas-toolbar">
             <div>
               <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${stageRealWidth}×${stageRealHeight}px` : isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)} · ${canvas.width}×${canvas.height}px · печать ${spreadPrintGeometry.outputWidthPx}×${spreadPrintGeometry.outputHeightPx}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px · печать ${pagePrintGeometry.outputWidthPx}×${pagePrintGeometry.outputHeightPx}px`}</strong>
@@ -3119,7 +3160,7 @@ export default function App() {
             {!isBooklet && <button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => clearAllFramePhotos(frames)); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button>}
           </div>
 
-          <div className={`stage-frame ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''}`} style={{ width: stageDisplayWidth, height: stageDisplayHeight }} onDragOver={(event) => { if (!isBooklet) event.preventDefault(); }} onDrop={isBooklet ? undefined : dropPhoto}>
+          <div className={`stage-frame ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''}`} onDragOver={(event) => { if (!isBooklet) event.preventDefault(); }} onDrop={isBooklet ? undefined : dropPhoto}>
             <div className="stage-scale-shell" style={{ width: stageRealWidth, height: stageRealHeight, transform: `scale(${previewScale})` }}>
               <Stage ref={stageRef} width={stageRealWidth} height={stageRealHeight} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); setSelectedTextId(null); setSelectedDrawingId(null); } }}>
                 <Layer>
