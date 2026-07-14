@@ -49,12 +49,14 @@ const recentDate = new Date(NOW - PHOTO_ASSET_CLEANUP_GRACE_MS + DAY).toISOStrin
       ] }],
     },
     { pages: [{ frames: [{ photo: { assetId: 'asset-second-project' } }] }] },
+    { frames: [{ photo: { assetId: 'asset-root-frame' } }] },
     null,
   ]);
 
   assert.deepEqual(Array.from(ids).sort(), [
     'asset-frame',
     'asset-library',
+    'asset-root-frame',
     'asset-second-project',
     'asset-shared',
   ]);
@@ -177,6 +179,28 @@ const recentDate = new Date(NOW - PHOTO_ASSET_CLEANUP_GRACE_MS + DAY).toISOStrin
   );
   assert.equal(deleteCalled, false, 'malformed legacy JSON must stop cleanup before asset deletion');
   assert.equal(storage.getItem(PHOTO_ASSET_CLEANUP_LAST_RUN_KEY), null);
+}
+
+{
+  const storage = new FakeStorage({
+    'collage-creator-album-live-v5-sharp-preview': JSON.stringify({ mode: 'not-a-project' }),
+  });
+  let deleteCalled = false;
+  await assert.rejects(
+    cleanupOrphanedPhotoAssets({
+      now: NOW,
+      force: true,
+      storage,
+      currentProject: { pages: [] },
+      projectStorageBridge: { readLatest: async () => ({ data: { pages: [] } }) },
+      listAssets: async () => [{ id: 'orphan', schema: PHOTO_ASSET_SCHEMA, updatedAt: oldDate }],
+      deleteAssets: async () => {
+        deleteCalled = true;
+      },
+    }),
+    /имеет неизвестный формат/,
+  );
+  assert.equal(deleteCalled, false, 'unknown project-shaped storage must stop cleanup');
 }
 
 {
