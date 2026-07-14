@@ -11,9 +11,10 @@ const packageSource = readFileSync(resolve(process.cwd(), 'package.json'), 'utf8
 assert.match(appSource, /from '\.\/editor\/photoAssets'/);
 assert.match(appSource, /await persistPhotoFiles\(selection\.accepted/);
 assert.doesNotMatch(appSource, /readPhotoFilesAsDataUrls/);
-assert.match(appSource, /return createLocalPhotoProject\(\{/);
+assert.match(appSource, /function liveProject\(\)/);
+assert.match(appSource, /return createLocalPhotoProject\(liveProject\(\)\)/);
 assert.match(appSource, /async function portableProject\(\)/);
-assert.match(appSource, /return createPortablePhotoProject\(project\(\)\)/);
+assert.match(appSource, /return createPortablePhotoProject\(liveProject\(\)\)/, 'portable snapshots must retain active Blob URLs as an IndexedDB fallback');
 assert.match(appSource, /getPortableProject: \(\) => portableProject\(\)/);
 assert.match(appSource, /async function applyProjectData\(data, message\)/);
 assert.match(appSource, /await hydratePhotoProject\(prepared\)/);
