@@ -4,6 +4,7 @@
   const STORE_NAME = 'projects';
   const LATEST_LOCAL_KEY = 'latest-local';
   const CURRENT_STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
+  const LEGACY_STORAGE_PREFIX = 'collage-creator-album';
   const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
   const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';
 
@@ -185,17 +186,43 @@
     if (status) status.textContent = message;
   }
 
-  async function readJsonResponse(response) {
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.message || payload?.error || `Ошибка запроса (${response.status})`);
+  function clearCloudProjectBinding() {
+    localStorage.removeItem(CURRENT_PROJECT_ID_KEY);
+    localStorage.removeItem(CURRENT_PROJECT_TITLE_KEY);
+    const titleInput = document.querySelector('.cloud-project-title');
+    if (titleInput) titleInput.value = '';
+  }
+
+  function parseStoredProject(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      validateProject(data);
+      return {
+        key,
+        data,
+        savedAt: Date.parse(data.savedAt || '') || 0,
+      };
+    } catch {
+      return null;
     }
-    return payload;
+  }
+
+  function findLatestLocalStorageProject() {
+    const current = parseStoredProject(CURRENT_STORAGE_KEY);
+    if (current) return current;
+
+    return Object.keys(localStorage)
+      .filter((key) => key !== CURRENT_STORAGE_KEY && key.startsWith(LEGACY_STORAGE_PREFIX))
+      .map(parseStoredProject)
+      .filter(Boolean)
+      .sort((left, right) => right.savedAt - left.savedAt)[0] || null;
   }
 
   function findJsonInput() {
-    return document.querySelector('input.hidden-input[type="file"][accept*="json"]')
-      || document.querySelector('input[type="file"][accept*="application/json"]');
+    return document.querySelector('.file-actions input.hidden-input[type="file"][accept*="json"]')
+      || document.querySelector('.file-actions input[type="file"][accept*="application/json"]');
   }
 
   function importIntoEditor(data) {
@@ -257,14 +284,12 @@
       let record = await readProject(LATEST_LOCAL_KEY);
 
       if (!record?.data) {
-        const raw = localStorage.getItem(CURRENT_STORAGE_KEY);
-        if (raw) {
-          const data = JSON.parse(raw);
-          validateProject(data);
-          record = { data };
-          await queueProjectWrite(LATEST_LOCAL_KEY, data, {
-            source: 'localStorage-migration',
-            ...projectStats(data),
+        const localProject = findLatestLocalStorageProject();
+        if (localProject?.data) {
+          record = { data: localProject.data };
+          await queueProjectWrite(LATEST_LOCAL_KEY, localProject.data, {
+            source: localProject.key === CURRENT_STORAGE_KEY ? 'localStorage-migration' : 'legacy-localStorage-migration',
+            ...projectStats(localProject.data),
           });
         }
       }
@@ -274,56 +299,10 @@
       }
 
       validateProject(record.data);
+      clearCloudProjectBinding();
       importIntoEditor(record.data);
-      setCloudStatus('Сохранённый проект открыт');
-      showToast('Проект открыт полностью: макет, текст, цвета и фото');
-    } catch (error) {
-      console.error(error);
-      setCloudStatus(error.message);
-      showToast(error.message, true);
-    }
-  }
-
-  function cloudProjectCardIndex(button) {
-    const card = button.closest('.cloud-project-card');
-    if (!card) return -1;
-    return Array.from(document.querySelectorAll('.cloud-project-list .cloud-project-card')).indexOf(card);
-  }
-
-  async function openCloudProject(button) {
-    try {
-      const index = cloudProjectCardIndex(button);
-      if (index < 0) throw new Error('Не удалось определить выбранный проект');
-
-      setCloudStatus('Открываю проект…');
-      const listResponse = await fetch('/api/projects', { credentials: 'include' });
-      const listPayload = await readJsonResponse(listResponse);
-      const summary = Array.isArray(listPayload.projects) ? listPayload.projects[index] : null;
-      if (!summary?.id) throw new Error('Проект не найден. Нажми «Обновить» и попробуй снова.');
-
-      const projectResponse = await fetch(`/api/projects/${encodeURIComponent(summary.id)}`, {
-        credentials: 'include',
-      });
-      const projectPayload = await readJsonResponse(projectResponse);
-      const project = projectPayload.project;
-      if (!project?.data) throw new Error('В сохранении нет данных проекта');
-      validateProject(project.data);
-
-      await queueProjectWrite(LATEST_LOCAL_KEY, project.data, {
-        source: 'cloud',
-        projectId: project.id,
-        title: project.title,
-        ...projectStats(project.data),
-      });
-      importIntoEditor(project.data);
-
-      localStorage.setItem(CURRENT_PROJECT_ID_KEY, project.id);
-      localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, project.title || 'Без названия');
-      const titleInput = document.querySelector('.cloud-project-title');
-      if (titleInput) titleInput.value = project.title || '';
-
-      setCloudStatus('Проект открыт');
-      showToast('Проект открыт полностью из аккаунта');
+      setCloudStatus('Сохранённый проект открыт как локальная копия');
+      showToast('Проект открыт локально. Следующее облачное сохранение создаст новый проект.');
     } catch (error) {
       console.error(error);
       setCloudStatus(error.message);
@@ -334,21 +313,24 @@
   async function migrateCurrentLocalProject() {
     try {
       const existing = await readProject(LATEST_LOCAL_KEY);
-      if (existing?.data) {
-        return;
-      }
-      const raw = localStorage.getItem(CURRENT_STORAGE_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      validateProject(data);
-      await queueProjectWrite(LATEST_LOCAL_KEY, data, {
-        source: 'localStorage-migration',
-        ...projectStats(data),
+      if (existing?.data) return;
+
+      const localProject = findLatestLocalStorageProject();
+      if (!localProject?.data) return;
+      await queueProjectWrite(LATEST_LOCAL_KEY, localProject.data, {
+        source: localProject.key === CURRENT_STORAGE_KEY ? 'localStorage-migration' : 'legacy-localStorage-migration',
+        ...projectStats(localProject.data),
       });
     } catch (error) {
       console.warn('Не удалось перенести локальное сохранение в IndexedDB', error);
     }
   }
+
+  document.addEventListener('change', (event) => {
+    const input = event.target;
+    if (!input?.closest?.('.file-actions')) return;
+    if (String(input.accept || '').includes('json')) clearCloudProjectBinding();
+  }, true);
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('button');
@@ -365,14 +347,7 @@
         event.preventDefault();
         event.stopImmediatePropagation();
         void openLocalProject();
-        return;
       }
-    }
-
-    if (label === 'Открыть' && button.closest('.cloud-project-actions')) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void openCloudProject(button);
     }
   }, true);
 
