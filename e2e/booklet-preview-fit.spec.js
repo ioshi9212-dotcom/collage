@@ -5,8 +5,12 @@ async function waitForEditor(page) {
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
 }
 
+function viewModeButton(page, name) {
+  return page.getByLabel('Режим просмотра').getByRole('button', { name, exact: true });
+}
+
 async function openBooklet(page) {
-  await page.getByRole('button', { name: 'Брошюра' }).click();
+  await viewModeButton(page, 'Брошюра').click();
   await expect(page.locator('.booklet-canvas-area')).toBeVisible();
 }
 
@@ -92,10 +96,10 @@ test.describe('booklet pair preview', () => {
     await waitForEditor(page);
     await ensurePageCount(page, 8);
 
-    await page.getByRole('button', { name: 'Страница', exact: true }).click();
+    await viewModeButton(page, 'Страница').click();
     await expectStablePageSwitches(page, [1, 8, 3, 6, 2, 7]);
 
-    await page.getByRole('button', { name: 'Разворот', exact: true }).click();
+    await viewModeButton(page, 'Разворот').click();
     await expectStablePageSwitches(page, [1, 8, 3, 6, 2, 7]);
 
     await openBooklet(page);
