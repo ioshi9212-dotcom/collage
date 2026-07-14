@@ -12,6 +12,10 @@
     busy: false,
   };
 
+  window.__collageCloudAuth = {
+    isAuthenticated: () => Boolean(state.user),
+  };
+
   function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
     Object.entries(attrs).forEach(([key, value]) => {
@@ -101,15 +105,24 @@
     return parsed[0] || null;
   }
 
-  function getEditorProject() {
+  async function getEditorProject() {
     const bridge = window.__collageApp;
+    if (bridge && typeof bridge.getPortableProject === 'function') {
+      const data = await bridge.getPortableProject();
+      if (data && typeof data === 'object') return { source: 'bridge', data };
+    }
     if (bridge && typeof bridge.getProject === 'function') {
       const data = bridge.getProject();
       if (data && typeof data === 'object') return { source: 'bridge', data };
     }
 
     const localProject = getLatestLocalProject();
-    if (localProject?.data) return { source: 'localStorage', data: localProject.data };
+    if (localProject?.data) {
+      const requiresAssets = Array.isArray(localProject.data.library)
+        && localProject.data.library.some((photo) => photo?.assetId && !photo?.src);
+      if (requiresAssets) throw new Error('Редактор ещё загружается. Повтори сохранение через несколько секунд.');
+      return { source: 'localStorage', data: localProject.data };
+    }
     return null;
   }
 
@@ -176,7 +189,7 @@
     render();
 
     try {
-      const editorProject = getEditorProject();
+      const editorProject = await getEditorProject();
       if (!editorProject?.data) throw new Error('Сначала сохрани проект локально');
 
       if (editorProject.source === 'localStorage' && !window.__collageApp?.getProject) {

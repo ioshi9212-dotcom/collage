@@ -7,10 +7,11 @@ const thumbnailSource = readFileSync(resolve(process.cwd(), 'src/editor/PhotoLib
 const stylesSource = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8');
 
 assert.match(appSource, /import PhotoLibraryThumbnail from '\.\/editor\/PhotoLibraryThumbnail'/);
-assert.match(appSource, /import \{ readPhotoFilesAsDataUrls \} from '\.\/editor\/photoImportQueue'/);
+assert.match(appSource, /persistPhotoFiles/);
 assert.match(appSource, /async function uploadPhotos\(event\)/);
-assert.match(appSource, /await readPhotoFilesAsDataUrls\(selection\.accepted\)/);
-assert.doesNotMatch(appSource, /selection\.accepted\.forEach\(\(file\)/, 'uploads must not start one FileReader per photo at once');
+assert.match(appSource, /await persistPhotoFiles\(selection\.accepted/);
+assert.doesNotMatch(appSource, /readPhotoFilesAsDataUrls/, 'uploads must store File blobs without creating Base64 copies');
+assert.doesNotMatch(appSource, /selection\.accepted\.forEach\(\(file\)/, 'uploads must not start one storage operation per photo at once');
 assert.match(appSource, /<PhotoLibraryThumbnail photo=\{photo\} \/>/);
 assert.doesNotMatch(appSource, /<img src=\{photo\.src\}/, 'the library must not mount full-resolution originals');
 

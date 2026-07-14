@@ -78,13 +78,18 @@ for (const invalid of [null, [], {}, { pages: [] }, { pages: [null] }, { pages: 
 
 const appSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8');
 assert.match(appSource, /import \{ prepareEditorProject \} from '\.\/editor\/projectLoad'/);
-assert.match(appSource, /openProject:\s*\(data\)\s*=>\s*\{/);
-assert.match(appSource, /applyProjectData\(data, 'Проект открыт из аккаунта'\)/);
-const applyBody = appSource.match(/function applyProjectData\(data, message\) \{([\s\S]*?)\n {2}\}/)?.[1] || '';
+assert.match(appSource, /openProject:\s*async \(data\)\s*=>\s*\{/);
+assert.match(appSource, /await applyProjectData\(data, 'Проект открыт из аккаунта'\)/);
+const applyBody = appSource.match(/async function applyProjectData\(data, message\) \{([\s\S]*?)\n {2}\}/)?.[1] || '';
 assert.match(applyBody, /const prepared = prepareEditorProject\(/);
+assert.match(applyBody, /const runtimePrepared = await hydratePhotoProject\(prepared\)/);
 assert.ok(
-  applyBody.indexOf('const prepared = prepareEditorProject(') < applyBody.indexOf('setCanvas(prepared.canvas)'),
-  'the complete project must be prepared before the first React state mutation',
+  applyBody.indexOf('const prepared = prepareEditorProject(') < applyBody.indexOf('const runtimePrepared = await hydratePhotoProject(prepared)'),
+  'the complete project must be validated before photo assets are hydrated',
+);
+assert.ok(
+  applyBody.indexOf('const runtimePrepared = await hydratePhotoProject(prepared)') < applyBody.indexOf('setCanvas(runtimePrepared.canvas)'),
+  'photo assets must be hydrated before the first React state mutation',
 );
 
 console.log('atomic project load planning checks passed');

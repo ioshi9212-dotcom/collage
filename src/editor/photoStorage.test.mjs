@@ -82,6 +82,30 @@ assert.equal(repaired.library.length, 1, 'damaged library record must not be dup
 assert.equal(repaired.library[0].src, source, 'embedded source must repair damaged library record');
 assert.equal(repaired.pages[0].frames[0].photo.src, undefined);
 
+const frameOnlyAsset = compactProjectPhotos([], [{
+  id: 'asset-page',
+  frames: [{
+    id: 'asset-frame',
+    photo: {
+      id: 'asset-photo',
+      name: 'kept-in-frame.jpg',
+      src: 'blob:runtime-photo',
+      assetId: 'asset-original-1',
+      assetSchema: 'indexeddb-blob-v1',
+      type: 'image/jpeg',
+      size: 12345,
+      zoom: 1.4,
+    },
+  }],
+}]);
+assert.equal(frameOnlyAsset.library.length, 1, 'a photo left in a frame must rebuild its library reference');
+assert.equal(frameOnlyAsset.library[0].assetId, 'asset-original-1', 'recovered library records must keep the IndexedDB asset ID');
+assert.equal(frameOnlyAsset.library[0].assetSchema, 'indexeddb-blob-v1');
+assert.equal(frameOnlyAsset.library[0].type, 'image/jpeg');
+assert.equal(frameOnlyAsset.library[0].size, 12345);
+assert.equal(frameOnlyAsset.pages[0].frames[0].photo.assetId, 'asset-original-1');
+assert.equal(frameOnlyAsset.pages[0].frames[0].photo.src, undefined);
+
 const duplicateLibrary = compactProjectPhotos([
   { id: 'duplicate-photo', name: '', src: '' },
   { id: 'duplicate-photo', name: 'kept.jpg', src: source },

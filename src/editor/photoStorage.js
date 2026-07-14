@@ -21,6 +21,24 @@ function clonePhotoReference(photo) {
   return reference;
 }
 
+const PHOTO_ASSET_METADATA_KEYS = ['assetId', 'assetSchema', 'type', 'size', 'persistenceFallback'];
+
+function copyPhotoAssetMetadata(target, source) {
+  for (const key of PHOTO_ASSET_METADATA_KEYS) {
+    if (target[key] == null && source?.[key] != null) target[key] = source[key];
+  }
+  return target;
+}
+
+function libraryPhotoFromReference(photo, id) {
+  const item = {
+    id,
+    name: photo?.name,
+    src: photo?.src,
+  };
+  return copyPhotoAssetMetadata(item, photo);
+}
+
 function cloneLibrary(library) {
   if (!Array.isArray(library)) return [];
 
@@ -47,6 +65,7 @@ function cloneLibrary(library) {
 
     if (!existing.src && copy.src) existing.src = copy.src;
     if (!existing.name && copy.name) existing.name = copy.name;
+    copyPhotoAssetMetadata(existing, copy);
   }
   next.forEach((item) => {
     if (!item.name) item.name = 'Фото';
@@ -90,37 +109,36 @@ export function compactProjectPhotos(library = [], pages = []) {
                 let recovered = libraryBySource.get(String(photo.src));
                 if (!recovered) {
                   const id = makeRecoveredPhotoId(libraryById, nextLibrary.length + 1);
-                  recovered = {
-                    id,
-                    name: photo.name,
-                    src: photo.src,
-                  };
+                  recovered = libraryPhotoFromReference(photo, id);
                   nextLibrary.push(recovered);
                   libraryById.set(String(id), recovered);
                   libraryBySource.set(String(photo.src), recovered);
+                } else {
+                  copyPhotoAssetMetadata(recovered, photo);
                 }
                 normalizedPhoto = {
                   ...photo,
                   id: recovered.id,
                   name: photo.name || recovered.name,
+                  assetId: photo.assetId || recovered.assetId,
+                  assetSchema: photo.assetSchema || recovered.assetSchema,
                 };
               }
 
               if (normalizedPhoto.id != null && normalizedPhoto.src) {
                 const key = String(normalizedPhoto.id);
                 const existing = libraryById.get(key);
-                if (existing && !existing.src) {
-                  existing.src = normalizedPhoto.src;
-                  if ((!existing.name || existing.name === 'Фото') && normalizedPhoto.name && normalizedPhoto.name !== 'Фото') {
-                    existing.name = normalizedPhoto.name;
+                if (existing) {
+                  if (!existing.src) {
+                    existing.src = normalizedPhoto.src;
+                    if ((!existing.name || existing.name === 'Фото') && normalizedPhoto.name && normalizedPhoto.name !== 'Фото') {
+                      existing.name = normalizedPhoto.name;
+                    }
+                    libraryBySource.set(String(normalizedPhoto.src), existing);
                   }
-                  libraryBySource.set(String(normalizedPhoto.src), existing);
-                } else if (!existing) {
-                  const recovered = {
-                    id: normalizedPhoto.id,
-                    name: normalizedPhoto.name,
-                    src: normalizedPhoto.src,
-                  };
+                  copyPhotoAssetMetadata(existing, normalizedPhoto);
+                } else {
+                  const recovered = libraryPhotoFromReference(normalizedPhoto, normalizedPhoto.id);
                   nextLibrary.push(recovered);
                   libraryById.set(key, recovered);
                   libraryBySource.set(String(normalizedPhoto.src), recovered);
