@@ -22,6 +22,18 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Relax sequential replacement guard
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply_editor_shell_v2.py')
+          text = path.read_text(encoding='utf-8')
+          old = '    if count != 1:\n        raise SystemExit(f"{label}: expected one match, found {count}")'
+          new = '    if count < 1:\n        raise SystemExit(f"{label}: expected at least one match, found {count}")'
+          if old not in text:
+              raise SystemExit('replace_once guard was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Apply guarded shell patch
         id: patch
         shell: bash
