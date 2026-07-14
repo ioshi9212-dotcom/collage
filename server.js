@@ -1,8 +1,14 @@
 import { createReadStream, existsSync } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 import { createServer } from 'node:http';
-import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import pg from 'pg';
+import {
+  createAuthRateLimiter,
+  hashPassword,
+  validateAuthInput,
+  verifyPassword,
+} from './server/auth.js';
 import {
   ProjectNotFoundError,
   ProjectQuotaError,
@@ -21,6 +27,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const configuredSessionSecret = process.env.SESSION_SECRET || '';
 const databaseUrl = process.env.DATABASE_URL || '';
 const jsonLimitBytes = Number(process.env.JSON_LIMIT_BYTES || 60 * 1024 * 1024);
+const authJsonLimitBytes = Number(process.env.AUTH_JSON_LIMIT_BYTES || 16 * 1024);
 const projectQuotaLimits = getProjectQuotaLimits({
   MAX_PROJECTS_PER_USER: process.env.MAX_PROJECTS_PER_USER,
   MAX_USER_STORAGE_BYTES: process.env.MAX_USER_STORAGE_BYTES,
@@ -47,10 +54,17 @@ if (databaseUrl) {
   });
 }
 
-const authAttempts = new Map();
 const AUTH_WINDOW_MS = Number(process.env.AUTH_WINDOW_MS || 15 * 60 * 1000);
 const AUTH_MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS || 20);
 const AUTH_BLOCK_MS = Number(process.env.AUTH_BLOCK_MS || 15 * 60 * 1000);
+const AUTH_MAX_TRACKED_KEYS = Number(process.env.AUTH_MAX_TRACKED_KEYS || 10_000);
+const authRateLimiter = createAuthRateLimiter({
+  windowMs: AUTH_WINDOW_MS,
+  maxAttempts: AUTH_MAX_ATTEMPTS,
+  blockMs: AUTH_BLOCK_MS,
+  maxTrackedKeys: AUTH_MAX_TRACKED_KEYS,
+  trustProxy: process.env.TRUST_PROXY === 'true',
+});
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -157,20 +171,6 @@ function clearSessionCookie() {
   return `collage_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
 }
 
-function hashPassword(password) {
-  const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(password, salt, 64).toString('hex');
-  return `scrypt:${salt}:${hash}`;
-}
-
-function verifyPassword(password, stored) {
-  const [method, salt, hash] = String(stored || '').split(':');
-  if (method !== 'scrypt' || !salt || !hash) return false;
-  const actual = Buffer.from(scryptSync(password, salt, 64).toString('hex'));
-  const expected = Buffer.from(hash);
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
 async function ensureDb() {
   if (!pool) throw new Error('DATABASE_URL is not configured');
   if (!dbReadyPromise) {
@@ -196,70 +196,23 @@ async function ensureDb() {
       UPDATE projects SET data_bytes = OCTET_LENGTH(data_json::text) WHERE data_bytes = 0;
 
       CREATE INDEX IF NOT EXISTS projects_user_updated_idx ON projects(user_id, updated_at DESC);
-    `);
+    `).catch((error) => {
+      dbReadyPromise = null;
+      throw error;
+    });
   }
   await dbReadyPromise;
 }
 
-function readBody(request) {
-  return readJsonBody(request, jsonLimitBytes);
+function readBody(request, limitBytes = jsonLimitBytes) {
+  return readJsonBody(request, limitBytes);
 }
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
-function validateAuthInput(email, password) {
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Введите нормальный email';
-  if (!password || String(password).length < 8) return 'Пароль минимум 8 символов';
-  if (String(password).length > 200) return 'Пароль слишком длинный';
-  return '';
-}
-
-function clientIp(request) {
-  const forwarded = String(request.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  return forwarded || request.socket?.remoteAddress || 'unknown';
-}
-
-function authRateKey(request, email) {
-  return `${clientIp(request)}:${email || 'unknown'}`;
-}
-
-function checkAuthRateLimit(request, email) {
-  const now = Date.now();
-  const key = authRateKey(request, email);
-  const current = authAttempts.get(key);
-
-  if (current?.blockedUntil && current.blockedUntil > now) return false;
-
-  if (!current || now - current.firstAt > AUTH_WINDOW_MS) {
-    authAttempts.set(key, { firstAt: now, count: 1, blockedUntil: 0 });
-    return true;
-  }
-
-  current.count += 1;
-  if (current.count > AUTH_MAX_ATTEMPTS) {
-    current.blockedUntil = now + AUTH_BLOCK_MS;
-    return false;
-  }
-
-  return true;
-}
-
-function clearAuthRateLimit(request, email) {
-  authAttempts.delete(authRateKey(request, email));
-}
-
-function cleanupAuthAttempts() {
-  const now = Date.now();
-  for (const [key, value] of authAttempts.entries()) {
-    if ((value.blockedUntil && value.blockedUntil < now) || now - value.firstAt > AUTH_WINDOW_MS + AUTH_BLOCK_MS) {
-      authAttempts.delete(key);
-    }
-  }
-}
-
-setInterval(cleanupAuthAttempts, 10 * 60 * 1000).unref?.();
+setInterval(() => authRateLimiter.cleanup(), 10 * 60 * 1000).unref?.();
 
 async function requireUser(request, response) {
   const user = readToken(request);
@@ -313,7 +266,7 @@ async function handleApi(request, response) {
   }
 
   if (method === 'POST' && (path === '/api/auth/register' || path === '/api/auth/login')) {
-    const body = await readBody(request);
+    const body = await readBody(request, authJsonLimitBytes);
     const email = normalizeEmail(body.email);
     const password = String(body.password || '');
     const error = validateAuthInput(email, password);
@@ -323,22 +276,24 @@ async function handleApi(request, response) {
       return true;
     }
 
-    if (!checkAuthRateLimit(request, email)) {
+    if (authRateLimiter.isBlocked(request, email)) {
       sendJson(response, 429, { error: 'Слишком много попыток. Попробуй позже.' });
       return true;
     }
 
     if (path === '/api/auth/register') {
       try {
+        const passwordHash = await hashPassword(password);
         const created = await pool.query(
           'INSERT INTO users(email, password_hash) VALUES ($1, $2) RETURNING id, email',
-          [email, hashPassword(password)]
+          [email, passwordHash]
         );
         const user = created.rows[0];
-        clearAuthRateLimit(request, email);
+        authRateLimiter.clearEmail(email);
         sendJson(response, 200, { user }, { 'Set-Cookie': sessionCookie(makeToken(user)) });
       } catch (dbError) {
         if (dbError?.code === '23505') {
+          authRateLimiter.recordFailure(request, email);
           sendJson(response, 409, { error: 'Такой email уже зарегистрирован' });
         } else {
           throw dbError;
@@ -349,13 +304,16 @@ async function handleApi(request, response) {
 
     const found = await pool.query('SELECT id, email, password_hash FROM users WHERE email = $1', [email]);
     const row = found.rows[0];
-    if (!row || !verifyPassword(password, row.password_hash)) {
-      sendJson(response, 401, { error: 'Неверный email или пароль' });
+    if (!row || !(await verifyPassword(password, row.password_hash))) {
+      const blocked = authRateLimiter.recordFailure(request, email);
+      sendJson(response, blocked ? 429 : 401, {
+        error: blocked ? 'Слишком много попыток. Попробуй позже.' : 'Неверный email или пароль',
+      });
       return true;
     }
 
     const user = { id: row.id, email: row.email };
-    clearAuthRateLimit(request, email);
+    authRateLimiter.clearEmail(email);
     sendJson(response, 200, { user }, { 'Set-Cookie': sessionCookie(makeToken(user)) });
     return true;
   }
