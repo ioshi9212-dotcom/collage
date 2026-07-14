@@ -28,7 +28,10 @@ function cloneLibrary(library) {
   const byId = new Map();
   for (const item of library) {
     if (!item || typeof item !== 'object') continue;
-    const copy = { ...item, name: String(item.name || 'Фото').slice(0, 500) };
+    const copy = {
+      ...item,
+      name: typeof item.name === 'string' ? item.name.slice(0, 500) : '',
+    };
     if (copy.id == null) {
       next.push(copy);
       continue;
@@ -45,6 +48,9 @@ function cloneLibrary(library) {
     if (!existing.src && copy.src) existing.src = copy.src;
     if (!existing.name && copy.name) existing.name = copy.name;
   }
+  next.forEach((item) => {
+    if (!item.name) item.name = 'Фото';
+  });
   return next;
 }
 
@@ -105,7 +111,9 @@ export function compactProjectPhotos(library = [], pages = []) {
                 const existing = libraryById.get(key);
                 if (existing && !existing.src) {
                   existing.src = normalizedPhoto.src;
-                  if (!existing.name && normalizedPhoto.name) existing.name = normalizedPhoto.name;
+                  if ((!existing.name || existing.name === 'Фото') && normalizedPhoto.name && normalizedPhoto.name !== 'Фото') {
+                    existing.name = normalizedPhoto.name;
+                  }
                   libraryBySource.set(String(normalizedPhoto.src), existing);
                 } else if (!existing) {
                   const recovered = {
