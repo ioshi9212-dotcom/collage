@@ -1,0 +1,55 @@
+name: Check A4 booklet print patch
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/scripts/a4_booklet_*.py'
+      - '.github/workflows/check-a4-booklet-print.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/a4-booklet-home-print
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply guarded editor patches
+        run: |
+          python .github/scripts/a4_booklet_imports.py
+          python .github/scripts/a4_booklet_defaults.py
+          python .github/scripts/a4_booklet_download.py
+          python .github/scripts/a4_booklet_normalize.py
+          python .github/scripts/a4_booklet_derived.py
+          python .github/scripts/a4_booklet_export_helpers.py
+          python .github/scripts/a4_booklet_export_pdf.py
+          python .github/scripts/a4_booklet_ui_settings.py
+          python .github/scripts/a4_booklet_ui_summary.py
+          python .github/scripts/a4_booklet_ui_export.py
+          python .github/scripts/a4_booklet_hidden_size.py
+          python .github/scripts/a4_booklet_hidden_positions.py
+      - name: Check patch
+        run: git diff --check
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Upload verified editor
+        uses: actions/upload-artifact@v4
+        with:
+          name: a4-booklet-editor
+          path: src/AppLive.jsx
+          if-no-files-found: error
+          retention-days: 1
