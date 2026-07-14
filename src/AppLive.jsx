@@ -1817,8 +1817,8 @@ export default function App() {
 
 
 
-  function project() {
-    return createLocalPhotoProject({
+  function liveProject() {
+    return {
       canvas,
       settings,
       library,
@@ -1830,11 +1830,15 @@ export default function App() {
       extraLayers: sanitizeExtraLayers(extraLayers),
       albumEditorMode: albumMode,
       savedAt: new Date().toISOString(),
-    });
+    };
+  }
+
+  function project() {
+    return createLocalPhotoProject(liveProject());
   }
 
   async function portableProject() {
-    return createPortablePhotoProject(project());
+    return createPortablePhotoProject(liveProject());
   }
 
   async function downloadProjectJson() {
