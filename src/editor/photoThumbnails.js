@@ -72,7 +72,6 @@ export function createThumbnailLoader({
       const cleanup = () => {
         image.onload = null;
         image.onerror = null;
-        try { image.src = ''; } catch { /* ignore image cleanup errors */ }
       };
 
       image.onload = () => {
