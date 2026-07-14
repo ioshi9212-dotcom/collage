@@ -131,4 +131,11 @@ assert.match(appSource, /const data = project\(\);[\s\S]{0,900}saveLocalProject\
 assert.match(appSource, /saveCloudProject\(data\)/, 'cloud save must reuse the same snapshot');
 assert.match(appSource, /storeSnapshot\?\.\(data, \{ source: 'manual-save' \}\)/, 'IndexedDB save must reuse the same snapshot');
 
+assert.doesNotMatch(source, /function cloudProjectCardIndex|function openCloudProject/, 'storage must not duplicate cloud project opening');
+assert.doesNotMatch(source, /cloud-project-actions/, 'cloud card clicks must remain owned by cloud-auth.js');
+assert.match(source, /function clearCloudProjectBinding\(\)/, 'local imports must have an explicit cloud unlink operation');
+assert.match(source, /clearCloudProjectBinding\(\);\s*importIntoEditor\(record\.data\)/, 'opening a local project must unlink it before importing');
+assert.match(source, /input\?\.closest\?\.\('\.file-actions'\)[\s\S]{0,180}clearCloudProjectBinding\(\)/, 'manual project JSON imports must unlink the previous cloud project');
+assert.match(source, /LEGACY_STORAGE_PREFIX[\s\S]{0,5000}findLatestLocalStorageProject/, 'local opening must retain legacy-project discovery');
+
 console.log('project storage performance checks passed');
