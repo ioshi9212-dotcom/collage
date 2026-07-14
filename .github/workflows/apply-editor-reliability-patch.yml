@@ -18,6 +18,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Repair temporary script quoting
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/apply_editor_reliability_patch.py')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          label_index = next(index for index, line in enumerate(lines) if line.strip() == "'crop mark directions')")
+          start_index = max(index for index in range(label_index) if lines[index] == 'app = replace_once(app,')
+          replacement = '''app = replace_once(app,
+          """          <CropMark key={`crop-${pageIndex}-tl`} x={left} y={top} horizontalDirection={1} verticalDirection={1} />,
+                    <CropMark key={`crop-${pageIndex}-tr`} x={right} y={top} horizontalDirection={-1} verticalDirection={1} />,
+                    <CropMark key={`crop-${pageIndex}-bl`} x={left} y={bottom} horizontalDirection={1} verticalDirection={-1} />,
+                    <CropMark key={`crop-${pageIndex}-br`} x={right} y={bottom} horizontalDirection={-1} verticalDirection={-1} />,""",
+          """          <CropMark key={`crop-${pageIndex}-tl`} x={left} y={top} horizontalDirection={-1} verticalDirection={-1} />,
+                    <CropMark key={`crop-${pageIndex}-tr`} x={right} y={top} horizontalDirection={1} verticalDirection={-1} />,
+                    <CropMark key={`crop-${pageIndex}-bl`} x={left} y={bottom} horizontalDirection={-1} verticalDirection={1} />,
+                    <CropMark key={`crop-${pageIndex}-br`} x={right} y={bottom} horizontalDirection={1} verticalDirection={1} />,""",
+          'crop mark directions')'''.splitlines()
+          lines[start_index:label_index + 1] = replacement
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
       - name: Apply verified source patch
         run: python scripts/apply_editor_reliability_patch.py
       - name: Install dependencies
