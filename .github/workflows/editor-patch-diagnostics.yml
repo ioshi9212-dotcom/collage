@@ -1,0 +1,47 @@
+name: Editor patch diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect exact patch anchors
+        shell: bash
+        run: |
+          python - <<'PY' > editor-patch-report.txt
+          from pathlib import Path
+
+          app = Path('src/AppLive.jsx').read_text(encoding='utf-8')
+          styles = Path('src/styles.css').read_text(encoding='utf-8')
+
+          checks = {
+              'reliability import': "import { prepareEditorProject } from './editor/projectLoad';\n" in app,
+              'print defaults': "showFoldLine: true" in app,
+              'soft number': "commit(raw, false);" in app,
+              'print normalization': "showFoldLine: value.showFoldLine !== false" in app,
+              'crop mark function': "<Line points={[x, y, x + horizontalDirection * CROP_MARK_LENGTH, y]}" in app,
+              'crop directions': "horizontalDirection={1} verticalDirection={1}" in app,
+              'photo upload': "function uploadPhotos(event)" in app and "reader.readAsDataURL(file);" in app,
+              'save function': "show('Локально сохранено. Облако недоступно');" in app,
+              'cloud snapshot': "saveLocalProject({ silent: true, data });" in app,
+              'local load': "const nextCanvas = data.canvas ?? DEFAULT_CANVAS;" in app,
+              'json import': "show('JSON открыт');" in app,
+              'medium collage css': 'grid-template-columns: 210px max-content !important;' in styles,
+              'medium mode css': '"mode-sidebar canvas" !important;' in styles,
+          }
+
+          for name, present in checks.items():
+              print(f'{name}: {present}')
+          PY
+          cat editor-patch-report.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: editor-patch-report
+          path: editor-patch-report.txt
