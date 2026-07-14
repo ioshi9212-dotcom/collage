@@ -42,10 +42,14 @@ async function waitForEditor(page) {
   await expect(page.getByRole('button', { name: 'Экспорт ▾' })).toBeVisible();
 }
 
+async function openExportMenu(page) {
+  const trigger = page.getByRole('button', { name: 'Экспорт ▾' });
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+}
+
 async function capturePng(page, buttonName) {
   const before = await page.evaluate(() => window.__capturedPrintDownloads.length);
-  await page.getByRole('button', { name: 'Экспорт ▾' }).click();
-  await page.getByRole('button', { name: 'Экспорт ▾' }).click();
+  await openExportMenu(page);
   await page.getByRole('button', { name: buttonName }).click();
   await expect.poll(() => page.evaluate(() => window.__capturedPrintDownloads.length)).toBe(before + 1);
   return page.evaluate(async (index) => {
@@ -77,6 +81,7 @@ async function capturePng(page, buttonName) {
 
 async function capturePdf(page, buttonName) {
   const before = await page.evaluate(() => window.__capturedPdfDownloads.length);
+  await openExportMenu(page);
   await page.getByRole('button', { name: buttonName }).click();
   await expect.poll(() => page.evaluate(() => window.__capturedPdfDownloads.length), { timeout: 120_000 }).toBe(before + 1);
   return page.evaluate(async (index) => {
