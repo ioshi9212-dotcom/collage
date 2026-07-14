@@ -131,7 +131,9 @@ function ids(prefix = 'id') {
         frameCount: 1,
         layout: {
           type: 'grid',
-          rows: [{ id: 'saved-row', columns: [{ id: 'saved-column', frameId: 'saved-frame' }] }],
+          padding: 40,
+          gap: 20,
+          rows: [{ id: 'saved-row', height: 800, columns: [{ id: 'saved-column', frameId: 'saved-frame', width: 700 }] }],
         },
         frames: [{
           id: 'saved-frame',
@@ -154,10 +156,32 @@ function ids(prefix = 'id') {
   assert.equal(normalized[0].id, 'saved-page');
   assert.equal(normalized[0].frames[0].photo.src, library[0].src, 'photo source must be hydrated from the library');
   assert.equal(normalized[0].frames[0].photo.zoom, 1.4);
+  assert.deepEqual(
+    {
+      x: normalized[0].frames[0].x,
+      y: normalized[0].frames[0].y,
+      width: normalized[0].frames[0].width,
+      height: normalized[0].frames[0].height,
+    },
+    { x: 10, y: 20, width: 500, height: 700 },
+    'free-mode project loading must preserve the exact manually edited frame geometry',
+  );
   assert.equal(normalized[1].frameCount, 0, 'saved zero-frame pages must remain empty');
   assert.equal(normalized[1].frames.length, 0);
   assert.equal(normalized[2].isBlankPage, true);
   assert.equal(normalized[2].title, 'Форзац');
+
+  const locked = normalizeProjectPages(source, canvas, { ...settings, frameMode: 'locked' }, ids('locked'));
+  assert.deepEqual(
+    {
+      x: locked[0].frames[0].x,
+      y: locked[0].frames[0].y,
+      width: locked[0].frames[0].width,
+      height: locked[0].frames[0].height,
+    },
+    { x: 40, y: 40, width: 700, height: 800 },
+    'locked-mode project loading must continue to derive frame geometry from the grid layout',
+  );
 }
 
 {
