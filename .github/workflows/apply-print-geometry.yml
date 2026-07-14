@@ -41,3 +41,5 @@ jobs:
           git diff --cached --check
           git commit -m "Connect physical print geometry to editor"
           git push origin HEAD:agent/print-geometry
+
+# rerun after print geometry assertion fix
