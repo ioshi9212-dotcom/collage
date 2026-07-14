@@ -2893,7 +2893,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="app-header-actions-v2">
+        <div className="app-header-actions-v2 file-actions">
           <button className="button" type="button" onClick={loadSaved}>Открыть</button>
           <div className="export-menu-v2">
             <button className="button" type="button" aria-expanded={exportMenuOpen} onClick={() => setExportMenuOpen((open) => !open)}>Экспорт ▾</button>
@@ -2913,6 +2913,7 @@ export default function App() {
           </div>
           <button className="button primary-save-v2" type="button" onClick={save}>Сохранить</button>
           <button className="button" type="button" onClick={() => document.querySelector('.cloud-auth-toggle')?.click()}>Аккаунт</button>
+          <input className="hidden-input project-storage-json-input" type="file" accept="application/json" onChange={importJson} />
         </div>
       </header>
 
