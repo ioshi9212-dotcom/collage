@@ -139,12 +139,13 @@ export function normalizeProjectPages(data, nextCanvas, nextSettings, idFactory 
       const trustLayout = page?.layout?.type === 'grid' && existingLayoutCount === frameCount;
       const pageSettings = { ...nextSettings, frameCount };
       const layout = trustLayout ? page.layout : buildGridLayout(nextCanvas, pageSettings, frames).layout;
+      const preserveFreeGeometry = nextSettings?.frameMode === 'free' && frames.length === frameCount;
       return {
         id: page?.id ?? idFactory(),
         title: page?.title ?? `Страница ${index + 1}`,
         frameCount,
         layout,
-        frames: framesFromLayout(layout, frames),
+        frames: preserveFreeGeometry ? frames : framesFromLayout(layout, frames),
       };
     });
   }
