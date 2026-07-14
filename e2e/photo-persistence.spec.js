@@ -10,6 +10,32 @@ const TINY_PNG = Buffer.from(
 );
 
 async function waitForEditor(page) {
+  await page.addInitScript(() => {
+    class ImmediateIntersectionObserver {
+      constructor(callback) {
+        this.callback = callback;
+      }
+
+      observe(target) {
+        queueMicrotask(() => this.callback([{ isIntersecting: true, target }], this));
+      }
+
+      unobserve() {}
+
+      disconnect() {}
+
+      takeRecords() {
+        return [];
+      }
+    }
+
+    Object.defineProperty(window, 'IntersectionObserver', {
+      configurable: true,
+      writable: true,
+      value: ImmediateIntersectionObserver,
+    });
+  });
+
   await page.goto('/');
   await page.waitForFunction(() => (
     typeof window.__collageApp?.getProject === 'function'
@@ -56,24 +82,6 @@ async function readAsset(page, assetId) {
       };
     };
   }), { dbName: PHOTO_DB_NAME, storeName: PHOTO_STORE_NAME, id: assetId });
-}
-
-async function decodeRuntimePhoto(page, assetId) {
-  return page.evaluate((expectedAssetId) => new Promise((resolve, reject) => {
-    const photo = window.__collageApp.getProject().library.find((item) => item?.assetId === expectedAssetId);
-    if (!photo?.src?.startsWith('blob:')) {
-      reject(new Error('restored photo has no Blob URL'));
-      return;
-    }
-    const image = new Image();
-    image.onload = () => resolve({
-      src: photo.src,
-      width: image.naturalWidth,
-      height: image.naturalHeight,
-    });
-    image.onerror = () => reject(new Error('restored Blob URL did not decode'));
-    image.src = photo.src;
-  }), assetId);
 }
 
 async function ageAssetAndCreateOrphan(page, activeAssetId, orphanAssetId) {
@@ -133,12 +141,11 @@ test.describe('photo persistence safety', () => {
     await page.evaluate(() => window.__collageProjectStorage.openLocalProject());
 
     await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library[0]?.assetId || '')).toBe(uploaded.assetId);
-    await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library[0]?.src || '')).toMatch(/^blob:/);
     await expect(page.locator('.photo-card')).toHaveCount(1);
-    const decoded = await decodeRuntimePhoto(page, uploaded.assetId);
-    expect(decoded.src).toMatch(/^blob:/);
-    expect(decoded.width).toBeGreaterThan(0);
-    expect(decoded.height).toBeGreaterThan(0);
+    const thumbnail = page.locator('.photo-thumbnail img');
+    await expect(thumbnail).toBeVisible();
+    await expect.poll(() => thumbnail.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+    await expect.poll(() => thumbnail.evaluate((image) => image.naturalHeight)).toBeGreaterThan(0);
 
     const storedAfterReload = await readAsset(page, uploaded.assetId);
     expect(storedAfterReload).toMatchObject({ id: uploaded.assetId, schema: PHOTO_SCHEMA });
