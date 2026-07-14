@@ -18,6 +18,11 @@ function objectValue(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
+function isTrustedProjectSnapshot(value) {
+  const source = objectValue(value);
+  return Boolean(source && (Array.isArray(source.pages) || Array.isArray(source.frames)));
+}
+
 function cleanAssetId(value) {
   if (value == null) return '';
   return String(value).trim().slice(0, 240);
@@ -47,6 +52,13 @@ function storageKeys(storage) {
   return Object.keys(storage);
 }
 
+function collectFrameAssetIds(frames, target) {
+  Array.from(frames ?? []).forEach((frame) => {
+    const assetId = cleanAssetId(frame?.photo?.assetId);
+    if (assetId) target.add(assetId);
+  });
+}
+
 function projectAssetIds(project, target) {
   const source = objectValue(project);
   if (!source) return;
@@ -57,13 +69,11 @@ function projectAssetIds(project, target) {
     if (assetId) target.add(assetId);
   });
 
+  if (Array.isArray(source.frames)) collectFrameAssetIds(source.frames, target);
+
   const pages = Array.isArray(source.pages) ? source.pages : [];
   pages.forEach((page) => {
-    const frames = Array.isArray(page?.frames) ? page.frames : [];
-    frames.forEach((frame) => {
-      const assetId = cleanAssetId(frame?.photo?.assetId);
-      if (assetId) target.add(assetId);
-    });
+    if (Array.isArray(page?.frames)) collectFrameAssetIds(page.frames, target);
   });
 }
 
@@ -159,7 +169,12 @@ async function defaultReadStoredProjects(options = {}) {
 
   const projects = [];
   const latest = await bridge.readLatest();
-  if (objectValue(latest?.data)) projects.push(latest.data);
+  if (latest?.data != null) {
+    if (!isTrustedProjectSnapshot(latest.data)) {
+      throw new Error('Последнее IndexedDB-сохранение имеет неизвестный формат');
+    }
+    projects.push(latest.data);
+  }
 
   const storage = options.storage ?? globalThis.localStorage;
   const keys = storageKeys(storage)
@@ -174,7 +189,7 @@ async function defaultReadStoredProjects(options = {}) {
     } catch {
       throw new Error(`Не удалось проверить локальный проект «${key}»`);
     }
-    if (!objectValue(parsed)) {
+    if (!isTrustedProjectSnapshot(parsed)) {
       throw new Error(`Локальный проект «${key}» имеет неизвестный формат`);
     }
     projects.push(parsed);
@@ -215,7 +230,7 @@ export async function cleanupOrphanedPhotoAssets(options = {}) {
   const deleteAssets = options.deleteAssets ?? ((ids) => defaultDeleteAssets(ids, options));
 
   const storedProjects = await readStoredProjects();
-  const projects = [options.currentProject, ...Array.from(storedProjects ?? [])].filter(objectValue);
+  const projects = [options.currentProject, ...Array.from(storedProjects ?? [])].filter(isTrustedProjectSnapshot);
   if (!projects.length) {
     return {
       ok: true,
