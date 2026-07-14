@@ -17,7 +17,7 @@ export function tinyPngUpload(name = 'tiny.png') {
 export async function openEditor(page) {
   await page.goto('/');
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
-  await expect(page.locator('.file-actions')).toBeVisible();
+  await expect(page.locator('.app-header-actions-v2')).toBeVisible();
 }
 
 export async function uploadTinyPhoto(page, name = 'tiny.png') {
