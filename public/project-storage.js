@@ -5,12 +5,39 @@
   const LATEST_LOCAL_KEY = 'latest-local';
   const CURRENT_STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
   const LEGACY_STORAGE_PREFIX = 'collage-creator-album';
+  const ALBUM_LAYERS_KEY = 'collage-album-extra-layers-v1';
   const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
   const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';
 
   let databasePromise = null;
   let writeInFlight = false;
   const pendingWrites = new Map();
+
+  function readLegacyExtraLayers() {
+    try {
+      const raw = localStorage.getItem(ALBUM_LAYERS_KEY);
+      if (!raw) return null;
+      const layers = JSON.parse(raw);
+      return layers?.pages && typeof layers.pages === 'object'
+        ? { version: 1, pages: layers.pages }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // This script is loaded before the React module so legacy layers are captured
+  // before the editor removes the obsolete standalone key.
+  const startupLegacyExtraLayers = readLegacyExtraLayers();
+
+  function attachLegacyExtraLayers(project) {
+    if (!project || typeof project !== 'object') return { data: project, migrated: false };
+    if (project.extraLayers?.pages || !startupLegacyExtraLayers) return { data: project, migrated: false };
+    return {
+      data: { ...project, extraLayers: startupLegacyExtraLayers },
+      migrated: true,
+    };
+  }
 
   function openDatabase() {
     if (databasePromise) return databasePromise;
@@ -197,12 +224,14 @@
     try {
       const raw = localStorage.getItem(key);
       if (!raw) return null;
-      const data = JSON.parse(raw);
-      validateProject(data);
+      const parsed = JSON.parse(raw);
+      validateProject(parsed);
+      const attached = attachLegacyExtraLayers(parsed);
       return {
         key,
-        data,
-        savedAt: Date.parse(data.savedAt || '') || 0,
+        data: attached.data,
+        migratedLayers: attached.migrated,
+        savedAt: Date.parse(parsed.savedAt || '') || 0,
       };
     } catch {
       return null;
@@ -278,10 +307,22 @@
     return persistProjectSnapshot(snapshot, { source });
   }
 
+  async function persistMigratedRecord(record, source) {
+    const attached = attachLegacyExtraLayers(record?.data);
+    if (!attached.migrated) return record;
+    await queueProjectWrite(LATEST_LOCAL_KEY, attached.data, {
+      source,
+      ...projectStats(attached.data),
+    });
+    localStorage.removeItem(ALBUM_LAYERS_KEY);
+    return { ...record, data: attached.data };
+  }
+
   async function openLocalProject() {
     try {
       setCloudStatus('Открываю сохранённый проект…');
       let record = await readProject(LATEST_LOCAL_KEY);
+      if (record?.data) record = await persistMigratedRecord(record, 'indexeddb-layer-migration');
 
       if (!record?.data) {
         const localProject = findLatestLocalStorageProject();
@@ -291,6 +332,7 @@
             source: localProject.key === CURRENT_STORAGE_KEY ? 'localStorage-migration' : 'legacy-localStorage-migration',
             ...projectStats(localProject.data),
           });
+          if (localProject.migratedLayers) localStorage.removeItem(ALBUM_LAYERS_KEY);
         }
       }
 
@@ -312,17 +354,23 @@
 
   async function migrateCurrentLocalProject() {
     try {
-      const existing = await readProject(LATEST_LOCAL_KEY);
-      if (existing?.data) return;
+      let existing = await readProject(LATEST_LOCAL_KEY);
+      if (existing?.data) {
+        existing = await persistMigratedRecord(existing, 'indexeddb-layer-migration');
+        return existing;
+      }
 
       const localProject = findLatestLocalStorageProject();
-      if (!localProject?.data) return;
+      if (!localProject?.data) return null;
       await queueProjectWrite(LATEST_LOCAL_KEY, localProject.data, {
         source: localProject.key === CURRENT_STORAGE_KEY ? 'localStorage-migration' : 'legacy-localStorage-migration',
         ...projectStats(localProject.data),
       });
+      if (localProject.migratedLayers) localStorage.removeItem(ALBUM_LAYERS_KEY);
+      return localProject;
     } catch (error) {
       console.warn('Не удалось перенести локальное сохранение в IndexedDB', error);
+      return null;
     }
   }
 
