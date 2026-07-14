@@ -1,15 +1,15 @@
 name: Bootstrap Playwright
 
 on:
-  push:
-    branches: [agent/browser-e2e]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   bootstrap:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'agent/browser-e2e' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
