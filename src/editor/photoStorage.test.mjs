@@ -87,8 +87,28 @@ const duplicateLibrary = compactProjectPhotos([
   { id: 'duplicate-photo', name: 'kept.jpg', src: source },
 ], []);
 assert.equal(duplicateLibrary.library.length, 1, 'duplicate library IDs must collapse to one record');
-assert.equal(duplicateLibrary.library[0].name, 'kept.jpg');
+assert.equal(duplicateLibrary.library[0].name, 'Фото');
 assert.equal(duplicateLibrary.library[0].src, source);
+
+const malformed = hydrateProjectPhotos(
+  [{ id: 'malformed-photo', name: 'malformed.jpg', src: source }],
+  [{ frames: [{
+    id: 'malformed-frame',
+    photo: {
+      id: 'malformed-photo',
+      name: null,
+      zoom: 'not-a-number',
+      offsetX: Number.POSITIVE_INFINITY,
+      offsetY: '-12.7',
+    },
+  }] }],
+);
+assert.equal(malformed[0].frames[0].photo.src, source);
+assert.equal(malformed[0].frames[0].photo.name, 'Фото');
+assert.equal(malformed[0].frames[0].photo.zoom, 1, 'broken zoom must become a safe numeric default');
+assert.equal(malformed[0].frames[0].photo.offsetX, 0);
+assert.equal(malformed[0].frames[0].photo.offsetY, -13);
+assert.doesNotThrow(() => malformed[0].frames[0].photo.zoom.toFixed(2));
 
 const unresolved = hydrateProjectPhotos([], [{ frames: [{ id: 'frame', photo: { id: 'missing', zoom: 1 } }] }]);
 assert.equal(unresolved[0].frames[0].photo.src, undefined, 'missing library source must fail safely');
