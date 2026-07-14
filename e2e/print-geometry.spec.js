@@ -39,11 +39,24 @@ async function waitForEditor(page) {
   });
   await page.goto('/');
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
-  await expect(page.getByRole('button', { name: 'PNG страницы' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Экспорт ▾' })).toBeVisible();
+}
+
+async function openExportMenu(page) {
+  const trigger = page.getByRole('button', { name: 'Экспорт ▾' });
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+}
+
+async function openPrintSettings(page) {
+  await page.locator('.inspector-tab-v2[data-tab="page"]').click();
+  const details = page.locator('.print-settings-details-v2');
+  if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
+  await expect(details.locator('.print-summary')).toBeAttached();
 }
 
 async function capturePng(page, buttonName) {
   const before = await page.evaluate(() => window.__capturedPrintDownloads.length);
+  await openExportMenu(page);
   await page.getByRole('button', { name: buttonName }).click();
   await expect.poll(() => page.evaluate(() => window.__capturedPrintDownloads.length)).toBe(before + 1);
   return page.evaluate(async (index) => {
@@ -75,6 +88,7 @@ async function capturePng(page, buttonName) {
 
 async function capturePdf(page, buttonName) {
   const before = await page.evaluate(() => window.__capturedPdfDownloads.length);
+  await openExportMenu(page);
   await page.getByRole('button', { name: buttonName }).click();
   await expect.poll(() => page.evaluate(() => window.__capturedPdfDownloads.length), { timeout: 120_000 }).toBe(before + 1);
   return page.evaluate(async (index) => {
@@ -105,6 +119,7 @@ async function capturePdf(page, buttonName) {
 test.describe('physical print export', () => {
   test('A5 page and spread have exact 300 DPI dimensions with 3 mm bleed and embedded density', async ({ page }) => {
     await waitForEditor(page);
+    await openPrintSettings(page);
 
     await expect(page.locator('.print-summary')).toContainText('148×210 мм');
     await expect(page.locator('.print-summary')).toContainText('300 DPI');
@@ -163,6 +178,7 @@ test.describe('physical print export', () => {
       window.__collageApp.getProject().pages.flatMap((pageData) => pageData.frames.map((frame) => frame.id))
     ));
 
+    await openPrintSettings(page);
     await page.getByLabel('DPI').selectOption('254');
     await page.getByLabel('Вылет мм').fill('0');
     await page.getByLabel('Вылет мм').blur();
