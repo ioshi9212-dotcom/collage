@@ -7,6 +7,7 @@ on:
     paths:
       - src/editor-shell-v2.css
       - src/editor/printGeometryIntegration.test.mjs
+      - src/editor/photoAssetIntegration.test.mjs
       - scripts/apply_editor_shell_v2.py
       - .github/workflows/editor-shell-v2-artifact.yml
       - .github/workflows/editor-shell-v2-patch.yml
