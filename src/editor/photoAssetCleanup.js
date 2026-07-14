@@ -140,10 +140,26 @@ function openCleanupDatabase(indexedDb = globalThis.indexedDB) {
 async function defaultListAssets(options = {}) {
   const database = await openCleanupDatabase(options.indexedDB);
   return new Promise((resolve, reject) => {
+    const records = [];
     const transaction = database.transaction(PHOTO_ASSET_STORE_NAME, 'readonly');
-    const request = transaction.objectStore(PHOTO_ASSET_STORE_NAME).getAll();
-    request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+    const request = transaction.objectStore(PHOTO_ASSET_STORE_NAME).openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve(records);
+        return;
+      }
+      const value = objectValue(cursor.value);
+      if (value) {
+        const metadata = { ...value };
+        delete metadata.blob;
+        records.push(metadata);
+      }
+      cursor.continue();
+    };
     request.onerror = () => reject(request.error || new Error('Не удалось прочитать список фотографий'));
+    transaction.onerror = () => reject(transaction.error || new Error('Не удалось прочитать хранилище фотографий'));
+    transaction.onabort = () => reject(transaction.error || new Error('Чтение фотографий отменено'));
   });
 }
 
