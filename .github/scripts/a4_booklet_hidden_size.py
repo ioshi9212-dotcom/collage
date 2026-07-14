@@ -7,5 +7,6 @@ if s.count(a)!=1: raise SystemExit('stage size mismatch')
 s=s.replace(a,b,1)
 a='<BookletSheetBackground canvas={canvas} printSettings={normalizedBookletPrintSettings} />'
 b='<BookletSheetBackground canvas={canvas} printSettings={bookletExportPrintSettings} />'
-if s.count(a)!=1: raise SystemExit('stage background mismatch')
-p.write_text(s.replace(a,b,1))
+if s.count(a)<1: raise SystemExit('stage background mismatch')
+head, tail=s.rsplit(a,1)
+p.write_text(head+b+tail)
