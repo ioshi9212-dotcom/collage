@@ -31,7 +31,7 @@ test('photo survives save, reload and local reopen through IndexedDB', async ({ 
   });
   expect(assetBeforeSave.blobSize).toBeGreaterThan(0);
 
-  await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await page.locator('.app-header-actions-v2').getByRole('button', { name: 'Сохранить', exact: true }).click();
   const localSnapshot = await waitForLocalProject(page);
 
   expect(localSnapshot.version).toBe('live-24-indexeddb-photo-assets');
@@ -42,7 +42,7 @@ test('photo survives save, reload and local reopen through IndexedDB', async ({ 
 
   await page.reload();
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
-  await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+  await page.locator('.app-header-actions-v2').getByRole('button', { name: 'Открыть', exact: true }).click();
   await page.waitForFunction((assetId) => window.__collageApp?.getProject?.().library?.[0]?.assetId === assetId, uploaded.assetId);
 
   const reopenedLocal = await page.evaluate(() => window.__collageApp.getProject());
