@@ -1,0 +1,37 @@
+name: Materialize A4 booklet editor
+
+on:
+  push:
+    branches: [agent/a4-booklet-home-print]
+    paths:
+      - '.github/workflows/materialize-a4-booklet.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/a4-booklet-home-print
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build verified editor source
+        run: |
+          for script in imports defaults download normalize derived export_helpers export_pdf ui_settings ui_summary ui_export hidden_size hidden_positions; do
+            python .github/scripts/a4_booklet_${script}.py
+          done
+          git diff --check
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: Connect exact A4 booklet printing
+          file_pattern: src/AppLive.jsx
+          branch: agent/a4-booklet-home-print
