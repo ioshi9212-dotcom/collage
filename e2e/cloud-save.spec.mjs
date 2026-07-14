@@ -42,6 +42,8 @@ test('authenticated cloud save sends a portable photo while local state stays co
   await expect(page.locator('.cloud-auth-panel')).toContainText('e2e@example.com');
   const uploaded = await uploadTinyPhoto(page, 'cloud-photo.png');
 
+  await page.getByRole('button', { name: 'Аккаунт', exact: true }).click();
+  await expect(page.locator('.cloud-project-title')).toBeVisible();
   await page.locator('.cloud-project-title').fill('E2E photo album');
   const requestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url());
