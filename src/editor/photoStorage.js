@@ -31,12 +31,27 @@ function cloneLibrary(library) {
   return next;
 }
 
+function makeRecoveredPhotoId(libraryById, startIndex) {
+  let index = Math.max(1, Number(startIndex) || 1);
+  let id = `recovered-photo-${index}`;
+  while (libraryById.has(id)) {
+    index += 1;
+    id = `recovered-photo-${index}`;
+  }
+  return id;
+}
+
 export function compactProjectPhotos(library = [], pages = []) {
   const nextLibrary = cloneLibrary(library);
   const libraryById = new Map(
     nextLibrary
       .filter((item) => item.id != null)
       .map((item) => [String(item.id), item]),
+  );
+  const libraryBySource = new Map(
+    nextLibrary
+      .filter((item) => item.id != null && item.src)
+      .map((item) => [String(item.src), item]),
   );
 
   const nextPages = Array.isArray(pages)
@@ -47,24 +62,47 @@ export function compactProjectPhotos(library = [], pages = []) {
               const photo = frame?.photo;
               if (!photo || typeof photo !== 'object') return { ...frame, photo: photo ?? null };
 
-              if (photo.id != null && photo.src) {
-                const key = String(photo.id);
-                const existing = libraryById.get(key);
-                if (existing && !existing.src) {
-                  existing.src = photo.src;
-                  if (!existing.name && photo.name) existing.name = photo.name;
-                } else if (!existing) {
-                  const recovered = {
-                    id: photo.id,
+              let normalizedPhoto = photo;
+              if (photo.id == null && photo.src) {
+                let recovered = libraryBySource.get(String(photo.src));
+                if (!recovered) {
+                  const id = makeRecoveredPhotoId(libraryById, nextLibrary.length + 1);
+                  recovered = {
+                    id,
                     name: photo.name || 'Фото',
                     src: photo.src,
                   };
                   nextLibrary.push(recovered);
+                  libraryById.set(String(id), recovered);
+                  libraryBySource.set(String(photo.src), recovered);
+                }
+                normalizedPhoto = {
+                  ...photo,
+                  id: recovered.id,
+                  name: photo.name || recovered.name,
+                };
+              }
+
+              if (normalizedPhoto.id != null && normalizedPhoto.src) {
+                const key = String(normalizedPhoto.id);
+                const existing = libraryById.get(key);
+                if (existing && !existing.src) {
+                  existing.src = normalizedPhoto.src;
+                  if (!existing.name && normalizedPhoto.name) existing.name = normalizedPhoto.name;
+                  libraryBySource.set(String(normalizedPhoto.src), existing);
+                } else if (!existing) {
+                  const recovered = {
+                    id: normalizedPhoto.id,
+                    name: normalizedPhoto.name || 'Фото',
+                    src: normalizedPhoto.src,
+                  };
+                  nextLibrary.push(recovered);
                   libraryById.set(key, recovered);
+                  libraryBySource.set(String(normalizedPhoto.src), recovered);
                 }
               }
 
-              return { ...frame, photo: clonePhotoReference(photo) };
+              return { ...frame, photo: clonePhotoReference(normalizedPhoto) };
             })
           : [],
       }))
