@@ -70,8 +70,15 @@ import {
   normalizeExtraLayers,
   pruneExtraLayerPages,
   reorderExtraLayerPages,
+  sanitizeExtraLayers,
   textLayersForPage,
 } from './editor/extraLayers';
+import {
+  MAX_TEMPLATE_RECORDS,
+  sanitizeTemplateRecord,
+  sanitizeTemplateRecords,
+  templateJsonFileError,
+} from './editor/templateRecords';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const LEGACY_KEYS = [
@@ -1092,7 +1099,7 @@ export default function App() {
     try {
       const raw = localStorage.getItem(TEMPLATE_STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
+      return sanitizeTemplateRecords(parsed);
     } catch {
       return [];
     }
@@ -1736,19 +1743,6 @@ export default function App() {
     setDragOverPageIndex(null);
   }
 
-  function movePage(direction) {
-    setAlbum((current) => {
-      const index = current.pages.findIndex((page) => page.id === current.currentPageId);
-      const target = direction === 'left' ? index - 1 : index + 1;
-      if (target < 0 || target >= current.pages.length) return current;
-      const next = [...current.pages];
-      [next[index], next[target]] = [next[target], next[index]];
-      return { ...current, pages: next };
-    });
-    setMoveFrameWithPhotoId(null);
-  }
-
-
 
   function goSpread(direction) {
     const next = direction === 'next' ? Math.min(pages.length - 1, spreadStart + 2) : Math.max(0, spreadStart - 2);
@@ -1829,7 +1823,7 @@ export default function App() {
       viewMode,
       bookletSheetsPerBlock,
       bookletPrintSettings: normalizedBookletPrintSettings,
-      extraLayers: normalizeExtraLayers(extraLayers),
+      extraLayers: sanitizeExtraLayers(extraLayers),
       albumEditorMode: albumMode,
       savedAt: new Date().toISOString(),
     };
@@ -1894,7 +1888,7 @@ export default function App() {
     return () => {
       if (window.__collageApp?.getProject) delete window.__collageApp;
     };
-  }, [canvas, settings, library, pages, album.currentPageId, viewMode, bookletSheetsPerBlock, normalizedBookletPrintSettings, albumMode, extraLayers]);
+  });
 
   function applyProjectData(data, message) {
     const prepared = prepareEditorProject(data, {
@@ -1903,7 +1897,7 @@ export default function App() {
       normalizePages: normalizeProjectPages,
       normalizeBookletSheets: clampBookletSheetsPerBlock,
       normalizeBookletPrintSettings,
-      normalizeExtraLayers,
+      normalizeExtraLayers: sanitizeExtraLayers,
     });
 
     setCanvas(prepared.canvas);
@@ -2164,9 +2158,6 @@ export default function App() {
   };
 
 
-  const visibleLayerPageNumbers = entries
-    .map((entry) => entry.pageIndex + 1)
-    .filter((number) => Number.isFinite(number) && number > 0);
   const currentLayerPageNumber = activePageNumber();
   const currentLayerPage = extraLayers.pages?.[String(currentLayerPageNumber)] || { texts: [], drawings: [] };
   const currentTexts = Array.isArray(currentLayerPage.texts) ? currentLayerPage.texts : [];
@@ -2200,7 +2191,7 @@ export default function App() {
       };
       if (cleaned.texts.length || cleaned.drawings.length) layerPages[String(targetIndex + 1)] = cleaned;
     });
-    const record = {
+    const record = sanitizeTemplateRecord({
       version: 2,
       id: makeId(),
       title,
@@ -2219,8 +2210,9 @@ export default function App() {
       }),
       extraLayers: { version: 1, pages: layerPages },
       createdAt: new Date().toISOString(),
-    };
-    setTemplateRecords((current) => [record, ...current]);
+    });
+    if (!record) return show('Не удалось подготовить шаблон');
+    setTemplateRecords((current) => [record, ...current].slice(0, MAX_TEMPLATE_RECORDS));
     setSelectedTemplateId(record.id);
     show(`Шаблон сохранён: ${title}`);
   }
@@ -2292,23 +2284,27 @@ export default function App() {
 
   function importTemplateJson(event) {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
+    const fileError = templateJsonFileError(file);
+    if (fileError) return show(fileError);
+
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
-        const records = (Array.isArray(data) ? data : [data]).filter((item) => item && Array.isArray(item.pages));
-        if (!records.length) throw new Error('empty templates');
-        const cleaned = records.map((record) => ({ ...record, id: record.id || makeId(), createdAt: record.createdAt || new Date().toISOString() }));
-        setTemplateRecords((current) => [...cleaned, ...current]);
+        const cleaned = sanitizeTemplateRecords(data);
+        if (!cleaned.length) throw new Error('empty templates');
+        setTemplateRecords((current) => sanitizeTemplateRecords([...cleaned, ...current]));
         setSelectedTemplateId(cleaned[0].id);
         show(`Импортировано шаблонов: ${cleaned.length}`);
-      } catch {
+      } catch (error) {
+        console.warn('Template import failed', error);
         show('Файл не похож на шаблон');
       }
     };
+    reader.onerror = () => show('Не удалось прочитать шаблон');
     reader.readAsText(file);
-    event.target.value = '';
   }
 
   function renderModeLeftPanel() {
