@@ -1877,11 +1877,14 @@ export default function App() {
 
     let cloud = null;
     let cloudError = null;
-    try {
-      cloud = await saveCloudProject(await portableProject());
-    } catch (error) {
-      cloudError = error;
-      console.warn('Cloud project save failed', error);
+    const canSaveCloud = window.__collageCloudAuth?.isAuthenticated?.() === true;
+    if (canSaveCloud) {
+      try {
+        cloud = await saveCloudProject(await portableProject());
+      } catch (error) {
+        cloudError = error;
+        console.warn('Cloud project save failed', error);
+      }
     }
 
     const indexedDb = await storagePromise;

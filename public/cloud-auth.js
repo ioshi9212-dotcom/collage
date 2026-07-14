@@ -12,6 +12,10 @@
     busy: false,
   };
 
+  window.__collageCloudAuth = {
+    isAuthenticated: () => Boolean(state.user),
+  };
+
   function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
     Object.entries(attrs).forEach(([key, value]) => {
