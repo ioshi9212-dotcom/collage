@@ -87,7 +87,7 @@ const duplicateLibrary = compactProjectPhotos([
   { id: 'duplicate-photo', name: 'kept.jpg', src: source },
 ], []);
 assert.equal(duplicateLibrary.library.length, 1, 'duplicate library IDs must collapse to one record');
-assert.equal(duplicateLibrary.library[0].name, 'Фото');
+assert.equal(duplicateLibrary.library[0].name, 'kept.jpg');
 assert.equal(duplicateLibrary.library[0].src, source);
 
 const malformed = hydrateProjectPhotos(
