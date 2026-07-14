@@ -22,6 +22,8 @@ import {
   getBookletSide,
 } from './editor/booklet';
 import { saveCloudProject } from './editor/cloudProjects';
+import PhotoLibraryThumbnail from './editor/PhotoLibraryThumbnail';
+import { readPhotoFilesAsDataUrls } from './editor/photoImportQueue';
 import { compactProjectPhotos } from './editor/photoStorage';
 import { loadCachedImage as loadImage } from './editor/imageCache';
 import { prepareEditorProject } from './editor/projectLoad';
@@ -1077,6 +1079,7 @@ export default function App() {
   const printBookletRef = useRef(null);
   const jsonRef = useRef(null);
   const noticeTimerRef = useRef(null);
+  const photoUploadInFlightRef = useRef(false);
 
   const [album, setAlbum] = useState(() => createInitialAlbum(DEFAULT_CANVAS, DEFAULT_SETTINGS));
   const [library, setLibrary] = useState([]);
@@ -1084,6 +1087,7 @@ export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
+  const [photoImporting, setPhotoImporting] = useState(false);
   const [moveFrameWithPhotoId, setMoveFrameWithPhotoId] = useState(null);
   const [viewMode, setViewMode] = useState('spread');
   const [bookletSheetsPerBlock, setBookletSheetsPerBlock] = useState(DEFAULT_SHEETS_PER_BLOCK);
@@ -1448,49 +1452,47 @@ export default function App() {
     updateLayoutPage(pageId, (layout) => resizeRow(layout, rowIndex, centerY));
   }
 
-  function uploadPhotos(event) {
-    const files = Array.from(event.target.files ?? []);
-    const selection = selectPhotoUploads(files, library.length);
-    event.target.value = '';
+  async function uploadPhotos(event) {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (photoUploadInFlightRef.current) return show('Дождись окончания текущей загрузки фото');
 
+    const selection = selectPhotoUploads(files, library.length);
     if (!selection.accepted.length) {
       if (selection.rejectedSize) return show('Фото слишком большие. Максимум 25 МБ на файл.');
       if (selection.rejectedLimit) return show(`В библиотеке можно хранить не больше ${MAX_LIBRARY_PHOTOS} фото`);
       return show('Подходящих изображений не найдено');
     }
 
-    let completed = 0;
-    let loaded = 0;
-    let failed = 0;
-    const skipped = selection.rejectedType + selection.rejectedSize + selection.rejectedLimit;
-    const finish = () => {
-      completed += 1;
-      if (completed !== selection.accepted.length) return;
-      const suffix = skipped || failed ? ` · пропущено: ${skipped + failed}` : '';
-      show(`Фото загружены: ${loaded}${suffix}`);
-    };
-
-    selection.accepted.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result !== 'string') {
-          failed += 1;
-          finish();
-          return;
-        }
-        setLibrary((current) => (current.length >= MAX_LIBRARY_PHOTOS
-          ? current
-          : [...current, { id: makeId(), name: file.name, src: reader.result }]));
-        loaded += 1;
-        finish();
-      };
-      reader.onerror = () => {
-        failed += 1;
-        finish();
-      };
-      reader.readAsDataURL(file);
-    });
+    photoUploadInFlightRef.current = true;
+    setPhotoImporting(true);
+    const skippedBeforeRead = selection.rejectedType + selection.rejectedSize + selection.rejectedLimit;
     show(`Загружаю фото: ${selection.accepted.length}`);
+
+    try {
+      const result = await readPhotoFilesAsDataUrls(selection.accepted);
+      const availableSlots = Math.max(0, MAX_LIBRARY_PHOTOS - library.length);
+      const additions = result.loaded.slice(0, availableSlots).map(({ file, dataUrl }) => ({
+        id: makeId(),
+        name: file.name,
+        src: dataUrl,
+      }));
+      if (additions.length) {
+        setLibrary((current) => [...current, ...additions].slice(0, MAX_LIBRARY_PHOTOS));
+      }
+
+      const overflow = Math.max(0, result.loaded.length - additions.length);
+      const skipped = skippedBeforeRead + result.failed.length + overflow;
+      const suffix = skipped ? ` · пропущено: ${skipped}` : '';
+      show(`Фото загружены: ${additions.length}${suffix}`);
+    } catch (error) {
+      console.warn('Photo import failed', error);
+      show('Не удалось загрузить фотографии');
+    } finally {
+      photoUploadInFlightRef.current = false;
+      setPhotoImporting(false);
+    }
   }
 
   function putPhoto(pageId, frameId, photo) {
@@ -2621,8 +2623,8 @@ export default function App() {
       <section className="workspace three-columns">
         <aside className="sidebar">
           <div className="panel-title"><div><h2>Фото</h2><p>На компьютере можно перетаскивать. На телефоне: нажми фото, потом нажми рамку.</p></div><span>{library.length}</span></div>
-          <label className="upload-box"><strong>Загрузить фото</strong><small>Можно сразу несколько</small><input type="file" accept="image/*" multiple onChange={uploadPhotos} /></label>
-          <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); show('Список фото очищен'); }} disabled={library.length === 0}>Очистить список фото</button>
+          <label className={`upload-box ${photoImporting ? 'disabled-upload-box' : ''}`}><strong>{photoImporting ? 'Загружаю фото…' : 'Загрузить фото'}</strong><small>{photoImporting ? 'Оригиналы читаются по очереди' : 'Можно сразу несколько'}</small><input type="file" accept="image/*" multiple disabled={photoImporting} onChange={uploadPhotos} /></label>
+          <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); show('Список фото очищен'); }} disabled={library.length === 0 || photoImporting}>Очистить список фото</button>
           {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
           {library.length === 0 ? <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div> : <div className="photo-grid">{library.map((photo) => {
             const isUsed = usedPhotoIds.has(photo.id);
@@ -2635,7 +2637,7 @@ export default function App() {
                 onClick={() => { setSelectedPhotoId(photo.id); show(isUsed ? 'Фото уже есть в альбоме. Можно вставить ещё раз.' : 'Фото выбрано'); }}
                 onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }}
               >
-                <img src={photo.src} alt={photo.name} draggable="false" />
+                <PhotoLibraryThumbnail photo={photo} />
                 {isUsed && <small className="photo-used-badge">В альбоме</small>}
                 <span>{photo.name}</span>
               </button>
