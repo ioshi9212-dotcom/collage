@@ -23,8 +23,14 @@ import {
 } from './editor/booklet';
 import { saveCloudProject } from './editor/cloudProjects';
 import PhotoLibraryThumbnail from './editor/PhotoLibraryThumbnail';
-import { readPhotoFilesAsDataUrls } from './editor/photoImportQueue';
-import { compactProjectPhotos } from './editor/photoStorage';
+import {
+  createLocalPhotoProject,
+  createPortablePhotoProject,
+  hydratePhotoProject,
+  persistPhotoFiles,
+  releaseAllPhotoRuntimeUrls,
+  releaseUnusedPhotoRuntimeUrls,
+} from './editor/photoAssets';
 import { loadCachedImage as loadImage } from './editor/imageCache';
 import { prepareEditorProject } from './editor/projectLoad';
 import {
@@ -1123,6 +1129,8 @@ export default function App() {
     try { localStorage.removeItem(ALBUM_LAYERS_KEY); } catch { /* ignore localStorage errors */ }
   }, []);
 
+  useEffect(() => () => releaseAllPhotoRuntimeUrls(), []);
+
   useEffect(() => {
     try { localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templateRecords)); } catch { /* ignore localStorage errors */ }
   }, [templateRecords]);
@@ -1467,23 +1475,19 @@ export default function App() {
 
     photoUploadInFlightRef.current = true;
     setPhotoImporting(true);
-    const skippedBeforeRead = selection.rejectedType + selection.rejectedSize + selection.rejectedLimit;
-    show(`Загружаю фото: ${selection.accepted.length}`);
+    const skippedBeforeStore = selection.rejectedType + selection.rejectedSize + selection.rejectedLimit;
+    show(`Сохраняю оригиналы: ${selection.accepted.length}`);
 
     try {
-      const result = await readPhotoFilesAsDataUrls(selection.accepted);
+      const result = await persistPhotoFiles(selection.accepted, { idFactory: makeId });
       const availableSlots = Math.max(0, MAX_LIBRARY_PHOTOS - library.length);
-      const additions = result.loaded.slice(0, availableSlots).map(({ file, dataUrl }) => ({
-        id: makeId(),
-        name: file.name,
-        src: dataUrl,
-      }));
+      const additions = result.loaded.slice(0, availableSlots);
       if (additions.length) {
         setLibrary((current) => [...current, ...additions].slice(0, MAX_LIBRARY_PHOTOS));
       }
 
       const overflow = Math.max(0, result.loaded.length - additions.length);
-      const skipped = skippedBeforeRead + result.failed.length + overflow;
+      const skipped = skippedBeforeStore + result.failed.length + overflow;
       const suffix = skipped ? ` · пропущено: ${skipped}` : '';
       show(`Фото загружены: ${additions.length}${suffix}`);
     } catch (error) {
@@ -1814,13 +1818,11 @@ export default function App() {
 
 
   function project() {
-    const compactedPhotos = compactProjectPhotos(library, pages);
-    return {
-      version: 'live-23-photo-library-references',
+    return createLocalPhotoProject({
       canvas,
       settings,
-      library: compactedPhotos.library,
-      pages: compactedPhotos.pages,
+      library,
+      pages,
       currentPageId: album.currentPageId,
       viewMode,
       bookletSheetsPerBlock,
@@ -1828,7 +1830,23 @@ export default function App() {
       extraLayers: sanitizeExtraLayers(extraLayers),
       albumEditorMode: albumMode,
       savedAt: new Date().toISOString(),
-    };
+    });
+  }
+
+  async function portableProject() {
+    return createPortablePhotoProject(project());
+  }
+
+  async function downloadProjectJson() {
+    show('Собираю переносимый JSON…');
+    try {
+      const data = await portableProject();
+      downloadText('collage-album-project.json', JSON.stringify(data, null, 2));
+      show('JSON скачан');
+    } catch (error) {
+      console.warn('Portable JSON export failed', error);
+      show(error?.message || 'Не удалось собрать переносимый JSON');
+    }
   }
 
   function saveLocalProject({ silent = false, data = null } = {}) {
@@ -1839,7 +1857,7 @@ export default function App() {
       return { ok: true, data: snapshot };
     } catch (error) {
       console.error(error);
-      if (!silent) show('Не удалось сохранить: проект слишком большой. Скачай JSON или очисти лишние фото.');
+      if (!silent) show('Не удалось сохранить локальный снимок. Скачай JSON, чтобы не потерять работу.');
       return { ok: false, error };
     }
   }
@@ -1860,7 +1878,7 @@ export default function App() {
     let cloud = null;
     let cloudError = null;
     try {
-      cloud = await saveCloudProject(data);
+      cloud = await saveCloudProject(await portableProject());
     } catch (error) {
       cloudError = error;
       console.warn('Cloud project save failed', error);
@@ -1875,9 +1893,10 @@ export default function App() {
   useEffect(() => {
     window.__collageApp = {
       getProject: () => project(),
+      getPortableProject: () => portableProject(),
       saveLocal: () => saveLocalProject({ silent: true }),
-      openProject: (data) => {
-        const prepared = applyProjectData(data, 'Проект открыт из аккаунта');
+      openProject: async (data) => {
+        const prepared = await applyProjectData(data, 'Проект открыт из аккаунта');
         const snapshot = createPreparedProjectSnapshot(prepared);
         saveLocalProject({ silent: true, data: snapshot });
         Promise.resolve(
@@ -1892,7 +1911,7 @@ export default function App() {
     };
   });
 
-  function applyProjectData(data, message) {
+  async function applyProjectData(data, message) {
     const prepared = prepareEditorProject(data, {
       defaultCanvas: DEFAULT_CANVAS,
       defaultSettings: DEFAULT_SETTINGS,
@@ -1901,16 +1920,18 @@ export default function App() {
       normalizeBookletPrintSettings,
       normalizeExtraLayers: sanitizeExtraLayers,
     });
+    const runtimePrepared = await hydratePhotoProject(prepared);
+    releaseUnusedPhotoRuntimeUrls(runtimePrepared.library.map((photo) => photo?.assetId));
 
-    setCanvas(prepared.canvas);
-    setSettings(prepared.settings);
-    setLibrary(prepared.library);
-    setAlbum({ pages: prepared.pages, currentPageId: prepared.currentPageId });
-    setViewMode(prepared.viewMode);
-    setBookletSheetsPerBlock(prepared.bookletSheetsPerBlock);
-    setBookletPrintSettings(prepared.bookletPrintSettings);
-    setExtraLayers(prepared.extraLayers);
-    setAlbumMode(prepared.albumEditorMode);
+    setCanvas(runtimePrepared.canvas);
+    setSettings(runtimePrepared.settings);
+    setLibrary(runtimePrepared.library);
+    setAlbum({ pages: runtimePrepared.pages, currentPageId: runtimePrepared.currentPageId });
+    setViewMode(runtimePrepared.viewMode);
+    setBookletSheetsPerBlock(runtimePrepared.bookletSheetsPerBlock);
+    setBookletPrintSettings(runtimePrepared.bookletPrintSettings);
+    setExtraLayers(runtimePrepared.extraLayers);
+    setAlbumMode(runtimePrepared.albumEditorMode);
     setBookletSideId(null);
     setPrintBookletSideId(null);
     setSelectedFrameId(null);
@@ -1920,19 +1941,19 @@ export default function App() {
     setSelectedDrawingId(null);
     setDragPageIndex(null);
     setDragOverPageIndex(null);
-    show(message);
-    return prepared;
+    show(runtimePrepared.missingPhotoCount ? `${message} · не найдено оригиналов: ${runtimePrepared.missingPhotoCount}` : message);
+    return runtimePrepared;
   }
 
-  function loadSaved() {
+  async function loadSaved() {
     const raw = localStorage.getItem(STORAGE_KEY) ?? LEGACY_KEYS.map((key) => localStorage.getItem(key)).find(Boolean);
     if (!raw) return show('Сохранённого проекта пока нет');
     try {
       const data = JSON.parse(raw);
-      applyProjectData(data, 'Альбом загружен');
+      await applyProjectData(data, 'Альбом загружен');
     } catch (error) {
       console.warn('Local project load failed', error);
-      show('Не получилось открыть сохранение');
+      show(error?.message || 'Не получилось открыть сохранение');
     }
   }
 
@@ -1944,13 +1965,13 @@ export default function App() {
     if (fileError) return show(fileError);
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const data = JSON.parse(reader.result);
-        applyProjectData(data, 'JSON открыт');
+        await applyProjectData(data, 'JSON открыт');
       } catch (error) {
         console.warn('Project JSON import failed', error);
-        show('Файл не похож на проект');
+        show(error?.message || 'Файл не похож на проект');
       }
     };
     reader.onerror = () => show('Не удалось прочитать JSON');
@@ -2466,7 +2487,7 @@ export default function App() {
           <div className="file-actions">
             <button className="button" onClick={save}>Сохранить</button>
             <button className="button" onClick={loadSaved}>Открыть</button>
-            <button className="button" onClick={() => downloadText('collage-album-project.json', JSON.stringify(project(), null, 2))}>Скачать JSON</button>
+            <button className="button" onClick={downloadProjectJson}>Скачать JSON</button>
             <button className="button" onClick={() => jsonRef.current?.click()}>Загрузить JSON</button>
             <input ref={jsonRef} className="hidden-input" type="file" accept="application/json" onChange={importJson} />
             <button className="button accent" onClick={() => exportPng(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.png`, 'Скачана страница')}>PNG страницы</button>
@@ -2623,7 +2644,7 @@ export default function App() {
       <section className="workspace three-columns">
         <aside className="sidebar">
           <div className="panel-title"><div><h2>Фото</h2><p>На компьютере можно перетаскивать. На телефоне: нажми фото, потом нажми рамку.</p></div><span>{library.length}</span></div>
-          <label className={`upload-box ${photoImporting ? 'disabled-upload-box' : ''}`}><strong>{photoImporting ? 'Загружаю фото…' : 'Загрузить фото'}</strong><small>{photoImporting ? 'Оригиналы читаются по очереди' : 'Можно сразу несколько'}</small><input type="file" accept="image/*" multiple disabled={photoImporting} onChange={uploadPhotos} /></label>
+          <label className={`upload-box ${photoImporting ? 'disabled-upload-box' : ''}`}><strong>{photoImporting ? 'Загружаю фото…' : 'Загрузить фото'}</strong><small>{photoImporting ? 'Оригиналы сохраняются по очереди' : 'Можно сразу несколько'}</small><input type="file" accept="image/*" multiple disabled={photoImporting} onChange={uploadPhotos} /></label>
           <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); show('Список фото очищен'); }} disabled={library.length === 0 || photoImporting}>Очистить список фото</button>
           {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
           {library.length === 0 ? <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div> : <div className="photo-grid">{library.map((photo) => {

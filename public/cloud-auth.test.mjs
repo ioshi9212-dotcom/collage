@@ -97,7 +97,8 @@ function createHarness(fetchImpl, options = {}) {
   let reloadCount = 0;
   const window = {
     __collageApp: {
-      getProject: () => ({ title: 'Проект', pages: [{ id: 'page-1' }] }),
+      getProject: () => ({ title: 'Локальный проект', pages: [{ id: 'page-1' }] }),
+      getPortableProject: async () => ({ title: 'Проект', pages: [{ id: 'page-1' }] }),
       ...(options.bridge || {}),
     },
     addEventListener() {},
@@ -189,9 +190,9 @@ for (const failure of [
 
   const first = harness.api.saveAsNew();
   const second = harness.api.saveAsNew();
-  assert.equal(calls.filter((call) => call.method === 'POST').length, 1, 'rapid clicks must create only one copy');
   releaseCreate();
   await Promise.all([first, second]);
+  assert.equal(calls.filter((call) => call.method === 'POST').length, 1, 'rapid clicks must create only one copy');
   assert.equal(harness.localStorage.getItem(CURRENT_PROJECT_ID_KEY), 'single-copy');
 }
 
@@ -284,5 +285,7 @@ assert.doesNotMatch(saveAsNewBody, /removeItem\(CURRENT_PROJECT_ID_KEY\)/);
 assert.match(saveAsNewBody, /saveCloud\(\{\s*forceCreate:\s*true\s*\}\)/);
 assert.match(source, /typeof bridge\?\.openProject === 'function'/);
 assert.match(source, /await bridge\.openProject\(project\.data\)/);
+assert.match(source, /typeof bridge\.getPortableProject === 'function'/);
+assert.match(source, /await bridge\.getPortableProject\(\)/);
 
 console.log('cloud save and direct-open checks passed');
