@@ -1,0 +1,33 @@
+name: Lint diagnostics
+
+on:
+  push:
+    branches: [agent/layer-safety-and-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Capture lint output
+        id: lint
+        shell: bash
+        run: |
+          set +e
+          npm run lint > lint-output.txt 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lint-output
+          path: lint-output.txt
+      - name: Preserve lint result
+        run: exit "${{ steps.lint.outputs.status }}"
