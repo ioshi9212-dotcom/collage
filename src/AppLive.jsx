@@ -1413,9 +1413,10 @@ export default function App() {
   function setMode(mode) {
     const next = normalizeAlbumEditorMode(mode);
     setAlbumMode(next);
-    setSelectedFrameId(null);
-    setSelectedTextId(null);
-    setSelectedDrawingId(null);
+    if (next !== 'collage') setSelectedFrameId(null);
+    if (next !== 'text') setSelectedTextId(null);
+    if (next !== 'drawings') setSelectedDrawingId(null);
+    if (next !== 'collage') setInspectorTab('object');
   }
 
   function activePageNumber() {
@@ -1442,6 +1443,8 @@ export default function App() {
 
   function addText(presetId = DEFAULT_TEXT_PRESET_ID) {
     const item = createTextItem(presetId);
+    setLeftPanel('text');
+    setMode('text');
     updateExtraLayers((layers) => {
       const { next, page } = createPageLayerDraft(layers, activePageNumber());
       page.texts.push(item);
@@ -1450,7 +1453,8 @@ export default function App() {
     setSelectedFrameId(null);
     setSelectedDrawingId(null);
     setSelectedTextId(item.id);
-    setMode('text');
+    setInspectorTab('object');
+    show('Текст добавлен. Настройки открыты справа.');
   }
 
   function updateText(id, patch) {
@@ -1476,22 +1480,24 @@ export default function App() {
     setSelectedTextId(null);
   }
 
-  function createLineItem() {
+  function createLineItem(angle = 0) {
     return {
       id: makeId(),
       type: 'line',
       x: Math.round(canvas.width * 0.18),
       y: Math.round(canvas.height * 0.5),
-      length: Math.round(canvas.width * 0.48),
-      angle: 0,
+      length: Math.round((angle === 90 ? canvas.height : canvas.width) * 0.48),
+      angle,
       strokeWidth: 4,
       color: '#6f6862',
       opacity: 1,
     };
   }
 
-  function addLine() {
-    const item = createLineItem();
+  function addLine(angle = 0) {
+    const item = createLineItem(angle);
+    setLeftPanel('drawings');
+    setMode('drawings');
     updateExtraLayers((layers) => {
       const { next, page } = createPageLayerDraft(layers, activePageNumber());
       page.drawings.push(item);
@@ -1500,7 +1506,8 @@ export default function App() {
     setSelectedFrameId(null);
     setSelectedTextId(null);
     setSelectedDrawingId(item.id);
-    setMode('drawings');
+    setInspectorTab('object');
+    show(angle === 90 ? 'Вертикальная линия добавлена.' : 'Линия добавлена. Настройки открыты справа.');
   }
 
   function updateDrawing(id, patch) {
@@ -1697,6 +1704,7 @@ export default function App() {
     }
     setAlbum((current) => ({ ...current, currentPageId: pageId }));
     setSelectedFrameId(frameId);
+    setInspectorTab('object');
     setMoveFrameWithPhotoId((current) => (current && current !== frameId ? null : current));
   }
 
@@ -1944,6 +1952,7 @@ export default function App() {
     setAlbum((current) => ({ ...current, currentPageId: page.id }));
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
+    if (albumMode === 'collage') setInspectorTab('page');
     if (viewMode === 'booklet') {
       const side = findBookletSideForPage(bookletPlan, index + 1);
       setBookletSideId(side?.id ?? null);
@@ -1954,6 +1963,9 @@ export default function App() {
     const side = findBookletSideForPage(bookletPlan, currentPageIndex + 1) ?? bookletPlan.sides[0];
     setBookletSideId(side?.id ?? null);
     setViewMode('booklet');
+    setMode('collage');
+    setLeftPanel('pages');
+    setInspectorTab('page');
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
   }
@@ -2747,7 +2759,11 @@ export default function App() {
       return (
         <>
           <div className="panel-title compact"><div><h2>Текст</h2><p>Текстовые блоки текущей страницы.</p></div><span>{currentTexts.length}</span></div>
-          <button className="button full accent" onClick={() => addText('body')}>+ Добавить текст</button>
+          <div className="insert-tool-grid-v3">
+            <button className="button full accent" onClick={() => addText('body')}>+ Обычный текст</button>
+            <button className="button full" onClick={() => addText('title')}>+ Заголовок</button>
+            <button className="button full" onClick={() => addText('signature')}>+ Подпись</button>
+          </div>
           {currentTexts.length === 0 ? <div className="empty-state small-empty"><p>Текста на этой странице пока нет.</p></div> : (
             <div className="layer-list">
               {currentTexts.map((item, index) => (
@@ -2765,7 +2781,10 @@ export default function App() {
       return (
         <>
           <div className="panel-title compact"><div><h2>Рисунки</h2><p>Линии и простой декор текущей страницы.</p></div><span>{currentDrawings.length}</span></div>
-          <button className="button full accent" onClick={addLine}>+ Линия</button>
+          <div className="insert-tool-grid-v3">
+            <button className="button full accent" onClick={() => addLine(0)}>+ Горизонтальная линия</button>
+            <button className="button full" onClick={() => addLine(90)}>+ Вертикальная линия</button>
+          </div>
           {currentDrawings.length === 0 ? <div className="empty-state small-empty"><p>Рисунков на этой странице пока нет.</p></div> : (
             <div className="layer-list">
               {currentDrawings.map((item, index) => (
@@ -3133,13 +3152,7 @@ export default function App() {
             </>
           )}
 
-          {leftPanel === 'text' && (
-            <>
-              {renderModeLeftPanel()}
-              <button className="button full" onClick={() => addText('title')}>+ Заголовок</button>
-              <button className="button full" onClick={() => addText('signature')}>+ Подпись</button>
-            </>
-          )}
+          {leftPanel === 'text' && renderModeLeftPanel()}
           {leftPanel === 'drawings' && renderModeLeftPanel()}
           {leftPanel === 'templates' && (
             <>
@@ -3297,21 +3310,61 @@ export default function App() {
             </>
           ) : (
             <div className="page-settings-panel-v2">
-              <div className="panel-title compact"><div><h2>Страница {currentPageIndex + 1}</h2><p>{currentPage?.isBlankPage ? 'Пустая страница' : `${currentPageFrameCount} фото-окон`}</p></div></div>
-              <div className="inspector-block">
+              <div className="panel-title compact"><div><h2>{isBooklet ? 'Брошюра' : `Страница ${currentPageIndex + 1}`}</h2><p>{isBooklet ? (currentBookletSide?.title ?? 'Сторона листа A4') : currentPage?.isBlankPage ? 'Пустая страница' : `${currentPageFrameCount} фото-окон`}</p></div></div>
+              {isBooklet && (
+                <div className="booklet-inspector-v3">
+                  <div className="inspector-block">
+                    <h3>Настройки брошюры</h3>
+                    <label className="field"><span>Листов в блоке</span><select value={bookletSheetsPerBlock} onChange={(event) => updateBookletSheetsPerBlock(event.target.value)}>{[1, 2, 3, 4, 5, 6, 7, 8].map((count) => <option key={count} value={count}>{count} лист. / {count * 4} стр.</option>)}</select></label>
+                    <label className="field"><span>Порядок оборотов</span><select aria-label="Порядок оборотов" value={normalizedBookletPrintSettings.backOrder} onChange={(event) => updateBookletPrintSetting('backOrder', event.target.value)}><option value={BOOKLET_BACK_ORDER_REVERSE}>Обратный</option><option value={BOOKLET_BACK_ORDER_SAME}>Такой же</option></select></label>
+                    <label className="toggle-row-v3"><input type="checkbox" checked={normalizedBookletPrintSettings.showFoldLine} onChange={(event) => updateBookletPrintSetting('showFoldLine', event.target.checked)} /><span>Печатать линию сгиба</span></label>
+                    <label className="toggle-row-v3"><input aria-label="Развернуть обороты на 180°" type="checkbox" checked={normalizedBookletPrintSettings.rotateBack180} onChange={(event) => updateBookletPrintSetting('rotateBack180', event.target.checked)} /><span>Развернуть обороты на 180°</span></label>
+                    <label className="field"><span>Толщина бумаги, мм</span><SoftNumberInput min={0.05} max={0.5} step={0.01} value={normalizedBookletPrintSettings.paperThicknessMm} onValue={(value) => updateBookletPrintSetting('paperThicknessMm', value)} /></label>
+                  </div>
+                  <div className="inspector-block">
+                    <h3>Сторона листа</h3>
+                    <div className="button-row-v3">
+                      <button className="button" onClick={() => goBookletSide(-1)} disabled={!currentBookletSide || bookletPlan.sides[0]?.id === currentBookletSide.id}>←</button>
+                      <button className="button" onClick={toggleBookletSheetSide} disabled={!currentBookletSide}>{currentBookletSide?.side === BOOKLET_SIDE_FRONT ? 'Оборот' : 'Лицевая'}</button>
+                      <button className="button" onClick={() => goBookletSide(1)} disabled={!currentBookletSide || bookletPlan.sides[bookletPlan.sides.length - 1]?.id === currentBookletSide.id}>→</button>
+                    </div>
+                    <div className="booklet-summary-card compact-booklet-summary-v3">
+                      <span>{bookletExportSummary.blocks} блок. · {bookletExportSummary.sheets} лист. A4 · {bookletExportSummary.sides} сторон</span>
+                      <span>A4 горизонтально 297×210 мм · половина листа 148,5×210 мм · {bookletA4Geometry.outputWidthPx}×{bookletA4Geometry.outputHeightPx} px</span>
+                      <span>Толщина блока: {bookletBlockThicknessMm} мм</span>
+                    </div>
+                    {bookletPlan.blankPageCount > 0 && <button className="button full" onClick={addBlankPagesToBookletBlock}>Добавить пустые страницы: {bookletPlan.blankPageCount}</button>}
+                    {trailingBlankPageCount > 0 && <button className="button full" onClick={removeTrailingBlankPages}>Убрать пустые в конце</button>}
+                  </div>
+                  <details className="booklet-export-details-v3">
+                    <summary>Экспорт брошюры</summary>
+                    <div className="booklet-export-grid-v3">
+                      <button className="button" onClick={() => exportBookletPdf('fronts')} disabled={!bookletPlan.sides.length || pdfExporting}>PDF лицевых A4</button>
+                      <button className="button" onClick={() => exportBookletPdf('backs')} disabled={!bookletPlan.sides.length || pdfExporting}>PDF оборотов A4</button>
+                      <button className="button" onClick={() => exportBookletPdf('combined')} disabled={!bookletPlan.sides.length || pdfExporting}>PDF вся брошюра A4</button>
+                      <button className="button" onClick={() => exportBookletPdf('test')} disabled={!bookletPlan.sides.length || pdfExporting}>Тест первого листа</button>
+                      <button className="button" onClick={downloadBookletInstructions} disabled={!bookletPlan.sides.length}>Инструкция</button>
+                      <button className="button" onClick={() => exportBookletSide()} disabled={!currentBookletSide}>PNG текущей стороны</button>
+                      <button className="button" onClick={exportBookletAll} disabled={!bookletPlan.sides.length}>PNG всех сторон</button>
+                      <button className="button" onClick={exportBookletZip} disabled={!bookletPlan.sides.length}>Пакет печати ZIP</button>
+                    </div>
+                  </details>
+                </div>
+              )}
+              {!isBooklet && <div className="inspector-block">
                 <h3>Макет страницы</h3>
                 <label className="field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count === 0 ? 'нет' : count}</option>)}</select></label>
                 <label className="field"><span>Зазор</span><SoftNumberInput min={0} max={200} value={settings.gap} onValue={(value) => updateSetting('gap', value)} /></label>
                 <label className="field"><span>Поля макета</span><SoftNumberInput min={0} max={300} value={settings.padding} onValue={(value) => updateSetting('padding', value)} /></label>
                 <button className={`button full ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>Направляющие</button>
                 <button className={`button full ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>Сетка окон</button>
-              </div>
-              <div className="inspector-block">
+              </div>}
+              {!isBooklet && <div className="inspector-block">
                 <h3>Фон и рамки</h3>
                 <label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label>
                 <label className="field"><span>Обводка внутри окна</span><SoftNumberInput min={0} max={80} value={settings.borderWidth} onValue={(value) => updateSetting('borderWidth', value)} /></label>
-              </div>
-              <details className="print-settings-details-v2">
+              </div>}
+              {!isBooklet && <details className="print-settings-details-v2">
                 <summary>Размер и печать</summary>
                 <div className="document-grid">
                   <label className="field wide-field"><span>Размер страницы</span><select value={settings.presetId} onChange={(event) => applyDocumentPreset(event.target.value)}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
@@ -3324,7 +3377,7 @@ export default function App() {
                   <label className="field"><span>Макет выс. px</span><SoftNumberInput min={300} max={5000} value={canvas.height} onValue={(value) => updateCanvas(canvas.width, value, 'custom')} /></label>
                   <div className="print-summary"><strong>Печать:</strong> {formatPrintSummary(pagePrintGeometry)} · вылет по {normalizedPrintSettings.bleedMm} мм · safe zone {normalizedPrintSettings.safeMm} мм</div>
                 </div>
-              </details>
+              </details>}
             </div>
           )}
         </aside>
