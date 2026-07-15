@@ -1,0 +1,49 @@
+/* Stage 1: structural lock.
+   The legacy stylesheet still contains album-mode rules that can hide the
+   current editor panels and resurrect deprecated sidebars. These selectors
+   deliberately outrank those rules without changing editor behavior. */
+
+body[data-album-mode='text'] .editor-workspace-v2 > .editor-left-panel-v2,
+body[data-album-mode='drawings'] .editor-workspace-v2 > .editor-left-panel-v2,
+body[data-album-mode='templates'] .editor-workspace-v2 > .editor-left-panel-v2 {
+  display: block !important;
+  grid-area: left !important;
+  min-width: 0;
+  min-height: 0;
+}
+
+body[data-album-mode='text'] .editor-workspace-v2 > .album-mode-sidebar,
+body[data-album-mode='drawings'] .editor-workspace-v2 > .album-mode-sidebar,
+body[data-album-mode='templates'] .editor-workspace-v2 > .album-mode-sidebar {
+  display: none !important;
+}
+
+body[data-album-mode='text'] .editor-workspace-v2 > .inspector,
+body[data-album-mode='drawings'] .editor-workspace-v2 > .inspector,
+body[data-album-mode='templates'] .editor-workspace-v2 > .inspector {
+  display: none !important;
+}
+
+body[data-album-mode='text'] .editor-workspace-v2 > .album-mode-inspector,
+body[data-album-mode='drawings'] .editor-workspace-v2 > .album-mode-inspector,
+body[data-album-mode='templates'] .editor-workspace-v2 > .album-mode-inspector {
+  display: block !important;
+  grid-area: inspector !important;
+  min-width: 0;
+  min-height: 0;
+}
+
+body[data-album-mode='text'] .editor-workspace-v2 > .page-rail,
+body[data-album-mode='drawings'] .editor-workspace-v2 > .page-rail,
+body[data-album-mode='templates'] .editor-workspace-v2 > .page-rail {
+  grid-area: pages !important;
+  min-width: 0;
+}
+
+/* The old mode layouts must never be allowed to add implicit grid columns. */
+body[data-album-mode='text'] .editor-workspace-v2,
+body[data-album-mode='drawings'] .editor-workspace-v2,
+body[data-album-mode='templates'] .editor-workspace-v2 {
+  grid-auto-columns: 0 !important;
+  grid-auto-rows: 0 !important;
+}
