@@ -11,6 +11,7 @@ import './editor-shell-stage3-page-rail.css';
 import './editor-shell-stage4a-tool-state.css';
 import './editor-shell-stage4b-text-rendering.css';
 import './editor-shell-stage6-inspector-context.css';
+import './editor-regression-fixes.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
 import { installToolStateBehavior } from './editor/toolStateBehavior';
 import { installTextEditingBehavior } from './editor/textEditingBehavior';
