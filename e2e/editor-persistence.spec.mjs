@@ -42,7 +42,7 @@ test('photo survives save, reload and local reopen through IndexedDB', async ({ 
 
   await page.reload();
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
-  await page.locator('.app-header-actions-v2').getByRole('button', { name: 'Открыть', exact: true }).click();
+  await page.locator('.app-header-actions-v2').getByRole('button', { name: 'Открыть последнее сохранение', exact: true }).click();
   await page.waitForFunction((assetId) => window.__collageApp?.getProject?.().library?.[0]?.assetId === assetId, uploaded.assetId);
 
   const reopenedLocal = await page.evaluate(() => window.__collageApp.getProject());
