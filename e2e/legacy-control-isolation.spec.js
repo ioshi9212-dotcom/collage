@@ -21,10 +21,10 @@ test.describe('legacy control isolation', () => {
     await expect(page.getByLabel('Порядок оборотов')).toHaveCount(1);
     await expect(page.getByLabel('Развернуть обороты на 180°')).toHaveCount(1);
 
+    await expect.poll(() => page.evaluate(() => window.__collageLegacyControls.getState().legacySummaryClassCount)).toBe(0);
     const state = await page.evaluate(() => window.__collageLegacyControls.getState());
     expect(state.roots).toBeGreaterThanOrEqual(1);
     expect(state.focusableControls).toBe(0);
-    expect(state.legacySummaryClassCount).toBe(0);
 
     const legacyRoots = page.locator('.album-bar, .album-tool-panel, .album-mode-sidebar');
     await expect.poll(() => legacyRoots.count()).toBeGreaterThanOrEqual(1);
