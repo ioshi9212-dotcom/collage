@@ -17,6 +17,10 @@ async function openEditor(page) {
     && typeof window.__collageSafety?.getState === 'function'
     && typeof window.__collageInspectorContext?.getState === 'function'
   ));
+  await expect.poll(async () => {
+    const box = await stageBox(page);
+    return box.width > 850 && box.height > 600;
+  }).toBe(true);
 }
 
 async function stageBox(page) {
@@ -42,15 +46,15 @@ test.describe('complete editor regression smoke', () => {
     await expect(page.locator('.album-mode-sidebar')).toBeHidden();
 
     const reference = await stageBox(page);
-    expect(reference.width).toBeGreaterThan(850);
-    expect(reference.height).toBeGreaterThan(600);
 
     for (const [label, key, inspectorKind] of TOOLS) {
       await selectTool(page, label, key);
 
-      const current = await stageBox(page);
-      expect(Math.abs(current.width - reference.width), `${label}: preview width changed`).toBeLessThanOrEqual(4);
-      expect(Math.abs(current.height - reference.height), `${label}: preview height changed`).toBeLessThanOrEqual(4);
+      await expect.poll(async () => {
+        const current = await stageBox(page);
+        return Math.abs(current.width - reference.width) <= 4
+          && Math.abs(current.height - reference.height) <= 4;
+      }, { message: `${label}: preview geometry changed` }).toBe(true);
 
       if (inspectorKind === 'standard') {
         await expect(page.locator('.editor-workspace-v2 > .inspector')).toBeVisible();
@@ -77,9 +81,10 @@ test.describe('complete editor regression smoke', () => {
     await expect(page.getByRole('button', { name: 'Убрать все фото со страницы', exact: true })).toHaveCount(1);
 
     await selectTool(page, 'Страницы', 'pages');
-    await expect(page.getByRole('button', { name: 'Страница', exact: true })).toHaveCount(1);
-    await expect(page.getByRole('button', { name: 'Разворот', exact: true })).toHaveCount(1);
-    await expect(page.getByRole('button', { name: 'Брошюра', exact: true })).toHaveCount(1);
+    const viewSwitch = page.getByLabel('Режим просмотра');
+    await expect(viewSwitch.getByRole('button', { name: 'Страница', exact: true })).toHaveCount(1);
+    await expect(viewSwitch.getByRole('button', { name: 'Разворот', exact: true })).toHaveCount(1);
+    await expect(viewSwitch.getByRole('button', { name: 'Брошюра', exact: true })).toHaveCount(1);
 
     await selectTool(page, 'Шаблоны', 'templates');
     await expect(page.getByRole('button', { name: 'Сохранить альбом как шаблон', exact: true })).toHaveCount(1);
