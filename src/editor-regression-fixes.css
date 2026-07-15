@@ -1,0 +1,7 @@
+/* Final regression fixes: preserve audited desktop button targets without
+   shrinking the primary Save action. */
+
+.app-header-v2 .button:not(.primary-save-v2) {
+  min-height: var(--button-height);
+  height: var(--button-height);
+}

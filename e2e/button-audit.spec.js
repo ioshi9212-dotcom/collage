@@ -38,9 +38,9 @@ test.describe('button audit', () => {
     await openEditor(page);
 
     const viewSwitch = page.getByLabel('Режим просмотра');
-    const pageMode = viewSwitch.getByRole('button', { name: 'Страница', exact: true });
-    await expect(pageMode).toHaveClass(/active/);
-    await expect(pageMode).toHaveCSS('background-color', 'rgb(227, 231, 233)');
+    const spreadMode = viewSwitch.getByRole('button', { name: 'Разворот', exact: true });
+    await expect(spreadMode).toHaveClass(/active/);
+    await expect(spreadMode).toHaveCSS('background-color', 'rgb(227, 231, 233)');
 
     await page.getByRole('button', { name: 'Страницы', exact: true }).click();
     const deletePage = page.getByRole('button', { name: 'Удалить страницу', exact: true });
@@ -52,7 +52,7 @@ test.describe('button audit', () => {
   test('keyboard focus and compact icon controls remain easy to target', async ({ page }) => {
     await openEditor(page);
 
-    const openButton = page.getByRole('button', { name: 'Открыть', exact: true });
+    const openButton = page.getByRole('button', { name: 'Открыть последнее сохранение', exact: true });
     await openButton.focus();
     await expect(openButton).toHaveCSS('outline-width', '3px');
     const openBox = await openButton.boundingBox();
