@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          npx playwright test --project=chromium > browser.log 2>&1
+          npm run e2e > browser.log 2>&1
           status=$?
           cat browser.log
           echo "status=$status" >> "$GITHUB_OUTPUT"
