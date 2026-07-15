@@ -40,7 +40,7 @@ test.describe('editor shell stage 2 control deduplication', () => {
 
     const leftPanel = page.locator('.editor-left-panel-v2');
     await expect(leftPanel.getByRole('button', { name: 'Перестроить рамки', exact: true })).toBeVisible();
-    await expect(leftPanel.getByRole('button', { name: 'Очистить фото', exact: true })).toBeVisible();
+    await expect(leftPanel.getByRole('button', { name: 'Убрать все фото со страницы', exact: true })).toBeVisible();
 
     await expect(page.locator('.canvas-toolbar').getByRole('button', { name: 'Перестроить рамки', exact: true })).toHaveCount(0);
     await expect(page.locator('.canvas-toolbar').getByRole('button', { name: 'Очистить фото', exact: true })).toHaveCount(0);
@@ -55,13 +55,15 @@ test.describe('editor shell stage 2 control deduplication', () => {
     await toolRail(page).getByRole('button', { name: 'Шаблоны', exact: true }).click();
 
     const leftPanel = page.locator('.editor-left-panel-v2');
-    await expect(leftPanel.getByRole('button', { name: 'Сохранить весь альбом', exact: true })).toHaveCount(1);
-    await expect(leftPanel.getByRole('button', { name: 'Сохранить страницу', exact: true })).toHaveCount(1);
-    await expect(leftPanel.getByRole('button', { name: 'Сохранить разворот', exact: true })).toHaveCount(1);
-    await expect(leftPanel.getByRole('button', { name: 'Загрузить JSON', exact: true })).toHaveCount(1);
+    await expect(leftPanel.getByRole('button', { name: 'Сохранить альбом как шаблон', exact: true })).toHaveCount(1);
+    await expect(leftPanel.getByRole('button', { name: 'Сохранить страницу как шаблон', exact: true })).toHaveCount(1);
+    await expect(leftPanel.getByRole('button', { name: 'Сохранить разворот как шаблон', exact: true })).toHaveCount(1);
+    await expect(leftPanel.getByRole('button', { name: 'Загрузить шаблон JSON', exact: true })).toHaveCount(1);
 
-    await expect(leftPanel.getByRole('button', { name: 'Сохранить альбом как шаблон', exact: true })).toHaveCount(0);
-    await expect(leftPanel.getByRole('button', { name: 'Загрузить шаблон JSON', exact: true })).toHaveCount(0);
+    await expect(leftPanel.getByRole('button', { name: 'Сохранить весь альбом', exact: true })).toHaveCount(0);
+    await expect(leftPanel.getByRole('button', { name: 'Сохранить страницу', exact: true })).toHaveCount(0);
+    await expect(leftPanel.getByRole('button', { name: 'Сохранить разворот', exact: true })).toHaveCount(0);
+    await expect(leftPanel.getByRole('button', { name: 'Загрузить JSON', exact: true })).toHaveCount(0);
     await expect(page.locator('.album-mode-sidebar')).toBeHidden();
   });
 });
