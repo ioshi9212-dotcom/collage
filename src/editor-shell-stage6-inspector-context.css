@@ -1,0 +1,20 @@
+/* Stage 6: the right panel follows the current editing context.
+   Page-level appearance controls live only under the Page tab. */
+
+.editor-workspace-v2 > .inspector .page-only-controls-duplicate {
+  display: none !important;
+}
+
+.editor-workspace-v2 > .inspector .inspector-tab-v2:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.editor-workspace-v2 > .inspector .inspector-tab-v2:disabled:hover {
+  background: transparent;
+  color: var(--shell-muted);
+}
+
+body[data-active-editor-tool='pages'] .editor-workspace-v2 > .inspector .inspector-tab-v2[data-tab='page'] {
+  font-weight: 900;
+}
