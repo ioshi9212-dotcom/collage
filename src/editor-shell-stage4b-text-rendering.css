@@ -1,0 +1,24 @@
+/* Stage 4B: text editing presentation.
+   Canvas selection is rendered by textEditingBehavior.js; these rules only
+   improve the inspector and layer list without changing print geometry. */
+
+body[data-active-editor-tool='text'] .album-mode-inspector textarea {
+  min-height: 104px;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+body[data-active-editor-tool='text'] .editor-left-panel-v2 .layer-card.active {
+  border-color: var(--shell-graphite) !important;
+  background: var(--shell-soft) !important;
+  box-shadow: inset 3px 0 0 var(--shell-graphite) !important;
+}
+
+body[data-active-editor-tool='text'] .album-mode-inspector .geometry-grid {
+  align-items: end;
+}
+
+body[data-active-editor-tool='text'] .stage-frame canvas {
+  image-rendering: auto;
+}
