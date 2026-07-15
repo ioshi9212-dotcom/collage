@@ -12,10 +12,6 @@ async function openEditor(page, { storedMode } = {}) {
   await expect(page.locator('.editor-tool-rail-v2')).toBeVisible();
 }
 
-function tool(page, name) {
-  return page.getByRole('button', { name, exact: true }).filter({ has: page.locator('.editor-tool-button-v2') });
-}
-
 async function selectTool(page, name) {
   await page.locator(`.editor-tool-button-v2[aria-label="${name}"]`).click();
 }
