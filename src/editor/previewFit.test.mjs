@@ -10,7 +10,7 @@ assert.deepEqual(getStablePreviewViewport({
   containerWidth: 900,
   viewportHeight: 900,
   horizontalPadding: 24,
-}), { width: 852, height: 576 });
+}), { width: 852, height: 630 });
 
 assert.deepEqual(getStablePreviewViewport({
   containerWidth: 900,
@@ -22,7 +22,7 @@ assert.deepEqual(getStablePreviewViewport({
   containerWidth: 2000,
   viewportHeight: 1600,
   horizontalPadding: 24,
-}), { width: 1220, height: 720 });
+}), { width: 1220, height: 780 });
 
 assert.equal(getPreviewScale({
   stageWidth: 2960,
