@@ -18,7 +18,7 @@ const ACTIONS = {
   },
   'clear-page-photos': {
     labels: new Set(['Очистить фото', 'Убрать все фото со страницы']),
-    message: projectMessage((project, page, pageNumber) => {
+    message: projectMessage((_project, page, pageNumber) => {
       const photoCount = Array.isArray(page?.frames) ? page.frames.filter((frame) => frame?.photo).length : 0;
       return `Убрать ${photoCount || 'все'} фото со страницы ${pageNumber}?\n\nСами загруженные фотографии останутся в разделе «Фото».`;
     }),
