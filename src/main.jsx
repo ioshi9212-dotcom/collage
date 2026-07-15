@@ -13,6 +13,7 @@ import './editor-shell-stage4b-text-rendering.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
 import { installToolStateBehavior } from './editor/toolStateBehavior';
 import { installTextEditingBehavior } from './editor/textEditingBehavior';
+import { installDestructiveActionBehavior } from './editor/destructiveActionBehavior';
 import App from './AppLive.jsx';
 
 createRoot(document.getElementById('root')).render(
@@ -24,3 +25,4 @@ createRoot(document.getElementById('root')).render(
 installPageRailBehavior();
 installToolStateBehavior();
 installTextEditingBehavior();
+installDestructiveActionBehavior();
