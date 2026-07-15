@@ -8,7 +8,9 @@ import './button-audit.css';
 import './editor-shell-stage1-structure.css';
 import './editor-shell-stage2-deduplicate.css';
 import './editor-shell-stage3-page-rail.css';
+import './editor-shell-stage4a-tool-state.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
+import { installToolStateBehavior } from './editor/toolStateBehavior';
 import App from './AppLive.jsx';
 
 createRoot(document.getElementById('root')).render(
@@ -18,3 +20,4 @@ createRoot(document.getElementById('root')).render(
 );
 
 installPageRailBehavior();
+installToolStateBehavior();
