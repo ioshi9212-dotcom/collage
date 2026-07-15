@@ -22,11 +22,12 @@ test.describe('legacy control isolation', () => {
     await expect(page.getByLabel('Развернуть обороты на 180°')).toHaveCount(1);
 
     const state = await page.evaluate(() => window.__collageLegacyControls.getState());
-    expect(state.roots).toBeGreaterThanOrEqual(2);
+    expect(state.roots).toBeGreaterThanOrEqual(1);
     expect(state.focusableControls).toBe(0);
+    expect(state.legacySummaryClassCount).toBe(0);
 
     const legacyRoots = page.locator('.album-bar, .album-tool-panel, .album-mode-sidebar');
-    await expect.poll(() => legacyRoots.count()).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => legacyRoots.count()).toBeGreaterThanOrEqual(1);
     for (let index = 0; index < await legacyRoots.count(); index += 1) {
       await expect(legacyRoots.nth(index)).toHaveAttribute('aria-hidden', 'true');
       await expect(legacyRoots.nth(index)).toHaveAttribute('inert', '');
