@@ -9,8 +9,10 @@ import './editor-shell-stage1-structure.css';
 import './editor-shell-stage2-deduplicate.css';
 import './editor-shell-stage3-page-rail.css';
 import './editor-shell-stage4a-tool-state.css';
+import './editor-shell-stage4b-text-rendering.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
 import { installToolStateBehavior } from './editor/toolStateBehavior';
+import { installTextEditingBehavior } from './editor/textEditingBehavior';
 import App from './AppLive.jsx';
 
 createRoot(document.getElementById('root')).render(
@@ -21,3 +23,4 @@ createRoot(document.getElementById('root')).render(
 
 installPageRailBehavior();
 installToolStateBehavior();
+installTextEditingBehavior();
