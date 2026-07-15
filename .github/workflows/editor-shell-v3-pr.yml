@@ -38,7 +38,25 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Browser tests
-        run: npx playwright test --project=chromium
+        id: browser
+        shell: bash
+        run: |
+          set +e
+          npx playwright test --project=chromium > browser.log 2>&1
+          status=$?
+          cat browser.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-shell-v3-browser-log
+          path: browser.log
+          if-no-files-found: error
+      - name: Fail when browser tests failed
+        if: steps.browser.outputs.status != '0'
+        run: exit 1
       - name: Commit verified product changes
         run: |
           git config user.name "github-actions[bot]"
