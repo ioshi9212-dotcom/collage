@@ -88,7 +88,7 @@ test.describe('stage 1 editor structure', () => {
       const visibleInspector = mode.contextual ? shell.modeInspector : shell.regularInspector;
       expect(visibleInspector.x).toBeGreaterThanOrEqual(shell.canvas.right - 1);
       expect(visibleInspector.bottom).toBe(shell.viewportHeight);
-      expect(shell.legacyModeSidebar.display).toBe('none');
+      expect(shell.legacyModeSidebar?.display ?? 'none').toBe('none');
       expectStableColumns(shell, baseline);
     }
   });
