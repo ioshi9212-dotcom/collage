@@ -37,6 +37,8 @@ async function waitForBookletEditor(page) {
   await page.goto('/');
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
   await page.getByRole('button', { name: 'Брошюра' }).click();
+  await expect(page.getByRole('heading', { name: 'Настройки брошюры', exact: true })).toBeVisible();
+  await page.locator('.booklet-export-details-v3 > summary').click();
   await expect(page.getByRole('button', { name: 'PDF лицевых A4' })).toBeVisible();
 }
 
