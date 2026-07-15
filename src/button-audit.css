@@ -1,0 +1,196 @@
+/* Button audit layer.
+   Keeps one global primary action, strengthens state clarity, and enlarges
+   interaction targets without changing editor behavior or project data. */
+
+:root {
+  --button-height: 36px;
+  --button-icon-target: 44px;
+  --button-focus-ring: rgba(62, 72, 77, 0.28);
+  --button-danger-soft: #fff5f5;
+}
+
+.button,
+.small-button,
+.album-mode-button,
+.cloud-auth-button,
+.segmented-v2 button,
+.inspector-tab-v2 {
+  min-height: var(--button-height);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.button,
+.small-button,
+.album-mode-button,
+.cloud-auth-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-inline: 12px;
+}
+
+/* The save action is the only solid global primary button. */
+.primary-save-v2,
+.button.primary-save-v2 {
+  min-height: 38px;
+  border-color: var(--shell-graphite) !important;
+  background: var(--shell-graphite) !important;
+  color: #fff !important;
+  font-weight: 850;
+}
+
+.primary-save-v2:hover:not(:disabled),
+.button.primary-save-v2:hover:not(:disabled) {
+  border-color: var(--shell-graphite-hover) !important;
+  background: var(--shell-graphite-hover) !important;
+}
+
+/* Local creation/apply actions stay secondary instead of competing with Save. */
+.button.accent,
+.button.primary,
+.small-button.accent,
+.small-button.primary-accent,
+.album-mode-button.primary,
+.cloud-auth-button.primary,
+.primary-accent,
+.soft-accent {
+  border-color: var(--shell-line-strong) !important;
+  background: #fff !important;
+  color: var(--shell-text) !important;
+  box-shadow: none !important;
+}
+
+.button.accent:hover:not(:disabled),
+.button.primary:hover:not(:disabled),
+.small-button.accent:hover:not(:disabled),
+.small-button.primary-accent:hover:not(:disabled),
+.album-mode-button.primary:hover:not(:disabled),
+.cloud-auth-button.primary:hover:not(:disabled) {
+  background: #f0f2f3 !important;
+}
+
+/* Active modes are selections, not primary actions. */
+.segmented-v2 button.active,
+.editor-tool-button-v2.active,
+.inspector-tab-v2.active,
+.active-mode,
+.button.active-mode,
+.small-button.active-mode,
+.album-mode-tab.active {
+  border-color: var(--shell-line-strong) !important;
+  background: var(--shell-soft) !important;
+  color: var(--shell-text) !important;
+}
+
+.segmented-v2 button.active {
+  box-shadow: inset 0 -2px 0 var(--shell-graphite) !important;
+}
+
+.editor-tool-button-v2.active {
+  box-shadow: inset 3px 0 0 var(--shell-graphite) !important;
+}
+
+/* Destructive actions are visually consistent and never masquerade as primary. */
+.danger,
+.danger-button,
+.button.danger-button,
+.small-button.danger,
+.album-mode-button.danger,
+.cloud-auth-button.danger {
+  border-color: rgba(182, 80, 80, 0.42) !important;
+  background: #fff !important;
+  color: var(--shell-danger) !important;
+  font-weight: 800;
+}
+
+.danger:hover:not(:disabled),
+.danger-button:hover:not(:disabled),
+.button.danger-button:hover:not(:disabled),
+.small-button.danger:hover:not(:disabled),
+.album-mode-button.danger:hover:not(:disabled),
+.cloud-auth-button.danger:hover:not(:disabled) {
+  border-color: rgba(182, 80, 80, 0.68) !important;
+  background: var(--button-danger-soft) !important;
+}
+
+/* Keyboard focus must remain visible on every interactive button family. */
+.button:focus-visible,
+.small-button:focus-visible,
+.album-mode-button:focus-visible,
+.cloud-auth-button:focus-visible,
+.editor-tool-button-v2:focus-visible,
+.segmented-v2 button:focus-visible,
+.inspector-tab-v2:focus-visible,
+.page-rail-card:focus-visible,
+.photo-card:focus-visible,
+.booklet-export-details-v3 > summary:focus-visible,
+.print-settings-details-v2 > summary:focus-visible {
+  position: relative;
+  z-index: 2;
+  outline: 3px solid var(--button-focus-ring);
+  outline-offset: 2px;
+}
+
+button:disabled,
+.button:disabled,
+.small-button:disabled,
+.album-mode-button:disabled,
+.cloud-auth-button:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+  filter: grayscale(0.15);
+}
+
+/* Arrow-only booklet navigation gets a reliable touch/click target. */
+.button-row-v3 > .button:first-child,
+.button-row-v3 > .button:last-child {
+  min-width: var(--button-icon-target);
+  min-height: var(--button-icon-target);
+  padding: 0;
+  font-size: 18px;
+}
+
+/* The add-page action is important locally, but remains visually secondary. */
+.page-rail-add-v3 {
+  min-height: var(--button-height);
+  border-color: var(--shell-line-strong);
+  background: #fff;
+  color: var(--shell-text);
+  font-weight: 800;
+}
+
+/* Temporary menus use calm, full-width actions with consistent alignment. */
+.export-popover-v2 .button,
+.booklet-export-grid-v3 .button,
+.insert-tool-grid-v3 .button {
+  width: 100%;
+  min-height: var(--button-height);
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* Selected page/photo cards need one unambiguous state. */
+.page-rail-card.current-page-rail-card,
+.page-rail-card.booklet-visible-rail-card,
+.photo-card.selected-photo-card {
+  border-color: var(--shell-graphite) !important;
+  box-shadow: inset 0 0 0 1px var(--shell-graphite) !important;
+}
+
+@media (pointer: coarse) {
+  .button,
+  .small-button,
+  .album-mode-button,
+  .cloud-auth-button,
+  .segmented-v2 button,
+  .inspector-tab-v2 {
+    min-height: 44px;
+  }
+
+  .editor-tool-button-v2 {
+    min-height: 56px;
+  }
+}
