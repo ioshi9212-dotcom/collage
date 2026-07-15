@@ -1,0 +1,32 @@
+/* Stage 4A: active tool state.
+   The highlighted tool is authoritative while React finishes switching modes.
+   This prevents a text/drawing inspector from remaining beside Photo, Pages or
+   Collage and prevents the generic frame inspector from flashing in layer tools. */
+
+body[data-active-editor-tool='photos'] .editor-workspace-v2 > .album-mode-inspector,
+body[data-active-editor-tool='pages'] .editor-workspace-v2 > .album-mode-inspector,
+body[data-active-editor-tool='collage'] .editor-workspace-v2 > .album-mode-inspector {
+  display: none !important;
+}
+
+body[data-active-editor-tool='photos'] .editor-workspace-v2 > .inspector,
+body[data-active-editor-tool='pages'] .editor-workspace-v2 > .inspector,
+body[data-active-editor-tool='collage'] .editor-workspace-v2 > .inspector {
+  display: block !important;
+  grid-area: inspector !important;
+}
+
+body[data-active-editor-tool='text'] .editor-workspace-v2 > .inspector,
+body[data-active-editor-tool='drawings'] .editor-workspace-v2 > .inspector,
+body[data-active-editor-tool='templates'] .editor-workspace-v2 > .inspector {
+  display: none !important;
+}
+
+body[data-active-editor-tool='text'] .editor-workspace-v2 > .album-mode-inspector,
+body[data-active-editor-tool='drawings'] .editor-workspace-v2 > .album-mode-inspector,
+body[data-active-editor-tool='templates'] .editor-workspace-v2 > .album-mode-inspector {
+  display: block !important;
+  grid-area: inspector !important;
+  min-width: 0;
+  min-height: 0;
+}
