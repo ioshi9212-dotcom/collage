@@ -44,7 +44,12 @@ export function installLegacyControlIsolation() {
   };
 
   const observer = new MutationObserver(schedule);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+    childList: true,
+    subtree: true,
+  });
 
   window.__collageLegacyControls = {
     sync: isolateAllLegacyControls,
