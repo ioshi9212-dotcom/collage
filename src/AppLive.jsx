@@ -3091,12 +3091,12 @@ export default function App() {
 
       <section className="workspace editor-workspace-v2">
         <nav className="editor-tool-rail-v2" aria-label="Инструменты редактора">
-          <button type="button" className={`editor-tool-button-v2 ${leftPanel === 'photos' ? 'active' : ''}`} onClick={() => { setLeftPanel('photos'); setMode('collage'); }}><b>▧</b><span>Фото</span></button>
-          <button type="button" className={`editor-tool-button-v2 ${leftPanel === 'pages' ? 'active' : ''}`} onClick={() => { setLeftPanel('pages'); setMode('collage'); }}><b>▤</b><span>Страницы</span></button>
-          <button type="button" className={`editor-tool-button-v2 ${leftPanel === 'collage' ? 'active' : ''}`} onClick={() => { setLeftPanel('collage'); setMode('collage'); }}><b>▦</b><span>Коллаж</span></button>
-          <button type="button" className={`editor-tool-button-v2 ${leftPanel === 'text' ? 'active' : ''}`} onClick={() => { setLeftPanel('text'); setMode('text'); }}><b>T</b><span>Текст</span></button>
-          <button type="button" className={`editor-tool-button-v2 ${leftPanel === 'drawings' ? 'active' : ''}`} onClick={() => { setLeftPanel('drawings'); setMode('drawings'); }}><b>╱</b><span>Рисунки</span></button>
-          <button type="button" className={`editor-tool-button-v2 ${leftPanel === 'templates' ? 'active' : ''}`} onClick={() => { setLeftPanel('templates'); setMode('templates'); }}><b>◇</b><span>Шаблоны</span></button>
+          <button type="button" aria-label="Фото" className={`editor-tool-button-v2 ${leftPanel === 'photos' ? 'active' : ''}`} onClick={() => { setLeftPanel('photos'); setMode('collage'); }}><b>▧</b><span>Фото</span></button>
+          <button type="button" aria-label="Страницы" className={`editor-tool-button-v2 ${leftPanel === 'pages' ? 'active' : ''}`} onClick={() => { setLeftPanel('pages'); setMode('collage'); }}><b>▤</b><span>Страницы</span></button>
+          <button type="button" aria-label="Коллаж" className={`editor-tool-button-v2 ${leftPanel === 'collage' ? 'active' : ''}`} onClick={() => { setLeftPanel('collage'); setMode('collage'); }}><b>▦</b><span>Коллаж</span></button>
+          <button type="button" aria-label="Текст" className={`editor-tool-button-v2 ${leftPanel === 'text' ? 'active' : ''}`} onClick={() => { setLeftPanel('text'); setMode('text'); }}><b>T</b><span>Текст</span></button>
+          <button type="button" aria-label="Рисунки" className={`editor-tool-button-v2 ${leftPanel === 'drawings' ? 'active' : ''}`} onClick={() => { setLeftPanel('drawings'); setMode('drawings'); }}><b>╱</b><span>Рисунки</span></button>
+          <button type="button" aria-label="Шаблоны" className={`editor-tool-button-v2 ${leftPanel === 'templates' ? 'active' : ''}`} onClick={() => { setLeftPanel('templates'); setMode('templates'); }}><b>◇</b><span>Шаблоны</span></button>
         </nav>
         <aside className="sidebar editor-left-panel-v2">
           {leftPanel === 'photos' && (
@@ -3176,6 +3176,7 @@ export default function App() {
               <p>{isBooklet ? 'Клик по странице откроет сторону листа, где она печатается.' : 'Клик по странице открывает её в текущем виде.'}</p>
             </div>
             <span>{pages.length}</span>
+            <button type="button" className="button page-rail-add-v3" onClick={addPage}>+ Страница</button>
             {!isBooklet && (
               <label className="frame-count-inline-control">
                 <span>Фото-окон</span>

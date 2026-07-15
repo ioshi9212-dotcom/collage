@@ -735,3 +735,16 @@ body[data-album-mode='templates'] .editor-workspace-v2 > .album-mode-inspector {
   font-size: 8px !important;
   line-height: 1.1;
 }
+
+
+/* shell v3 compatibility polish */
+.cloud-auth-panel.collapsed {
+  display: none !important;
+}
+
+.page-rail-add-v3 {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding-inline: 12px;
+  white-space: nowrap;
+}

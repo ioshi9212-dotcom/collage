@@ -47,7 +47,7 @@ test.describe('editor shell v3', () => {
     await openEditor(page);
     await page.getByRole('button', { name: 'Брошюра', exact: true }).click();
     await expect(page.locator('.inspector-tab-v2[data-tab="page"]')).toHaveClass(/active/);
-    await expect(page.getByText('Настройки брошюры', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Настройки брошюры', exact: true })).toBeVisible();
     await expect(page.getByLabel('Листов в блоке')).toBeVisible();
     await expect(page.locator('.booklet-summary-card')).toContainText('A4 горизонтально 297×210 мм');
   });
