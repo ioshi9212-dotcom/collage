@@ -1,0 +1,97 @@
+/* Stage 3: bottom page rail.
+   The title and add action get their own stable area while only the page cards
+   scroll horizontally. This layer intentionally does not change other panels. */
+
+.page-rail {
+  grid-template-columns: max-content minmax(0, 1fr) auto !important;
+  column-gap: 10px;
+  align-items: stretch;
+}
+
+.page-rail .page-rail-header-row,
+.page-rail .panel-title.page-rail-header-row {
+  display: grid !important;
+  grid-template-columns: max-content max-content;
+  grid-template-rows: 1fr;
+  align-items: center;
+  align-self: stretch;
+  gap: 8px;
+  width: auto !important;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.page-rail-header-row > div {
+  min-width: 0;
+}
+
+.page-rail-header-row h2 {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.page-rail-header-row p,
+.page-rail-header-row > span,
+.page-rail-header-row .frame-count-inline-control {
+  display: none !important;
+}
+
+.page-rail .page-rail-add-v3 {
+  display: inline-flex !important;
+  width: auto !important;
+  min-width: 92px;
+  min-height: 36px;
+  margin: 0 !important;
+  padding-inline: 12px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.page-rail-list {
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+  scroll-snap-type: x proximity;
+  padding-inline: 2px;
+}
+
+.page-rail-card {
+  scroll-snap-align: nearest;
+}
+
+.page-rail-note {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .page-rail {
+    grid-template-columns: max-content minmax(0, 1fr) !important;
+  }
+
+  .page-rail .page-rail-header-row,
+  .page-rail .panel-title.page-rail-header-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .page-rail-header-row h2 {
+    font-size: 11px;
+  }
+
+  .page-rail .page-rail-add-v3 {
+    min-width: 78px;
+    min-height: 34px;
+    padding-inline: 8px;
+    font-size: 10px;
+  }
+
+  .page-rail-note {
+    display: none;
+  }
+}
