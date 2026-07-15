@@ -1,4 +1,23 @@
 const LEGACY_ROOT_SELECTOR = '.album-bar, .album-tool-panel, .album-mode-sidebar';
+const LEGACY_CONTROL_SELECTOR = [
+  '.album-bar button',
+  '.album-bar input',
+  '.album-bar select',
+  '.album-bar textarea',
+  '.album-tool-panel button',
+  '.album-tool-panel input',
+  '.album-tool-panel select',
+  '.album-tool-panel textarea',
+  '.album-mode-sidebar button',
+  '.album-mode-sidebar input',
+  '.album-mode-sidebar select',
+  '.album-mode-sidebar textarea',
+].join(', ');
+const LEGACY_SUMMARY_SELECTOR = [
+  '.album-bar .booklet-summary-card',
+  '.album-tool-panel .booklet-summary-card',
+  '.album-mode-sidebar .booklet-summary-card',
+].join(', ');
 
 function isolateLegacyRoot(root) {
   if (!(root instanceof HTMLElement)) return;
@@ -55,9 +74,9 @@ export function installLegacyControlIsolation() {
     sync: isolateAllLegacyControls,
     getState: () => ({
       roots: document.querySelectorAll(LEGACY_ROOT_SELECTOR).length,
-      focusableControls: Array.from(document.querySelectorAll(`${LEGACY_ROOT_SELECTOR} button, ${LEGACY_ROOT_SELECTOR} input, ${LEGACY_ROOT_SELECTOR} select, ${LEGACY_ROOT_SELECTOR} textarea`))
+      focusableControls: Array.from(document.querySelectorAll(LEGACY_CONTROL_SELECTOR))
         .filter((control) => !control.disabled && control.tabIndex >= 0).length,
-      legacySummaryClassCount: document.querySelectorAll(`${LEGACY_ROOT_SELECTOR} .booklet-summary-card`).length,
+      legacySummaryClassCount: document.querySelectorAll(LEGACY_SUMMARY_SELECTOR).length,
     }),
   };
 
