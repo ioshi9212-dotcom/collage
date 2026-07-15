@@ -184,6 +184,7 @@ export function installTextEditingBehavior() {
 
   let scheduled = false;
   let lastPixelRatio = 1;
+  const checkedDefaultNodes = new WeakSet();
 
   function sync() {
     scheduled = false;
@@ -194,7 +195,10 @@ export function installTextEditingBehavior() {
     const textNode = selectedTextNode(stage);
     ensureTextTransformer(stage, textNode);
 
-    if (textNode) applySafeBodyFont({ allowExistingPlaceholder: true });
+    if (textNode && !checkedDefaultNodes.has(textNode)) {
+      checkedDefaultNodes.add(textNode);
+      applySafeBodyFont({ allowExistingPlaceholder: true });
+    }
   }
 
   function scheduleSync() {
