@@ -33,6 +33,11 @@ function selectedFrameControlsVisible() {
   ));
 }
 
+function duplicatedPageControlsVisible() {
+  const block = inspector()?.querySelector('.page-only-controls-duplicate:not([hidden])');
+  return block ? getComputedStyle(block).display !== 'none' : false;
+}
+
 function markDuplicatedPageControls() {
   const root = inspector();
   if (!root || activeInspectorTab() !== 'object') return;
@@ -178,10 +183,7 @@ export function installInspectorContextBehavior() {
       activeTab: activeInspectorTab(),
       objectAvailable: !Boolean(inspectorTab('object')?.disabled),
       selectedFrameKnown,
-      duplicatedPageControlsVisible: Boolean(
-        inspector()?.querySelector('.page-only-controls-duplicate:not([hidden])')
-          && getComputedStyle(inspector().querySelector('.page-only-controls-duplicate')).display !== 'none',
-      ),
+      duplicatedPageControlsVisible: duplicatedPageControlsVisible(),
     }),
   };
 
