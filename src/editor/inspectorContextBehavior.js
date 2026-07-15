@@ -181,7 +181,7 @@ export function installInspectorContextBehavior() {
     getState: () => ({
       tool: activeTool(),
       activeTab: activeInspectorTab(),
-      objectAvailable: !Boolean(inspectorTab('object')?.disabled),
+      objectAvailable: inspectorTab('object')?.disabled !== true,
       selectedFrameKnown,
       duplicatedPageControlsVisible: duplicatedPageControlsVisible(),
     }),
