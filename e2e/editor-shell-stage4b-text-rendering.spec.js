@@ -63,4 +63,19 @@ test.describe('editor shell stage 4B text rendering', () => {
     await expect.poll(() => page.evaluate(() => window.__collageTextEditing.getState().fontId)).toBe('caslon');
     await expect.poll(() => page.evaluate(() => window.__collageTextEditing.getState().hasTransformer)).toBe(true);
   });
+
+  test('does not override a font selected manually after creation', async ({ page }) => {
+    await openEditor(page);
+    await selectTextTool(page);
+    await page.getByRole('button', { name: '+ Обычный текст', exact: true }).click();
+    await expect.poll(async () => (await currentPageTexts(page))[0]?.fontId).toBe('system');
+
+    const fontSelect = page.locator('.album-mode-inspector label.field').filter({ hasText: 'Гарнитура' }).locator('select');
+    await fontSelect.selectOption('onest');
+
+    await expect.poll(async () => (await currentPageTexts(page))[0]?.fontId).toBe('onest');
+    await page.waitForTimeout(250);
+    await expect(fontSelect).toHaveValue('onest');
+    await expect.poll(() => page.evaluate(() => window.__collageTextEditing.getState().fontId)).toBe('onest');
+  });
 });
