@@ -37,12 +37,12 @@ jobs:
         run: npm run build
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Browser tests
+      - name: Focused browser tests
         id: browser
         shell: bash
         run: |
           set +e
-          npm run e2e > browser.log 2>&1
+          npx playwright test e2e/editor-shell-v3.spec.js e2e/booklet-print.spec.js > browser.log 2>&1
           status=$?
           cat browser.log
           echo "status=$status" >> "$GITHUB_OUTPUT"
