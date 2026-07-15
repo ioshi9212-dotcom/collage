@@ -1,0 +1,36 @@
+/* Stage 2: de-duplicate visible controls without touching editor behavior.
+   The surviving controls keep their original React handlers; only repeated
+   entry points are removed from the active interface. */
+
+/* Deprecated top stacks remain in JSX for now, but must never reappear. */
+.album-bar,
+.album-bar.clean-control-panel,
+.album-tool-panel,
+.react-mode-panel,
+.editor-workspace-v2 > .album-mode-sidebar {
+  display: none !important;
+}
+
+/* Page-view switching belongs to the header only.
+   This removes the repeated Page / Spread / Booklet group in the Pages tool. */
+.editor-left-panel-v2 > .inspector-block {
+  display: none !important;
+}
+
+/* Rebuild and clear-photo actions belong to the Collage tool panel.
+   The same handlers above the canvas were a second entry point. */
+.canvas-toolbar > .small-button {
+  display: none !important;
+}
+
+/* renderModeLeftPanel already provides all template save/import actions.
+   Hide the two extra direct buttons appended by the legacy template branch. */
+body[data-album-mode='templates']
+  .editor-left-panel-v2 > .template-save-grid ~ .button.full {
+  display: none !important;
+}
+
+/* Keep the canvas title aligned after removing its repeated action buttons. */
+.canvas-toolbar {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
