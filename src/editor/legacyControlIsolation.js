@@ -6,6 +6,11 @@ function isolateLegacyRoot(root) {
   root.setAttribute('aria-hidden', 'true');
   root.setAttribute('inert', '');
 
+  Array.from(root.querySelectorAll('.booklet-summary-card')).forEach((card) => {
+    card.classList.remove('booklet-summary-card');
+    card.classList.add('legacy-booklet-summary-card');
+  });
+
   Array.from(root.querySelectorAll('label')).forEach((label, index) => {
     label.setAttribute('aria-hidden', 'true');
     const caption = label.querySelector(':scope > span');
@@ -47,6 +52,7 @@ export function installLegacyControlIsolation() {
       roots: document.querySelectorAll(LEGACY_ROOT_SELECTOR).length,
       focusableControls: Array.from(document.querySelectorAll(`${LEGACY_ROOT_SELECTOR} button, ${LEGACY_ROOT_SELECTOR} input, ${LEGACY_ROOT_SELECTOR} select, ${LEGACY_ROOT_SELECTOR} textarea`))
         .filter((control) => !control.disabled && control.tabIndex >= 0).length,
+      legacySummaryClassCount: document.querySelectorAll(`${LEGACY_ROOT_SELECTOR} .booklet-summary-card`).length,
     }),
   };
 
