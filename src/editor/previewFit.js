@@ -21,13 +21,13 @@ export function getStablePreviewViewport({
   minWidth = 260,
   maxWidth = 1220,
   minHeight = 360,
-  maxHeight = 720,
-  heightRatio = 0.64,
+  maxHeight = 780,
+  heightRatio = 0.70,
 } = {}) {
   const safeContainerWidth = positive(containerWidth, maxWidth + horizontalPadding + framePadding);
   const safeViewportHeight = positive(viewportHeight, maxHeight / heightRatio);
   const width = clamp(safeContainerWidth - Math.max(0, finite(horizontalPadding, 0)) - Math.max(0, finite(framePadding, 24)), minWidth, maxWidth);
-  const height = clamp(safeViewportHeight * Math.max(0.1, finite(heightRatio, 0.64)), minHeight, maxHeight);
+  const height = clamp(safeViewportHeight * Math.max(0.1, finite(heightRatio, 0.70)), minHeight, maxHeight);
   return { width, height };
 }
 
