@@ -10,19 +10,19 @@ assert.deepEqual(getStablePreviewViewport({
   containerWidth: 900,
   viewportHeight: 900,
   horizontalPadding: 24,
-}), { width: 852, height: 630 });
+}), { width: 858, height: 702 });
 
 assert.deepEqual(getStablePreviewViewport({
   containerWidth: 900,
   viewportHeight: 400,
   horizontalPadding: 24,
-}), { width: 852, height: 360 });
+}), { width: 858, height: 360 });
 
 assert.deepEqual(getStablePreviewViewport({
   containerWidth: 2000,
   viewportHeight: 1600,
   horizontalPadding: 24,
-}), { width: 1220, height: 780 });
+}), { width: 1360, height: 860 });
 
 assert.equal(getPreviewScale({
   stageWidth: 2960,
@@ -51,4 +51,4 @@ assert.equal(isBookletPageActive(side, 7), true);
 assert.equal(isBookletPageActive(side, 3), false);
 assert.deepEqual([...getBookletVisiblePageNumbers({ slots: [{ pageNumber: null, isBlank: true }] })], []);
 
-console.log('stable preview fit and booklet pair checks passed');
+console.log('larger stable preview fit and booklet pair checks passed');
