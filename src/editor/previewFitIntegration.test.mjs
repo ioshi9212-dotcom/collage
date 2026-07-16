@@ -28,5 +28,6 @@ assert.ok(appSource.includes("'--stage-display-height': `${stageDisplayHeight}px
 assert.ok(cssSource.includes('overflow: hidden; /* fitted preview: no internal scrollbars */'), 'fitted preview must hide internal scrollbars');
 assert.ok(cssSource.includes('grid-template-columns: 220px minmax(320px, 1fr) 250px !important;'), 'canvas column must use available width instead of max-content');
 assert.ok(canvasShellCss.includes('height: calc(var(--stage-display-height) + 2px);'), 'visible stage frame must reserve the transformed canvas height');
+assert.match(canvasShellCss, /\.stage-frame\s*\{[^}]*padding:\s*0;/s, 'fitted stage must not inherit legacy internal padding');
 
 console.log('stable responsive preview integration checks passed');
