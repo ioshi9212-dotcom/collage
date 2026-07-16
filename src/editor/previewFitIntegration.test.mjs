@@ -17,6 +17,7 @@ for (const symbol of [
 }
 
 assert.ok(appSource.includes('viewportHeight: window.innerHeight'), 'preview height must come from the stable browser viewport');
+assert.ok(appSource.includes('maxHeight: Math.max(360, window.innerHeight - 210)'), 'preview must reserve the fixed editor chrome above the page rail');
 assert.ok(!appSource.includes('window.innerHeight - Math.max(0, rect.top)'), 'preview sizing must not depend on the temporary page position');
 assert.ok(!appSource.includes("node.querySelector('.canvas-toolbar')"), 'preview sizing must not feed back from toolbar layout changes');
 assert.ok(appSource.includes('if (Math.abs(nextWidth - observedWidth) < 1) return;'), 'ResizeObserver must ignore height-only canvas changes');
