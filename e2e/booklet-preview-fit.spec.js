@@ -79,21 +79,9 @@ test.describe('booklet pair preview', () => {
     await waitForEditor(page);
     await openBooklet(page);
 
-    const geometry = await expect.poll(async () => page.locator('.stage-frame').evaluate((frame) => {
-      const shell = frame.querySelector('.stage-scale-shell');
-      if (!shell) return null;
-      const frameRect = frame.getBoundingClientRect();
-      const shellRect = shell.getBoundingClientRect();
-      const style = getComputedStyle(frame);
-      return {
-        overflowX: style.overflowX,
-        overflowY: style.overflowY,
-        leftOverflow: frameRect.left - shellRect.left,
-        rightOverflow: shellRect.right - frameRect.right,
-        topOverflow: frameRect.top - shellRect.top,
-        bottomOverflow: shellRect.bottom - frameRect.bottom,
-      };
-    })).not.toBeNull();
+    await expect.poll(async () => page.locator('.stage-frame').evaluate((frame) => (
+      Boolean(frame.querySelector('.stage-scale-shell'))
+    ))).toBe(true);
 
     const current = await page.locator('.stage-frame').evaluate((frame) => {
       const shell = frame.querySelector('.stage-scale-shell');
