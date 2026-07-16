@@ -226,7 +226,8 @@ function updateFontControlState(select, controls) {
   const options = Array.from(select.options || []);
   const index = Math.max(0, select.selectedIndex);
   const status = controls.querySelector('.font-picker-live-status');
-  if (status) status.textContent = `${options[index]?.textContent || 'Шрифт'} · ${index + 1}/${Math.max(1, options.length)}`;
+  const nextText = `${options[index]?.textContent || 'Шрифт'} · ${index + 1}/${Math.max(1, options.length)}`;
+  if (status && status.textContent !== nextText) status.textContent = nextText;
 }
 
 function setFontSelectValue(select, nextIndex) {
