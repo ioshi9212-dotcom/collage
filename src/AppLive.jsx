@@ -1940,12 +1940,6 @@ export default function App() {
   }
 
 
-  function goSpread(direction) {
-    const next = direction === 'next' ? Math.min(pages.length - 1, spreadStart + 2) : Math.max(0, spreadStart - 2);
-    setAlbum((current) => ({ ...current, currentPageId: pages[next]?.id ?? pages[0].id }));
-    setMoveFrameWithPhotoId(null);
-  }
-
   function selectPageByIndex(index) {
     const page = pages[index];
     if (!page) return;
