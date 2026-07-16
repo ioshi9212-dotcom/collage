@@ -1227,6 +1227,7 @@ export default function App() {
       const nextViewport = getStablePreviewViewport({
         containerWidth: rect.width,
         viewportHeight: window.innerHeight,
+        maxHeight: Math.max(360, window.innerHeight - 210),
         horizontalPadding,
       });
       setPreviewViewport((current) => (
@@ -1939,12 +1940,6 @@ export default function App() {
     setDragOverPageIndex(null);
   }
 
-
-  function goSpread(direction) {
-    const next = direction === 'next' ? Math.min(pages.length - 1, spreadStart + 2) : Math.max(0, spreadStart - 2);
-    setAlbum((current) => ({ ...current, currentPageId: pages[next]?.id ?? pages[0].id }));
-    setMoveFrameWithPhotoId(null);
-  }
 
   function selectPageByIndex(index) {
     const page = pages[index];
@@ -2938,156 +2933,6 @@ export default function App() {
 
       {notice && <div className="notice">{notice}</div>}
 
-      <section className={`album-bar clean-control-panel top-control-card ${isBooklet ? 'booklet-mode-bar' : ''}`}>
-        <div className="control-row primary-control-row">
-          <div className="album-head">
-            <strong>{isBooklet ? 'Брошюра' : 'Страницы альбома'}</strong>
-            <span>{isBooklet ? (currentBookletSide?.title ?? 'Брошюра') : isSpread ? `Разворот ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1} из ${pages.length}`}</span>
-          </div>
-
-          <div className="album-actions control-group">
-            <span className="control-label">Страницы</span>
-            <button className="small-button" onClick={addPage}>+ Страница</button>
-            <button className="small-button" onClick={addBlankPage}>+ Пустая</button>
-            <button className="small-button" onClick={duplicatePage}>Копия</button>
-            <button className="small-button danger" onClick={deletePage}>Удалить</button>
-          </div>
-
-          <div className="view-switch control-group">
-            <span className="control-label">Вид</span>
-            <button className={`small-button ${viewMode === 'single' ? 'active-mode' : ''}`} onClick={() => setViewMode('single')}>Страница</button>
-            <button className={`small-button ${viewMode === 'spread' ? 'active-mode' : ''}`} onClick={() => setViewMode('spread')}>Разворот</button>
-            <button className={`small-button ${isBooklet ? 'active-mode' : ''}`} onClick={enterBookletMode}>Брошюра</button>
-          </div>
-
-          {!isBooklet && (
-            <div className="spread-actions control-group">
-              <span className="control-label">Навигация</span>
-              <button className="small-button" onClick={() => goSpread('prev')} disabled={spreadStart === 0}>← Разворот</button>
-              <button className="small-button" onClick={() => goSpread('next')} disabled={spreadStart + 2 >= pages.length}>Разворот →</button>
-              <button className={`small-button ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>Направляющие</button>
-              <button className={`small-button ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>Сетка окон</button>
-            </div>
-          )}
-        </div>
-
-        {isBooklet && (
-          <div className="booklet-control-grid">
-            <div className="booklet-control-card booklet-settings-card">
-              <strong>Настройки брошюры</strong>
-              <div className="booklet-inline-controls">
-                <label className="booklet-sheets-control"><span>Листов в блоке</span><select value={bookletSheetsPerBlock} onChange={(event) => updateBookletSheetsPerBlock(event.target.value)}>{[1, 2, 3, 4, 5, 6, 7, 8].map((count) => <option key={count} value={count}>{count} лист. / {count * 4} стр.</option>)}</select></label>
-                <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.showFoldLine} onChange={(event) => updateBookletPrintSetting('showFoldLine', event.target.checked)} /><span>Печатать линию сгиба</span></label>
-                <label className="booklet-sheets-control"><span>Порядок оборотов</span><select aria-label="Порядок оборотов" value={normalizedBookletPrintSettings.backOrder} onChange={(event) => updateBookletPrintSetting('backOrder', event.target.value)}><option value={BOOKLET_BACK_ORDER_REVERSE}>Обратный</option><option value={BOOKLET_BACK_ORDER_SAME}>Такой же</option></select></label>
-                <label className="booklet-print-toggle"><input type="checkbox" checked={normalizedBookletPrintSettings.rotateBack180} onChange={(event) => updateBookletPrintSetting('rotateBack180', event.target.checked)} /><span>Развернуть обороты на 180°</span></label>
-                <label className="booklet-sheets-control booklet-number-control"><span>Толщина бумаги, мм</span><SoftNumberInput min={0.05} max={0.5} step={0.01} value={normalizedBookletPrintSettings.paperThicknessMm} onValue={(value) => updateBookletPrintSetting('paperThicknessMm', value)} /></label>
-              </div>
-            </div>
-
-            <div className="booklet-control-card booklet-navigation-card">
-              <strong>Стороны листа</strong>
-              <div className="booklet-inline-controls">
-                <button className="small-button" onClick={() => goBookletSide(-1)} disabled={!currentBookletSide || bookletPlan.sides[0]?.id === currentBookletSide.id}>← сторона</button>
-                <button className="small-button" onClick={toggleBookletSheetSide} disabled={!currentBookletSide}>{currentBookletSide?.side === BOOKLET_SIDE_FRONT ? 'Оборот листа' : 'Лицевая листа'}</button>
-                <button className="small-button" onClick={() => goBookletSide(1)} disabled={!currentBookletSide || bookletPlan.sides[bookletPlan.sides.length - 1]?.id === currentBookletSide.id}>сторона →</button>
-                {trailingBlankPageCount > 0 && <button className="small-button" onClick={removeTrailingBlankPages}>Убрать пустые в конце</button>}
-              </div>
-            </div>
-
-            <div className="booklet-control-card booklet-summary-card">
-              <strong>Сводка</strong>
-              <span>{bookletExportSummary.blocks} блок. · {bookletExportSummary.sheets} лист. A4 · {bookletExportSummary.sides} сторон</span>
-              <span>{bookletExportSummary.pages} стр. проекта · пустых: {bookletExportSummary.blanks}</span>
-              <span>A4 горизонтально 297×210 мм · половина листа 148,5×210 мм · {bookletA4Geometry.outputWidthPx}×{bookletA4Geometry.outputHeightPx} px</span>
-              <span>Обороты: {normalizedBookletPrintSettings.backOrder === BOOKLET_BACK_ORDER_REVERSE ? 'обратный порядок' : 'тот же порядок'} · разворот 180°: {normalizedBookletPrintSettings.rotateBack180 ? 'да' : 'нет'}</span>
-              <span>Примерная толщина сложенного блока: {bookletBlockThicknessMm} мм</span>
-              {bookletPlan.blankPageCount > 0 && (
-                <div className="booklet-warning">
-                  <strong>Внимание:</strong> до полного блока не хватает {bookletPlan.blankPageCount} пуст. стр.
-                  <button className="small-button" onClick={addBlankPagesToBookletBlock}>Добавить пустые</button>
-                </div>
-              )}
-            </div>
-
-            <div className="booklet-control-card booklet-export-card">
-              <strong>Экспорт брошюры</strong>
-              <div className="booklet-export-buttons">
-                <button className="small-button accent primary-accent" onClick={() => exportBookletPdf('fronts')} disabled={!bookletPlan.sides.length || pdfExporting}>PDF лицевых A4</button>
-                <button className="small-button accent primary-accent" onClick={() => exportBookletPdf('backs')} disabled={!bookletPlan.sides.length || pdfExporting}>PDF оборотов A4</button>
-                <button className="small-button accent soft-accent" onClick={() => exportBookletPdf('combined')} disabled={!bookletPlan.sides.length || pdfExporting}>PDF вся брошюра A4</button>
-                <button className="small-button accent soft-accent" onClick={() => exportBookletPdf('test')} disabled={!bookletPlan.sides.length || pdfExporting}>Тест первого листа</button>
-                <button className="small-button" onClick={downloadBookletInstructions} disabled={!bookletPlan.sides.length}>Инструкция</button>
-                <button className="small-button" onClick={() => exportBookletSide()} disabled={!currentBookletSide}>PNG текущей стороны</button>
-                <button className="small-button" onClick={exportBookletAll} disabled={!bookletPlan.sides.length}>PNG всех сторон</button>
-                <button className="small-button" onClick={exportBookletZip} disabled={!bookletPlan.sides.length}>Пакет печати ZIP</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="page-strip">{pages.map((page, index) => {
-          const pageNumber = index + 1;
-          const isVisibleInBooklet = isBooklet && visibleBookletPageNumbers.has(pageNumber);
-          const isActivePage = isBooklet ? isVisibleInBooklet : page.id === album.currentPageId;
-          return (
-            <button key={page.id} type="button" className={`page-chip ${isActivePage ? 'active-page-chip' : ''} ${isVisibleInBooklet ? 'booklet-visible-page' : ''}`} onClick={() => selectPageByIndex(index)}>
-              <b>{pageNumber}</b>
-              <span>{page.isBlankPage ? 'пустая' : `${page.frames.filter((frame) => frame.photo).length}/${resolvePageFrameCount(page, settings)}`}</span>
-              <small>{isBooklet ? (bookletPlan.pageMap[String(pageNumber)]?.pairPageNumber ? `с ${bookletPlan.pageMap[String(pageNumber)].pairPageNumber}` : 'пусто') : page.isBlankPage ? 'белая' : index % 2 === 0 ? 'левая' : 'правая'}</small>
-            </button>
-          );
-        })}</div>
-      </section>
-
-      {!isBooklet && (
-        <section className="album-tool-panel react-mode-panel">
-          <div className="album-mode-tabs">
-            {[
-              ['collage', 'Коллаж'],
-              ['text', 'Текст'],
-              ['drawings', 'Рисунки'],
-              ['templates', 'Шаблоны'],
-            ].map(([mode, label]) => (
-              <button key={mode} type="button" className={`album-mode-tab ${albumMode === mode ? 'active' : ''}`} onClick={() => setMode(mode)}>{label}</button>
-            ))}
-          </div>
-          <div className="album-mode-note">
-            {albumMode === 'collage' && 'Рамки и фото редактируются здесь. Текст и рисунки остаются на странице.'}
-            {albumMode === 'text' && 'Текст редактируется отдельно. Фото-окна только видны и не двигаются.'}
-            {albumMode === 'drawings' && 'Рисунки редактируются отдельно. Фото-окна только видны и не двигаются.'}
-            {albumMode === 'templates' && 'Шаблоны сохраняют альбом/страницу/разворот без фотографий.'}
-          </div>
-          <div className="album-mode-actions">
-            {albumMode === 'collage' && (
-              <>
-                <button className="album-mode-button primary" onClick={() => saveTemplate('page')}>Сохранить страницу как шаблон</button>
-                <button className="album-mode-button" onClick={() => saveTemplate('spread')}>Сохранить разворот</button>
-                <button className="album-mode-button" onClick={() => saveTemplate('album')}>Сохранить альбом</button>
-              </>
-            )}
-            {albumMode === 'text' && (
-              <>
-                <button className="album-mode-button primary" onClick={() => addText('body')}>+ Текст</button>
-                <button className="album-mode-button" onClick={() => addText('title')}>+ Заголовок</button>
-                <button className="album-mode-button" onClick={() => addText('signature')}>+ Подпись</button>
-                <button className="album-mode-button" onClick={() => saveTemplate('page')}>Сохранить страницу</button>
-              </>
-            )}
-            {albumMode === 'drawings' && (
-              <>
-                <button className="album-mode-button primary" onClick={addLine}>+ Линия</button>
-                <button className="album-mode-button" onClick={() => saveTemplate('page')}>Сохранить страницу</button>
-              </>
-            )}
-            {albumMode === 'templates' && (
-              <>
-                <button className="album-mode-button primary" onClick={() => saveTemplate('album')}>Сохранить альбом</button>
-                <button className="album-mode-button" onClick={() => templateJsonRef.current?.click()}>Загрузить шаблон JSON</button>
-              </>
-            )}
-          </div>
-        </section>
-      )}
 
       <section className="workspace editor-workspace-v2">
         <nav className="editor-tool-rail-v2" aria-label="Инструменты редактора">
@@ -3162,12 +3007,6 @@ export default function App() {
             </>
           )}
         </aside>
-
-        {albumMode !== 'collage' && !isBooklet && (
-          <aside className="album-mode-sidebar">
-            {renderModeLeftPanel()}
-          </aside>
-        )}
 
         <aside className={`page-rail ${isBooklet ? 'booklet-page-rail' : ''}`}>
           <div className="panel-title compact page-rail-header-row">

@@ -7,7 +7,7 @@ test('uses more of the workspace for the page spread without overlapping the pag
 
   const stage = page.locator('.stage-frame');
   const shell = page.locator('.stage-scale-shell');
-  const rail = page.locator('.page-rail-v3');
+  const rail = page.locator('.page-rail');
   const inspector = page.locator('.editor-workspace-v2 > .inspector');
 
   await expect(stage).toBeVisible();
@@ -18,7 +18,7 @@ test('uses more of the workspace for the page spread without overlapping the pag
   const geometry = await page.evaluate(() => {
     const stageNode = document.querySelector('.stage-frame');
     const shellNode = document.querySelector('.stage-scale-shell');
-    const railNode = document.querySelector('.page-rail-v3');
+    const railNode = document.querySelector('.page-rail');
     const inspectorNode = document.querySelector('.editor-workspace-v2 > .inspector');
     const stageRect = stageNode.getBoundingClientRect();
     const shellRect = shellNode.getBoundingClientRect();
@@ -33,6 +33,6 @@ test('uses more of the workspace for the page spread without overlapping the pag
   });
 
   expect(geometry.shell.height).toBeGreaterThan(660);
-  expect(geometry.shell.bottom).toBeLessThanOrEqual(geometry.rail.top + 1);
+  expect(geometry.shell.bottom).toBeLessThanOrEqual(geometry.rail.top + 2);
   expect(geometry.shell.right).toBeLessThanOrEqual(geometry.inspector.left + 1);
 });

@@ -14,6 +14,14 @@
   padding-bottom: 5px;
 }
 
+/* The transformed Konva shell is absolutely positioned. Old shell versions
+   reserved 14 px of internal padding, which shifted the A4 booklet canvas and
+   clipped its bottom edge. The fitted frame is now tight to the visible shell. */
+.stage-frame {
+  height: calc(var(--stage-display-height) + 2px);
+  padding: 0;
+}
+
 .editor-left-panel-v2,
 .workspace > .sidebar,
 .workspace > .inspector,

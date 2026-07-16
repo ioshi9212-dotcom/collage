@@ -79,16 +79,31 @@ test.describe('booklet pair preview', () => {
     await waitForEditor(page);
     await openBooklet(page);
 
-    await expect.poll(async () => page.locator('.stage-frame').evaluate((frame) => {
+    await expect.poll(async () => page.locator('.stage-frame').evaluate((frame) => (
+      Boolean(frame.querySelector('.stage-scale-shell'))
+    ))).toBe(true);
+
+    const current = await page.locator('.stage-frame').evaluate((frame) => {
       const shell = frame.querySelector('.stage-scale-shell');
-      if (!shell) return false;
       const frameRect = frame.getBoundingClientRect();
       const shellRect = shell.getBoundingClientRect();
       const style = getComputedStyle(frame);
-      return style.overflow === 'hidden'
-        && shellRect.width <= frameRect.width + 1
-        && shellRect.height <= frameRect.height + 1;
-    })).toBe(true);
+      return {
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        leftOverflow: frameRect.left - shellRect.left,
+        rightOverflow: shellRect.right - frameRect.right,
+        topOverflow: frameRect.top - shellRect.top,
+        bottomOverflow: shellRect.bottom - frameRect.bottom,
+      };
+    });
+
+    expect(current.overflowX).toBe('hidden');
+    expect(current.overflowY).toBe('hidden');
+    expect(current.leftOverflow).toBeLessThanOrEqual(2);
+    expect(current.rightOverflow).toBeLessThanOrEqual(2);
+    expect(current.topOverflow).toBeLessThanOrEqual(2);
+    expect(current.bottomOverflow).toBeLessThanOrEqual(2);
   });
 
   test('preview scale stays stable while pages change in every view mode', async ({ page }) => {

@@ -10,7 +10,9 @@ test.describe('editor shell v3', () => {
   test('editor is fixed to the viewport and old top controls are removed', async ({ page }) => {
     await openEditor(page);
     await expect(page.locator('.app-header-v2')).toBeVisible();
-    await expect(page.locator('.album-bar')).toBeHidden();
+    await expect(page.locator('.album-bar')).toHaveCount(0);
+    await expect(page.locator('.album-tool-panel')).toHaveCount(0);
+    await expect(page.locator('.album-mode-sidebar')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => ({
       bodyOverflow: getComputedStyle(document.body).overflow,
       rootHeight: document.querySelector('.app-shell')?.getBoundingClientRect().height,

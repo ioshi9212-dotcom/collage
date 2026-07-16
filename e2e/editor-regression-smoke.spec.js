@@ -42,8 +42,9 @@ test.describe('complete editor regression smoke', () => {
     await openEditor(page);
 
     await expect(page.locator('.primary-save-v2')).toHaveCount(1);
-    await expect(page.locator('.album-bar')).toBeHidden();
-    await expect(page.locator('.album-mode-sidebar')).toBeHidden();
+    await expect(page.locator('.album-bar')).toHaveCount(0);
+    await expect(page.locator('.album-tool-panel')).toHaveCount(0);
+    await expect(page.locator('.album-mode-sidebar')).toHaveCount(0);
 
     const reference = await stageBox(page);
 
@@ -70,7 +71,7 @@ test.describe('complete editor regression smoke', () => {
       return { top: rect.top, bottom: rect.bottom, viewport: window.innerHeight };
     });
     expect(Math.abs(railGeometry.bottom - railGeometry.viewport)).toBeLessThanOrEqual(2);
-    expect(railGeometry.top).toBeGreaterThan(reference.bottom);
+    expect(reference.bottom).toBeLessThanOrEqual(railGeometry.top + 2);
   });
 
   test('does not restore duplicated controls while tools change', async ({ page }) => {

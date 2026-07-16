@@ -14,9 +14,9 @@ test.describe('editor shell stage 2 control deduplication', () => {
   test('keeps view switching in the header and page actions in the Pages tool', async ({ page }) => {
     await openEditor(page);
 
-    await expect(page.locator('.album-bar')).toBeHidden();
-    await expect(page.locator('.album-tool-panel')).toBeHidden();
-    await expect(page.locator('.album-mode-sidebar')).toBeHidden();
+    await expect(page.locator('.album-bar')).toHaveCount(0);
+    await expect(page.locator('.album-tool-panel')).toHaveCount(0);
+    await expect(page.locator('.album-mode-sidebar')).toHaveCount(0);
 
     const headerSwitch = page.locator('.app-view-switch-v2');
     await expect(headerSwitch.getByRole('button', { name: 'Страница', exact: true })).toBeVisible();
@@ -64,6 +64,6 @@ test.describe('editor shell stage 2 control deduplication', () => {
     await expect(leftPanel.getByRole('button', { name: 'Сохранить страницу', exact: true })).toHaveCount(0);
     await expect(leftPanel.getByRole('button', { name: 'Сохранить разворот', exact: true })).toHaveCount(0);
     await expect(leftPanel.getByRole('button', { name: 'Загрузить JSON', exact: true })).toHaveCount(0);
-    await expect(page.locator('.album-mode-sidebar')).toBeHidden();
+    await expect(page.locator('.album-mode-sidebar')).toHaveCount(0);
   });
 });
