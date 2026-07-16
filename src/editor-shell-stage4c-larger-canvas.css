@@ -1,0 +1,36 @@
+/* Stage 4C — enlarge the working preview without touching print geometry. */
+
+.editor-workspace-v2 {
+  grid-template-columns: 64px 224px minmax(0, 1fr) 264px !important;
+}
+
+.canvas-area {
+  padding: 8px 8px 10px;
+}
+
+.canvas-toolbar {
+  min-height: 32px;
+  margin-bottom: 5px;
+  padding-bottom: 5px;
+}
+
+.editor-left-panel-v2,
+.workspace > .sidebar,
+.workspace > .inspector,
+.workspace > .album-mode-inspector {
+  padding: 10px;
+}
+
+/* Keep controls readable after the modest panel reduction. */
+.editor-left-panel-v2 .button,
+.editor-left-panel-v2 .small-button,
+.workspace > .album-mode-inspector .button,
+.workspace > .inspector .button {
+  max-width: 100%;
+}
+
+@media (max-width: 1320px) {
+  .editor-workspace-v2 {
+    grid-template-columns: 60px 210px minmax(0, 1fr) 250px !important;
+  }
+}
