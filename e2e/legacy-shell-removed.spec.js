@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+// The retired shell must stay physically absent, not merely hidden or inert.
 async function openEditor(page) {
   await page.setViewportSize({ width: 1640, height: 900 });
   await page.goto('/');
