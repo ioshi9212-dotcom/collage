@@ -1,0 +1,40 @@
+name: Apply legacy editor shell cleanup
+
+on:
+  push:
+    branches:
+      - cleanup/remove-legacy-editor-shell
+    paths:
+      - tools/apply-legacy-editor-shell-cleanup.mjs
+      - .github/workflows/apply-legacy-editor-shell-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cleanup branch
+        uses: actions/checkout@v4
+        with:
+          ref: cleanup/remove-legacy-editor-shell
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply guarded cleanup
+        run: node tools/apply-legacy-editor-shell-cleanup.mjs
+
+      - name: Commit cleaned source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --exit-code && { echo "Cleanup produced no changes"; exit 1; }
+          git commit -m "Remove legacy editor shell markup"
+          git push origin HEAD:cleanup/remove-legacy-editor-shell
