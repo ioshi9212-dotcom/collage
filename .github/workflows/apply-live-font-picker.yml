@@ -1,0 +1,128 @@
+name: Apply live font picker improvements
+
+on:
+  push:
+    branches:
+      - agent/live-font-picker
+    paths:
+      - .github/workflows/apply-live-font-picker.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/live-font-picker
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Patch font picker and live redraw
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+
+          function replaceExactly(source, before, after, label) {
+            const count = source.split(before).length - 1;
+            if (count !== 1) throw new Error(`${label}: expected one match, found ${count}`);
+            return source.replace(before, after);
+          }
+
+          const appPath = 'src/AppLive.jsx';
+          let app = readFileSync(appPath, 'utf8');
+
+          app = replaceExactly(
+            app,
+            `  selectedDrawingId = null,\n  printMode = false,`,
+            `  selectedDrawingId = null,\n  fontRenderVersion = 0,\n  printMode = false,`,
+            'ExtraPageLayers render version prop',
+          );
+
+          app = replaceExactly(
+            app,
+            `            key={item.id ?? \`${'${pageIndex}-${item.x}-${item.y}'}\`}`,
+            `            key={\`${'${item.id ?? `${pageIndex}-${item.x}-${item.y}`}-${item.fontId ?? DEFAULT_FONT_ID}-${fontRenderVersion}'}\`}`,
+            'text node render key',
+          );
+
+          app = replaceExactly(
+            app,
+            `  const photoUploadInFlightRef = useRef(false);`,
+            `  const photoUploadInFlightRef = useRef(false);\n  const fontLoadRequestRef = useRef(0);\n  const fontSelectionRef = useRef('');`,
+            'font request refs',
+          );
+
+          app = replaceExactly(
+            app,
+            `  const [inspectorTab, setInspectorTab] = useState('object');`,
+            `  const [inspectorTab, setInspectorTab] = useState('object');\n  const [fontRenderVersion, setFontRenderVersion] = useState(0);`,
+            'font render state',
+          );
+
+          app = replaceExactly(
+            app,
+            `  function updateText(id, patch) {\n    updateExtraLayers((layers) => {\n      const next = cloneDeep(layers) || { version: 1, pages: {} };\n      Object.values(next.pages || {}).forEach((page) => {\n        if (!Array.isArray(page.texts)) return;\n        page.texts = page.texts.map((item) => (item.id === id ? { ...item, ...patch } : item));\n      });\n      return next;\n    });\n  }`,
+            `  function updateText(id, patch) {\n    updateExtraLayers((layers) => {\n      const next = cloneDeep(layers) || { version: 1, pages: {} };\n      Object.values(next.pages || {}).forEach((page) => {\n        if (!Array.isArray(page.texts)) return;\n        page.texts = page.texts.map((item) => (item.id === id ? { ...item, ...patch } : item));\n      });\n      return next;\n    });\n  }\n\n  function refreshLoadedFont(requestId) {\n    if (requestId !== fontLoadRequestRef.current) return;\n    setFontRenderVersion((current) => current + 1);\n    window.requestAnimationFrame(() => stageRef.current?.batchDraw?.());\n  }\n\n  function applyTextFont(textItem, fontId) {\n    if (!textItem?.id) return;\n    const font = fontById(fontId);\n    const requestKey = \`${'${textItem.id}:${font.id}'}\`;\n    const duplicateEvent = fontSelectionRef.current === requestKey;\n    fontSelectionRef.current = requestKey;\n\n    if (!duplicateEvent || textItem.fontFamily !== font.family) {\n      updateText(textItem.id, { fontId: font.id, fontFamily: font.family });\n    }\n\n    const requestId = ++fontLoadRequestRef.current;\n    const fontSet = document.fonts;\n    if (!fontSet?.load) {\n      refreshLoadedFont(requestId);\n      return;\n    }\n\n    const style = textItem.fontStyle === 'italic' ? 'italic' : 'normal';\n    const weight = Number(textItem.fontWeight) || 500;\n    const sample = String(textItem.text || 'АаБбВв');\n    Promise.resolve(fontSet.load(\`${'${style} ${weight} 16px ${font.family}'}\`, sample))\n      .then(() => refreshLoadedFont(requestId), () => refreshLoadedFont(requestId));\n  }\n\n  function stepTextFont(textItem, direction) {\n    if (!textItem || !TEXT_FONTS.length) return;\n    const currentIndex = Math.max(0, TEXT_FONTS.findIndex((font) => font.id === (textItem.fontId || DEFAULT_FONT_ID)));\n    const nextIndex = (currentIndex + direction + TEXT_FONTS.length) % TEXT_FONTS.length;\n    applyTextFont(textItem, TEXT_FONTS[nextIndex].id);\n  }`,
+            'live font helpers',
+          );
+
+          app = replaceExactly(
+            app,
+            `  useEffect(() => {\n    try { localStorage.removeItem(ALBUM_LAYERS_KEY); } catch { /* ignore localStorage errors */ }\n  }, []);`,
+            `  useEffect(() => {\n    try { localStorage.removeItem(ALBUM_LAYERS_KEY); } catch { /* ignore localStorage errors */ }\n  }, []);\n\n  useEffect(() => {\n    if (albumMode !== 'text' || !document.fonts?.load) return undefined;\n    let active = true;\n    Promise.allSettled(TEXT_FONTS.map((font) => document.fonts.load(\`16px ${'${font.family}'}\`, 'АаБбВв')))\n      .then(() => {\n        if (!active) return;\n        setFontRenderVersion((current) => current + 1);\n        window.requestAnimationFrame(() => stageRef.current?.batchDraw?.());\n      });\n    return () => { active = false; };\n  }, [albumMode]);`,
+            'font preload effect',
+          );
+
+          app = replaceExactly(
+            app,
+            `        selectedDrawingId={selectedDrawingId}\n        onSelectText=`,
+            `        selectedDrawingId={selectedDrawingId}\n        fontRenderVersion={fontRenderVersion}\n        onSelectText=`,
+            'main text layer render version',
+          );
+
+          app = replaceExactly(
+            app,
+            `                <label className="field"><span>Гарнитура</span><select value={selectedText.fontId || DEFAULT_FONT_ID} onChange={(event) => updateText(selectedText.id, { fontId: event.target.value, fontFamily: fontById(event.target.value).family })}>{TEXT_FONTS.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}</select></label>`,
+            `                <div className="font-picker-control">\n                  <button className="button font-picker-step" type="button" aria-label="Предыдущий шрифт" title="Предыдущий шрифт" onClick={() => stepTextFont(selectedText, -1)}>←</button>\n                  <label className="field font-picker-field"><span>Гарнитура</span><select aria-label="Гарнитура" value={selectedText.fontId || DEFAULT_FONT_ID} onInput={(event) => applyTextFont(selectedText, event.currentTarget.value)} onChange={(event) => applyTextFont(selectedText, event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'ArrowLeft') { event.preventDefault(); stepTextFont(selectedText, -1); } if (event.key === 'ArrowRight') { event.preventDefault(); stepTextFont(selectedText, 1); } }}>{TEXT_FONTS.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}</select></label>\n                  <button className="button font-picker-step" type="button" aria-label="Следующий шрифт" title="Следующий шрифт" onClick={() => stepTextFont(selectedText, 1)}>→</button>\n                </div>\n                <div className="font-picker-status">{fontById(selectedText.fontId || DEFAULT_FONT_ID).label} · {Math.max(1, TEXT_FONTS.findIndex((font) => font.id === (selectedText.fontId || DEFAULT_FONT_ID)) + 1)}/{TEXT_FONTS.length} · ↑↓ в списке</div>`,
+            'font picker controls',
+          );
+
+          writeFileSync(appPath, app, 'utf8');
+
+          const mainPath = 'src/main.jsx';
+          let main = readFileSync(mainPath, 'utf8');
+          main = replaceExactly(
+            main,
+            `import './editor-shell-stage4c-larger-canvas.css';`,
+            `import './editor-shell-stage4c-larger-canvas.css';\nimport './font-picker.css';`,
+            'font picker CSS import',
+          );
+          writeFileSync(mainPath, main, 'utf8');
+
+          writeFileSync('src/font-picker.css', `/* Stable, live font browsing in the text inspector. */\n.font-picker-control {\n  display: grid;\n  grid-template-columns: 34px minmax(0, 1fr) 34px;\n  align-items: end;\n  gap: 6px;\n  width: 100%;\n}\n\n.font-picker-field {\n  min-width: 0;\n}\n\n.font-picker-field select {\n  min-width: 0;\n  width: 100%;\n}\n\n.font-picker-step.button {\n  width: 34px;\n  min-width: 34px;\n  height: 32px;\n  min-height: 32px;\n  padding: 0;\n  font-size: 18px;\n  line-height: 1;\n}\n\n.font-picker-status {\n  min-height: 18px;\n  margin-top: 5px;\n  overflow: hidden;\n  color: var(--ui-muted);\n  font-size: 10px;\n  font-weight: 750;\n  line-height: 1.3;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n`, 'utf8');
+
+          writeFileSync('e2e/live-font-picker.spec.js', `import { expect, test } from '@playwright/test';\n\nasync function openTextInspector(page) {\n  await page.setViewportSize({ width: 1640, height: 900 });\n  await page.goto('/');\n  await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');\n  await page.getByRole('button', { name: 'Текст', exact: true }).click();\n  await page.getByRole('button', { name: '+ Обычный текст', exact: true }).click();\n  await expect(page.getByRole('heading', { name: 'Настройки текста', exact: true })).toBeVisible();\n}\n\nfunction selectedTextFont(page) {\n  return page.evaluate(() => {\n    const project = window.__collageApp.getProject();\n    const pageIndex = project.pages.findIndex((item) => item.id === project.currentPageId);\n    const texts = project.extraLayers?.pages?.[String(pageIndex + 1)]?.texts || [];\n    return texts[0] ? { fontId: texts[0].fontId, fontFamily: texts[0].fontFamily } : null;\n  });\n}\n\ntest('font picker applies selection immediately and cycles with arrows', async ({ page }) => {\n  await openTextInspector(page);\n\n  const picker = page.getByLabel('Гарнитура');\n  await picker.selectOption('caslon');\n  await expect.poll(() => selectedTextFont(page)).toMatchObject({ fontId: 'caslon' });\n\n  await page.getByRole('button', { name: 'Следующий шрифт', exact: true }).click();\n  await expect.poll(() => selectedTextFont(page)).toMatchObject({ fontId: 'agreverence' });\n\n  await page.getByRole('button', { name: 'Предыдущий шрифт', exact: true }).click();\n  await expect.poll(() => selectedTextFont(page)).toMatchObject({ fontId: 'caslon' });\n  await expect(page.locator('.font-picker-status')).toContainText('Caslon Becker');\n});\n`, 'utf8');
+
+          writeFileSync('src/editor/fontPickerIntegration.test.mjs', `import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\n\nconst app = await readFile(new URL('../AppLive.jsx', import.meta.url), 'utf8');\nconst main = await readFile(new URL('../main.jsx', import.meta.url), 'utf8');\nconst css = await readFile(new URL('../font-picker.css', import.meta.url), 'utf8');\n\nfor (const marker of [\n  'function applyTextFont(textItem, fontId)',\n  'document.fonts.load',\n  'setFontRenderVersion',\n  'fontRenderVersion={fontRenderVersion}',\n  'aria-label="Предыдущий шрифт"',\n  'aria-label="Следующий шрифт"',\n  'onInput={(event) => applyTextFont',\n  "event.key === 'ArrowLeft'",\n  "event.key === 'ArrowRight'",\n]) assert.ok(app.includes(marker), `missing live font picker marker: ${marker}`);\n\nassert.ok(main.includes("import './font-picker.css';"), 'font picker styles must be imported');\nassert.ok(css.includes('grid-template-columns: 34px minmax(0, 1fr) 34px;'), 'font picker width must stay stable');\nconsole.log('live font picker integration checks passed');\n`, 'utf8');
+
+          const packagePath = 'package.json';
+          const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+          const oldTest = packageJson.scripts.test;
+          if (!oldTest.includes('src/editor/fontPickerIntegration.test.mjs')) {
+            packageJson.scripts.test = `${oldTest} && node src/editor/fontPickerIntegration.test.mjs`;
+          }
+          writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+
+          rmSync('.github/workflows/apply-live-font-picker.yml', { force: true });
+          NODE
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add live font picker controls"
+          git push origin HEAD:agent/live-font-picker
