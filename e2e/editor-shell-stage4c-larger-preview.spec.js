@@ -18,7 +18,7 @@ test.describe('editor shell stage 4C larger preview', () => {
     await openEditor(page);
     await page.getByLabel('Режим просмотра').getByRole('button', { name: 'Разворот', exact: true }).click();
 
-    await expect.poll(async () => (await stageBox(page)).height).toBeGreaterThanOrEqual(615);
+    await expect.poll(async () => (await stageBox(page)).height).toBeGreaterThanOrEqual(680);
 
     const geometry = await page.evaluate(() => {
       const shell = document.querySelector('.stage-scale-shell').getBoundingClientRect();
@@ -36,9 +36,9 @@ test.describe('editor shell stage 4C larger preview', () => {
     });
 
     expect(geometry.shellWidth).toBeGreaterThan(850);
-    expect(geometry.shellHeight).toBeLessThanOrEqual(640);
-    expect(geometry.shellTop).toBeGreaterThanOrEqual(100);
-    expect(geometry.shellBottom).toBeLessThanOrEqual(geometry.railTop - 4);
+    expect(geometry.shellHeight).toBeGreaterThanOrEqual(680);
+    expect(geometry.shellTop).toBeGreaterThanOrEqual(90);
+    expect(geometry.shellBottom).toBeLessThanOrEqual(geometry.railTop + 2);
     expect(geometry.areaRight - geometry.areaLeft).toBeGreaterThan(900);
   });
 
