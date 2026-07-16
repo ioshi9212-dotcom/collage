@@ -14,6 +14,12 @@
   padding-bottom: 5px;
 }
 
+/* The transformed Konva shell is absolutely positioned, so reserve its
+   rendered height explicitly instead of relying on older padded-frame rules. */
+.stage-frame {
+  height: calc(var(--stage-display-height) + 2px);
+}
+
 .editor-left-panel-v2,
 .workspace > .sidebar,
 .workspace > .inspector,
