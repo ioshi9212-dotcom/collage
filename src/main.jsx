@@ -13,6 +13,7 @@ import './editor-shell-stage4b-text-rendering.css';
 import './editor-shell-stage6-inspector-context.css';
 import './editor-regression-fixes.css';
 import './editor-shell-stage4c-larger-canvas.css';
+import './font-picker-live.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
 import { installToolStateBehavior } from './editor/toolStateBehavior';
 import { installTextEditingBehavior } from './editor/textEditingBehavior';
