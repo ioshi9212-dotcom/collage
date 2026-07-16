@@ -2,14 +2,7 @@
    The surviving controls keep their original React handlers; only repeated
    entry points are removed from the active interface. */
 
-/* Deprecated top stacks remain in JSX for now, but must never reappear. */
-.album-bar,
-.album-bar.clean-control-panel,
-.album-tool-panel,
-.react-mode-panel,
-.editor-workspace-v2 > .album-mode-sidebar {
-  display: none !important;
-}
+/* The deprecated top stack and duplicate mode sidebars were removed from JSX. */
 
 /* Page-view switching belongs to the header only.
    This removes the repeated Page / Spread / Booklet group in the Pages tool. */
