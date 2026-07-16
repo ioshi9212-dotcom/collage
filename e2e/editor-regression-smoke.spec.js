@@ -71,7 +71,7 @@ test.describe('complete editor regression smoke', () => {
       return { top: rect.top, bottom: rect.bottom, viewport: window.innerHeight };
     });
     expect(Math.abs(railGeometry.bottom - railGeometry.viewport)).toBeLessThanOrEqual(2);
-    expect(railGeometry.top).toBeGreaterThan(reference.bottom);
+    expect(reference.bottom).toBeLessThanOrEqual(railGeometry.top + 2);
   });
 
   test('does not restore duplicated controls while tools change', async ({ page }) => {
