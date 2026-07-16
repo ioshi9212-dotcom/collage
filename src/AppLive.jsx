@@ -1228,6 +1228,7 @@ export default function App() {
         containerWidth: rect.width,
         viewportHeight: window.innerHeight,
         horizontalPadding,
+        framePadding: 30,
       });
       setPreviewViewport((current) => (
         Math.abs(current.width - nextViewport.width) < 1 && Math.abs(current.height - nextViewport.height) < 1
