@@ -1227,6 +1227,7 @@ export default function App() {
       const nextViewport = getStablePreviewViewport({
         containerWidth: rect.width,
         viewportHeight: window.innerHeight,
+        maxHeight: Math.max(360, window.innerHeight - 210),
         horizontalPadding,
       });
       setPreviewViewport((current) => (
