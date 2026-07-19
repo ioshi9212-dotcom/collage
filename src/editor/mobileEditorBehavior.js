@@ -85,11 +85,8 @@ function handleDocumentClick(event) {
 
   const toolButton = target.closest('.editor-tool-button-v2');
   if (toolButton) {
-    const closeActivePanel = toolButton.classList.contains('active') && document.body.classList.contains('mobile-left-panel-open');
     closeMobileSheets();
-    if (!closeActivePanel) {
-      window.setTimeout(() => document.body.classList.add('mobile-left-panel-open'), 0);
-    }
+    document.body.classList.add('mobile-left-panel-open');
     return;
   }
 
@@ -125,7 +122,7 @@ export function installMobileEditorBehavior() {
   window.addEventListener('resize', refresh, { passive: true });
   window.visualViewport?.addEventListener?.('resize', refresh, { passive: true });
   window.visualViewport?.addEventListener?.('scroll', updateViewportHeight, { passive: true });
-  document.addEventListener('click', handleDocumentClick);
+  document.addEventListener('click', handleDocumentClick, true);
 
   refresh();
 }
