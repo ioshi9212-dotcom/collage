@@ -130,6 +130,9 @@ export function installMobileResponsiveBehavior() {
 
     const toolButton = target.closest('.editor-tool-button-v2');
     if (toolButton) {
+      // Other editor behaviors use HTMLElement.click() during startup to sync
+      // React state. Only a real pointer/keyboard activation should open a sheet.
+      if (!event.isTrusted) return;
       const wasActive = toolButton.classList.contains('active');
       const wasOpen = currentPanel() === 'tools';
       afterReactPaint(() => setPanel(wasOpen && wasActive ? '' : 'tools'));
