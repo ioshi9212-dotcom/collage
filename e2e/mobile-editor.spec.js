@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test.use({ hasTouch: true });
+test.use({ hasTouch: true, deviceScaleFactor: 3 });
 
 async function openMobileEditor(page, viewport = { width: 390, height: 844 }) {
   await page.setViewportSize(viewport);
@@ -23,6 +23,31 @@ async function expectNoDocumentOverflow(page) {
 }
 
 test.describe('mobile phone editor shell', () => {
+  test('limits the Konva preview backing store on high-density phones', async ({ page }) => {
+    await openMobileEditor(page);
+
+    await expect(page.getByRole('button', { name: 'Страница', exact: true })).toHaveClass(/active/);
+    await expect(page.locator('body')).not.toHaveClass(/mobile-left-panel-open/);
+
+    const metrics = await page.evaluate(() => ({
+      devicePixelRatio: window.devicePixelRatio,
+      performance: window.__collageCanvasPerformance,
+      canvasRatios: [...document.querySelectorAll('.konvajs-content canvas')].map((canvas) => {
+        const cssWidth = Number.parseFloat(canvas.style.width) || canvas.width;
+        const cssHeight = Number.parseFloat(canvas.style.height) || canvas.height;
+        return {
+          width: canvas.width / cssWidth,
+          height: canvas.height / cssHeight,
+        };
+      }),
+    }));
+
+    expect(metrics.devicePixelRatio).toBe(3);
+    expect(metrics.performance).toMatchObject({ mobileViewport: true, previewPixelRatio: 1 });
+    expect(metrics.canvasRatios.length).toBeGreaterThanOrEqual(2);
+    expect(metrics.canvasRatios.every((ratio) => ratio.width <= 1.01 && ratio.height <= 1.01)).toBe(true);
+  });
+
   test('keeps the canvas between the compact header, page rail and bottom tools', async ({ page }) => {
     await openMobileEditor(page);
 
