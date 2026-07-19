@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import Konva from 'konva/lib/Core';
+import Konva from 'konva';
 import './styles.css';
 import './editor-shell-v1.css';
 import './editor-shell-v1-compat.css';
@@ -33,7 +33,6 @@ function configureCanvasPerformance() {
   // The editor keeps the real A5 print coordinates (1480×2100) and scales only
   // the DOM preview. On a DPR 3 phone Konva would otherwise allocate both its
   // scene and hit canvases at 3× resolution, which can exceed mobile tab memory.
-  // React-Konva uses konva/lib/Core internally, so configure that same singleton.
   if (mobileViewport) Konva.pixelRatio = 1;
   Konva.releaseCanvasOnDestroy = true;
 
@@ -53,7 +52,9 @@ createRoot(document.getElementById('root')).render(
 
 installPageRailBehavior();
 installToolStateBehavior();
+// Install the mobile guard before text behavior, which otherwise sharpens the
+// visible editor canvas after startup. Export stages are deliberately excluded.
+installMobileEditorBehavior();
 installTextEditingBehavior();
 installDestructiveActionBehavior();
 installInspectorContextBehavior();
-installMobileEditorBehavior();
