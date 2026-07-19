@@ -1,5 +1,7 @@
 const MOBILE_QUERY = '(max-width: 760px), (max-width: 920px) and (pointer: coarse) and (orientation: landscape)';
 
+let mobileDefaultViewApplied = false;
+
 function isMobileViewport() {
   return window.matchMedia?.(MOBILE_QUERY).matches ?? window.innerWidth <= 760;
 }
@@ -8,8 +10,12 @@ function closeMobileSheets() {
   document.body.classList.remove('mobile-left-panel-open', 'mobile-inspector-open', 'mobile-booklet-open');
 }
 
+function hasDirectCloseButton(panel) {
+  return Array.from(panel?.children || []).some((child) => child.classList?.contains('mobile-sheet-close'));
+}
+
 function addCloseButton(panel, label = 'Закрыть') {
-  if (!panel || panel.querySelector(':scope > .mobile-sheet-close')) return;
+  if (!panel || hasDirectCloseButton(panel)) return;
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'mobile-sheet-close';
@@ -19,10 +25,21 @@ function addCloseButton(panel, label = 'Закрыть') {
   panel.prepend(button);
 }
 
+function applyMobileDefaultView() {
+  if (!isMobileViewport() || mobileDefaultViewApplied) return;
+  const singlePageButton = Array.from(document.querySelectorAll('.segmented-v2 button'))
+    .find((button) => button.textContent?.trim() === 'Страница');
+  if (!singlePageButton) return;
+
+  mobileDefaultViewApplied = true;
+  if (!singlePageButton.classList.contains('active')) singlePageButton.click();
+}
+
 function ensureMobileControls() {
   if (!isMobileViewport()) {
     document.body.classList.remove('mobile-editor-ready');
     closeMobileSheets();
+    mobileDefaultViewApplied = false;
     return;
   }
 
@@ -71,6 +88,7 @@ function ensureMobileControls() {
   document.querySelectorAll('.editor-left-panel-v2, .workspace > .sidebar').forEach((panel) => addCloseButton(panel));
   document.querySelectorAll('.workspace > .inspector, .workspace > .album-mode-inspector').forEach((panel) => addCloseButton(panel));
   document.querySelectorAll('.album-bar.booklet-mode-bar').forEach((panel) => addCloseButton(panel, 'Закрыть'));
+  applyMobileDefaultView();
 }
 
 function updateViewportHeight() {
@@ -85,6 +103,9 @@ function handleDocumentClick(event) {
 
   const toolButton = target.closest('.editor-tool-button-v2');
   if (toolButton) {
+    // Editor startup synchronizes the active tool with HTMLElement.click().
+    // Only a real user activation should open the mobile sheet.
+    if (!event.isTrusted) return;
     closeMobileSheets();
     document.body.classList.add('mobile-left-panel-open');
     return;
@@ -118,7 +139,8 @@ export function installMobileEditorBehavior() {
     ensureMobileControls();
   };
 
-  media?.addEventListener?.('change', refresh);
+  if (typeof media?.addEventListener === 'function') media.addEventListener('change', refresh);
+  else media?.addListener?.(refresh);
   window.addEventListener('resize', refresh, { passive: true });
   window.visualViewport?.addEventListener?.('resize', refresh, { passive: true });
   window.visualViewport?.addEventListener?.('scroll', updateViewportHeight, { passive: true });
