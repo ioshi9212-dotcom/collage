@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import Konva from 'konva';
 import './styles.css';
 import './editor-shell-v1.css';
 import './editor-shell-v1-compat.css';
@@ -23,6 +24,25 @@ import { installDestructiveActionBehavior } from './editor/destructiveActionBeha
 import { installInspectorContextBehavior } from './editor/inspectorContextBehavior';
 import { installMobileEditorBehavior } from './editor/mobileEditorBehavior';
 import App from './AppLive.jsx';
+
+const MOBILE_CANVAS_QUERY = '(max-width: 760px), (max-width: 920px) and (pointer: coarse) and (orientation: landscape)';
+
+function configureCanvasPerformance() {
+  const mobileViewport = window.matchMedia?.(MOBILE_CANVAS_QUERY).matches ?? window.innerWidth <= 760;
+
+  // The editor keeps the real A5 print coordinates (1480×2100) and scales only
+  // the DOM preview. On a DPR 3 phone Konva would otherwise allocate both its
+  // scene and hit canvases at 3× resolution, which can exceed mobile tab memory.
+  if (mobileViewport) Konva.pixelRatio = 1;
+  Konva.releaseCanvasOnDestroy = true;
+
+  window.__collageCanvasPerformance = {
+    mobileViewport,
+    previewPixelRatio: mobileViewport ? 1 : (Konva.pixelRatio || window.devicePixelRatio || 1),
+  };
+}
+
+configureCanvasPerformance();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
