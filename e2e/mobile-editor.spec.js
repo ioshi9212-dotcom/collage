@@ -26,7 +26,7 @@ test.describe('mobile phone editor shell', () => {
   test('limits the Konva preview backing store on high-density phones', async ({ page }) => {
     await openMobileEditor(page);
 
-    await expect(page.getByRole('button', { name: 'Страница', exact: true })).toHaveClass(/active/);
+    await expect(page.getByLabel('Режим просмотра').getByRole('button', { name: 'Страница', exact: true })).toHaveClass(/active/);
     await expect(page.locator('body')).not.toHaveClass(/mobile-left-panel-open/);
 
     const metrics = await page.evaluate(() => ({
