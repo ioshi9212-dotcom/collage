@@ -14,11 +14,14 @@ import './editor-shell-stage6-inspector-context.css';
 import './editor-regression-fixes.css';
 import './editor-shell-stage4c-larger-canvas.css';
 import './font-picker-live.css';
+import './editor-mobile.css';
+import './editor-mobile-mode-fixes.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
 import { installToolStateBehavior } from './editor/toolStateBehavior';
 import { installTextEditingBehavior } from './editor/textEditingBehavior';
 import { installDestructiveActionBehavior } from './editor/destructiveActionBehavior';
 import { installInspectorContextBehavior } from './editor/inspectorContextBehavior';
+import { installMobileEditorBehavior } from './editor/mobileEditorBehavior';
 import App from './AppLive.jsx';
 
 createRoot(document.getElementById('root')).render(
@@ -32,3 +35,4 @@ installToolStateBehavior();
 installTextEditingBehavior();
 installDestructiveActionBehavior();
 installInspectorContextBehavior();
+installMobileEditorBehavior();
