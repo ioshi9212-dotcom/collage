@@ -1,0 +1,17 @@
+@media (max-width: 760px), (max-width: 920px) and (pointer: coarse) and (orientation: landscape) {
+  body[data-album-mode='collage'] .workspace > .album-mode-inspector {
+    display: none !important;
+  }
+
+  body[data-album-mode='text'] .workspace > .inspector,
+  body[data-album-mode='drawings'] .workspace > .inspector,
+  body[data-album-mode='templates'] .workspace > .inspector {
+    display: none !important;
+  }
+
+  body[data-album-mode='text'] .workspace > .album-mode-inspector,
+  body[data-album-mode='drawings'] .workspace > .album-mode-inspector,
+  body[data-album-mode='templates'] .workspace > .album-mode-inspector {
+    display: block !important;
+  }
+}
