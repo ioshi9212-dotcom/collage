@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+test.use({ hasTouch: true });
+
 async function openMobileEditor(page, viewport = { width: 390, height: 844 }) {
   await page.setViewportSize(viewport);
   await page.goto('/');
@@ -68,7 +70,7 @@ test.describe('mobile phone editor shell', () => {
 
     await toolRail.getByRole('button', { name: 'Текст' }).click();
     await expect(page.locator('body')).toHaveClass(/mobile-left-panel-open/);
-    await expect(page.getByRole('button', { name: '+ Добавить текст' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '+ Обычный текст' })).toBeVisible();
     await page.locator('.mobile-editor-backdrop').click({ position: { x: 8, y: 8 } });
     await expect(page.locator('body')).not.toHaveClass(/mobile-left-panel-open/);
 
