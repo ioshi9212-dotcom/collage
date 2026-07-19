@@ -1,9 +1,64 @@
+import Konva from 'konva';
+
 const MOBILE_QUERY = '(max-width: 760px), (max-width: 920px) and (pointer: coarse) and (orientation: landscape)';
 
 let mobileDefaultViewApplied = false;
+const lockedCanvasSetters = new Map();
 
 function isMobileViewport() {
   return window.matchMedia?.(MOBILE_QUERY).matches ?? window.innerWidth <= 760;
+}
+
+function desktopPreviewPixelRatio() {
+  return Math.min(2, Math.max(1.5, Number(window.devicePixelRatio) || 1));
+}
+
+function lockCanvasPixelRatio(canvas) {
+  if (!canvas?.setPixelRatio) return;
+
+  let originalSetter = lockedCanvasSetters.get(canvas);
+  if (!originalSetter) {
+    originalSetter = canvas.setPixelRatio;
+    lockedCanvasSetters.set(canvas, originalSetter);
+    canvas.setPixelRatio = function setMobilePixelRatio() {
+      return originalSetter.call(this, 1);
+    };
+  }
+
+  canvas.setPixelRatio(1);
+}
+
+function restoreCanvasPixelRatios() {
+  if (!lockedCanvasSetters.size) return;
+  const target = desktopPreviewPixelRatio();
+
+  lockedCanvasSetters.forEach((originalSetter, canvas) => {
+    canvas.setPixelRatio = originalSetter;
+    originalSetter.call(canvas, target);
+  });
+  lockedCanvasSetters.clear();
+}
+
+function enforceMobileCanvasPixelRatio() {
+  if (!isMobileViewport()) {
+    restoreCanvasPixelRatios();
+    return;
+  }
+
+  Array.from(Konva.stages || []).forEach((stage) => {
+    const container = stage?.container?.();
+    if (!container?.closest?.('.stage-frame')) return;
+
+    stage.getLayers?.().forEach((layer) => {
+      lockCanvasPixelRatio(layer.getCanvas?.());
+      lockCanvasPixelRatio(layer.getHitCanvas?.());
+      layer.batchDraw?.();
+    });
+  });
+
+  if (window.__collageCanvasPerformance) {
+    window.__collageCanvasPerformance.activeEditorPixelRatio = 1;
+  }
 }
 
 function closeMobileSheets() {
@@ -40,10 +95,12 @@ function ensureMobileControls() {
     document.body.classList.remove('mobile-editor-ready');
     closeMobileSheets();
     mobileDefaultViewApplied = false;
+    restoreCanvasPixelRatios();
     return;
   }
 
   document.body.classList.add('mobile-editor-ready');
+  enforceMobileCanvasPixelRatio();
 
   let backdrop = document.querySelector('.mobile-editor-backdrop');
   if (!backdrop) {
@@ -89,6 +146,7 @@ function ensureMobileControls() {
   document.querySelectorAll('.workspace > .inspector, .workspace > .album-mode-inspector').forEach((panel) => addCloseButton(panel));
   document.querySelectorAll('.album-bar.booklet-mode-bar').forEach((panel) => addCloseButton(panel, 'Закрыть'));
   applyMobileDefaultView();
+  enforceMobileCanvasPixelRatio();
 }
 
 function updateViewportHeight() {
@@ -137,6 +195,7 @@ export function installMobileEditorBehavior() {
   const refresh = () => {
     updateViewportHeight();
     ensureMobileControls();
+    window.requestAnimationFrame(enforceMobileCanvasPixelRatio);
   };
 
   if (typeof media?.addEventListener === 'function') media.addEventListener('change', refresh);
