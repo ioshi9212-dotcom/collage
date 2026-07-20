@@ -23,6 +23,7 @@ import { installTextEditingBehavior } from './editor/textEditingBehavior';
 import { installDestructiveActionBehavior } from './editor/destructiveActionBehavior';
 import { installInspectorContextBehavior } from './editor/inspectorContextBehavior';
 import { installMobileEditorBehavior } from './editor/mobileEditorBehavior';
+import { installCloudPhotoBridge } from './editor/cloudPhotoBridge';
 import App from './AppLive.jsx';
 
 const MOBILE_CANVAS_QUERY = '(max-width: 760px), (max-width: 920px) and (pointer: coarse) and (orientation: landscape)';
@@ -58,3 +59,4 @@ installMobileEditorBehavior();
 installTextEditingBehavior();
 installDestructiveActionBehavior();
 installInspectorContextBehavior();
+installCloudPhotoBridge();
