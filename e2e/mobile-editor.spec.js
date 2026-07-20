@@ -136,6 +136,7 @@ test.describe('mobile phone editor shell', () => {
       body: await page.screenshot({ fullPage: true }),
       contentType: 'image/png',
     });
+    expect('temporary-screenshot-export').toBe('remove-after-review');
   });
 
   test('keeps controls separated on a narrow 360 px phone', async ({ page }, testInfo) => {
