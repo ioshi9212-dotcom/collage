@@ -15,9 +15,11 @@ const config = resolveBucketConfig({
   AWS_S3_BUCKET_NAME: 'collage-photos-test',
   AWS_ACCESS_KEY_ID: 'test-access',
   AWS_SECRET_ACCESS_KEY: 'test-secret',
+  AWS_S3_URL_STYLE: 'virtual',
 });
 assert.equal(config.configured, true);
 assert.equal(config.endpoint, 'https://t3.storageapi.dev');
+assert.equal(config.urlStyle, 'virtual');
 assert.equal(normalizeImageType('image/jpeg; charset=binary'), 'image/jpeg');
 assert.equal(normalizeImageType('image/svg+xml'), '');
 assert.equal(buildPhotoObjectKey(7, 'image/png', 'asset-id'), 'users/7/photos/asset-id/original.png');
@@ -31,11 +33,28 @@ const url = new URL(createPresignedObjectUrl({
   key: 'users/7/photos/a/original.jpg',
   now: new Date('2026-07-20T00:00:00.000Z'),
 }));
-assert.equal(url.origin, 'https://t3.storageapi.dev');
-assert.equal(url.pathname, '/collage-photos-test/users/7/photos/a/original.jpg');
+assert.equal(url.origin, 'https://collage-photos-test.t3.storageapi.dev');
+assert.equal(url.pathname, '/users/7/photos/a/original.jpg');
 assert.equal(url.searchParams.get('X-Amz-Algorithm'), 'AWS4-HMAC-SHA256');
 assert.equal(url.searchParams.get('X-Amz-Date'), '20260720T000000Z');
 assert.match(url.searchParams.get('X-Amz-Signature'), /^[a-f0-9]{64}$/);
+
+const pathConfig = resolveBucketConfig({
+  AWS_ENDPOINT_URL: 'https://legacy.storageapi.dev/',
+  AWS_DEFAULT_REGION: 'auto',
+  AWS_S3_BUCKET_NAME: 'legacy-bucket',
+  AWS_ACCESS_KEY_ID: 'test-access',
+  AWS_SECRET_ACCESS_KEY: 'test-secret',
+  AWS_S3_URL_STYLE: 'path',
+});
+const pathUrl = new URL(createPresignedObjectUrl({
+  config: pathConfig,
+  method: 'GET',
+  key: 'users/7/photos/a/original.jpg',
+  now: new Date('2026-07-20T00:00:00.000Z'),
+}));
+assert.equal(pathUrl.origin, 'https://legacy.storageapi.dev');
+assert.equal(pathUrl.pathname, '/legacy-bucket/users/7/photos/a/original.jpg');
 
 const secret = 'session-secret';
 const payload = Buffer.from(JSON.stringify({ id: 7, email: 'user@example.com', exp: Date.now() + 60_000 })).toString('base64url');
