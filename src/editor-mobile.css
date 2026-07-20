@@ -315,8 +315,9 @@
     padding: 5px 6px;
   }
 
-  .page-rail > .panel-title,
-  .page-rail > .page-rail-note {
+  .editor-workspace-v2 > .page-rail > .panel-title,
+  .editor-workspace-v2 > .page-rail > .panel-title.page-rail-header-row,
+  .editor-workspace-v2 > .page-rail > .page-rail-note {
     display: none !important;
   }
 
@@ -354,6 +355,25 @@
     max-width: 100%;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .mobile-page-add-card {
+    display: grid;
+    grid-template-rows: 24px auto;
+    place-items: center;
+    border-style: dashed;
+    background: #ffffff;
+    color: var(--shell-text);
+    font-weight: 800;
+  }
+
+  .mobile-page-add-card b {
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .mobile-page-add-card span {
+    font-size: 9px;
   }
 
   /* Seven equal tool slots, including Settings. Nothing is fixed over content. */
