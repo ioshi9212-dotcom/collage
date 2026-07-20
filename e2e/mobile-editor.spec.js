@@ -6,7 +6,9 @@ async function openMobileEditor(page, viewport = { width: 390, height: 844 }) {
   await page.setViewportSize(viewport);
   await page.goto('/');
   await page.waitForFunction(() => typeof window.__collageApp?.getProject === 'function');
+  await page.waitForFunction(() => typeof window.__collageMobileLayout?.getState === 'function');
   await expect(page.locator('body')).toHaveClass(/mobile-editor-ready/);
+  await expect(page.locator('.editor-tool-rail-v2 > .mobile-inspector-toggle')).toBeVisible();
 }
 
 async function expectNoDocumentOverflow(page) {
@@ -22,12 +24,87 @@ async function expectNoDocumentOverflow(page) {
   expect(geometry.bodyOverflow).toBe('hidden');
 }
 
+async function readMobileLayout(page) {
+  return page.evaluate(() => {
+    const read = (selector) => {
+      const node = document.querySelector(selector);
+      const rect = node?.getBoundingClientRect();
+      return rect
+        ? {
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height,
+            position: getComputedStyle(node).position,
+          }
+        : null;
+    };
+
+    const visibleButtons = [
+      ...document.querySelectorAll('.app-header-v2 button, .canvas-toolbar > button, .editor-tool-rail-v2 > button'),
+    ].filter((node) => {
+      const style = getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && Number(style.opacity || 1) > 0
+        && rect.width > 0
+        && rect.height > 0;
+    });
+
+    const overlaps = [];
+    for (let leftIndex = 0; leftIndex < visibleButtons.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < visibleButtons.length; rightIndex += 1) {
+        const left = visibleButtons[leftIndex].getBoundingClientRect();
+        const right = visibleButtons[rightIndex].getBoundingClientRect();
+        const overlapWidth = Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left));
+        const overlapHeight = Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+        if (overlapWidth * overlapHeight > 1) {
+          overlaps.push({
+            left: visibleButtons[leftIndex].getAttribute('aria-label') || visibleButtons[leftIndex].textContent?.trim(),
+            right: visibleButtons[rightIndex].getAttribute('aria-label') || visibleButtons[rightIndex].textContent?.trim(),
+            area: overlapWidth * overlapHeight,
+          });
+        }
+      }
+    }
+
+    return {
+      header: read('.app-header-v2'),
+      canvas: read('.canvas-area'),
+      pages: read('.page-rail'),
+      tools: read('.editor-tool-rail-v2'),
+      settings: read('.editor-tool-rail-v2 > .mobile-inspector-toggle'),
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      overlaps,
+      bodySettingsButtons: document.querySelectorAll('body > .mobile-inspector-toggle').length,
+      bookletButtons: document.querySelectorAll('.mobile-booklet-toggle').length,
+    };
+  });
+}
+
+function expectRowsSeparated(layout) {
+  expect(layout.header.bottom).toBeLessThanOrEqual(layout.canvas.top + 2);
+  expect(layout.canvas.bottom).toBeLessThanOrEqual(layout.pages.top + 2);
+  expect(layout.pages.bottom).toBeLessThanOrEqual(layout.tools.top + 2);
+  expect(layout.tools.bottom).toBeLessThanOrEqual(layout.viewport.height + 1);
+  expect(layout.canvas.width).toBeLessThanOrEqual(layout.viewport.width + 1);
+  expect(layout.tools.position).not.toBe('fixed');
+  expect(layout.settings.top).toBeGreaterThanOrEqual(layout.tools.top - 1);
+  expect(layout.settings.bottom).toBeLessThanOrEqual(layout.tools.bottom + 1);
+  expect(layout.bodySettingsButtons).toBe(0);
+  expect(layout.bookletButtons).toBe(0);
+  expect(layout.overlaps).toEqual([]);
+}
+
 test.describe('mobile phone editor shell', () => {
   test('limits the Konva preview backing store on high-density phones', async ({ page }) => {
     await openMobileEditor(page);
 
-    await expect(page.getByLabel('Режим просмотра').getByRole('button', { name: 'Страница', exact: true })).toHaveClass(/active/);
-    await expect(page.locator('body')).not.toHaveClass(/mobile-left-panel-open/);
+    await expect(page.locator('.app-view-switch-v2').getByRole('button', { name: 'Страница', exact: true })).toHaveClass(/active/);
+    await expect(page.locator('body')).not.toHaveClass(/mobile-left-panel-open|mobile-inspector-open/);
 
     const metrics = await page.evaluate(() => ({
       devicePixelRatio: window.devicePixelRatio,
@@ -48,81 +125,79 @@ test.describe('mobile phone editor shell', () => {
     expect(metrics.canvasRatios.every((ratio) => ratio.width <= 1.01 && ratio.height <= 1.01)).toBe(true);
   });
 
-  test('keeps the canvas between the compact header, page rail and bottom tools', async ({ page }) => {
+  test('keeps header, canvas, pages and tools in separate rows', async ({ page }, testInfo) => {
     await openMobileEditor(page);
-
-    const header = page.locator('.app-header-v2');
-    const canvas = page.locator('.canvas-area');
-    const pageRail = page.locator('.page-rail');
-    const tools = page.locator('.editor-tool-rail-v2');
-
-    await expect(header).toBeVisible();
-    await expect(canvas).toBeVisible();
-    await expect(pageRail).toBeVisible();
-    await expect(tools).toBeVisible();
     await expectNoDocumentOverflow(page);
 
-    const boxes = await page.evaluate(() => {
-      const read = (selector) => {
-        const rect = document.querySelector(selector)?.getBoundingClientRect();
-        return rect ? { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width, height: rect.height } : null;
-      };
-      return {
-        header: read('.app-header-v2'),
-        canvas: read('.canvas-area'),
-        pages: read('.page-rail'),
-        tools: read('.editor-tool-rail-v2'),
-        viewport: { width: window.innerWidth, height: window.innerHeight },
-      };
-    });
+    const layout = await readMobileLayout(page);
+    expectRowsSeparated(layout);
 
-    expect(boxes.header.bottom).toBeLessThanOrEqual(boxes.canvas.top + 2);
-    expect(boxes.canvas.bottom).toBeLessThanOrEqual(boxes.pages.top + 2);
-    expect(boxes.pages.bottom).toBeLessThanOrEqual(boxes.tools.top + 2);
-    expect(boxes.tools.bottom).toBeLessThanOrEqual(boxes.viewport.height + 1);
-    expect(boxes.canvas.width).toBeLessThanOrEqual(boxes.viewport.width + 1);
+    await testInfo.attach('mobile-390x844', {
+      body: await page.screenshot({ fullPage: true }),
+      contentType: 'image/png',
+    });
   });
 
-  test('opens tools and inspector as closable mobile sheets', async ({ page }) => {
+  test('keeps controls separated on a narrow 360 px phone', async ({ page }, testInfo) => {
+    await openMobileEditor(page, { width: 360, height: 800 });
+    await expectNoDocumentOverflow(page);
+
+    const layout = await readMobileLayout(page);
+    expectRowsSeparated(layout);
+
+    await testInfo.attach('mobile-360x800', {
+      body: await page.screenshot({ fullPage: true }),
+      contentType: 'image/png',
+    });
+  });
+
+  test('opens tools and settings as closable bottom sheets', async ({ page }) => {
     await openMobileEditor(page);
 
     const toolRail = page.locator('.editor-tool-rail-v2');
-    await toolRail.getByRole('button', { name: 'Фото' }).click();
+    await toolRail.getByRole('button', { name: 'Фото', exact: true }).click();
     await expect(page.locator('body')).toHaveClass(/mobile-left-panel-open/);
     await expect(page.locator('.editor-left-panel-v2 .mobile-sheet-close')).toBeVisible();
     await page.locator('.editor-left-panel-v2 .mobile-sheet-close').click();
     await expect(page.locator('body')).not.toHaveClass(/mobile-left-panel-open/);
 
-    await toolRail.getByRole('button', { name: 'Текст' }).click();
+    await toolRail.getByRole('button', { name: 'Текст', exact: true }).click();
     await expect(page.locator('body')).toHaveClass(/mobile-left-panel-open/);
-    await expect(page.getByRole('button', { name: '+ Обычный текст' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '+ Обычный текст', exact: true })).toBeVisible();
     await page.locator('.mobile-editor-backdrop').click({ position: { x: 8, y: 8 } });
     await expect(page.locator('body')).not.toHaveClass(/mobile-left-panel-open/);
 
-    await page.getByRole('button', { name: 'Открыть настройки' }).click();
+    await toolRail.getByRole('button', { name: 'Настройки', exact: true }).click();
     await expect(page.locator('body')).toHaveClass(/mobile-inspector-open/);
     await expect(page.locator('.workspace > .album-mode-inspector .mobile-sheet-close')).toBeVisible();
     await page.locator('.workspace > .album-mode-inspector .mobile-sheet-close').click();
     await expect(page.locator('body')).not.toHaveClass(/mobile-inspector-open/);
   });
 
-  test('uses touch-sized controls and remains usable in landscape', async ({ page }) => {
+  test('uses touch-sized controls and remains separated in landscape', async ({ page }, testInfo) => {
     await openMobileEditor(page, { width: 844, height: 390 });
     await expectNoDocumentOverflow(page);
 
-    const metrics = await page.evaluate(() => {
-      const tools = [...document.querySelectorAll('.editor-tool-button-v2')].map((node) => {
+    const layout = await readMobileLayout(page);
+    expectRowsSeparated(layout);
+
+    const metrics = await page.evaluate(() => ({
+      tools: [...document.querySelectorAll('.editor-tool-rail-v2 > button')].map((node) => {
         const rect = node.getBoundingClientRect();
         return { width: rect.width, height: rect.height };
-      });
-      const header = document.querySelector('.app-header-v2')?.getBoundingClientRect();
-      const canvas = document.querySelector('.canvas-area')?.getBoundingClientRect();
-      return { tools, headerHeight: header?.height ?? 0, canvasHeight: canvas?.height ?? 0 };
-    });
+      }),
+      headerHeight: document.querySelector('.app-header-v2')?.getBoundingClientRect().height ?? 0,
+      canvasHeight: document.querySelector('.canvas-area')?.getBoundingClientRect().height ?? 0,
+    }));
 
-    expect(metrics.tools.length).toBeGreaterThanOrEqual(6);
+    expect(metrics.tools.length).toBe(7);
     expect(metrics.tools.every((item) => item.width >= 44 && item.height >= 44)).toBe(true);
-    expect(metrics.headerHeight).toBeLessThanOrEqual(72);
-    expect(metrics.canvasHeight).toBeGreaterThan(120);
+    expect(metrics.headerHeight).toBeLessThanOrEqual(64);
+    expect(metrics.canvasHeight).toBeGreaterThan(110);
+
+    await testInfo.attach('mobile-landscape-844x390', {
+      body: await page.screenshot({ fullPage: true }),
+      contentType: 'image/png',
+    });
   });
 });
