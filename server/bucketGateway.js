@@ -58,9 +58,17 @@ function encodeRfc3986(value) {
   ));
 }
 
-function canonicalObjectPath(bucket, key) {
-  const parts = [bucket, ...String(key).split('/')];
+function canonicalObjectPath(config, key) {
+  const parts = config.urlStyle === 'virtual'
+    ? String(key).split('/')
+    : [config.bucket, ...String(key).split('/')];
   return `/${parts.map(encodeRfc3986).join('/')}`;
+}
+
+function objectEndpoint(config) {
+  const endpoint = new URL(config.endpoint);
+  if (config.urlStyle === 'virtual') endpoint.hostname = `${config.bucket}.${endpoint.hostname}`;
+  return endpoint;
 }
 
 function formatAmzDate(date) {
@@ -73,9 +81,13 @@ export function resolveBucketConfig(env = process.env) {
   const bucket = String(env.AWS_S3_BUCKET_NAME || '').trim();
   const accessKeyId = String(env.AWS_ACCESS_KEY_ID || '').trim();
   const secretAccessKey = String(env.AWS_SECRET_ACCESS_KEY || '').trim();
+  const requestedUrlStyle = String(env.AWS_S3_URL_STYLE || '').trim().toLowerCase();
+  const urlStyle = requestedUrlStyle === 'path' || requestedUrlStyle === 'virtual'
+    ? requestedUrlStyle
+    : 'virtual';
   const maxPhotoBytes = Math.max(1, Number(env.MAX_PHOTO_FILE_BYTES || DEFAULT_MAX_PHOTO_BYTES));
   const configured = Boolean(endpoint && bucket && accessKeyId && secretAccessKey);
-  return { endpoint, region, bucket, accessKeyId, secretAccessKey, maxPhotoBytes, configured };
+  return { endpoint, region, bucket, accessKeyId, secretAccessKey, urlStyle, maxPhotoBytes, configured };
 }
 
 export function verifySessionToken(cookieHeader, secret, now = Date.now()) {
@@ -119,8 +131,8 @@ export function createPresignedObjectUrl({
   now = new Date(),
 }) {
   if (!config?.configured) throw new Error('Bucket is not configured');
-  const endpoint = new URL(config.endpoint);
-  const canonicalUri = canonicalObjectPath(config.bucket, key);
+  const endpoint = objectEndpoint(config);
+  const canonicalUri = canonicalObjectPath(config, key);
   const amzDate = formatAmzDate(now);
   const dateStamp = amzDate.slice(0, 8);
   const credentialScope = `${dateStamp}/${config.region}/s3/aws4_request`;
