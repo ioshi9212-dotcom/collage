@@ -130,6 +130,24 @@ function ensureSettingsTool() {
   updateMobileControlState();
 }
 
+function ensureMobilePageAddCard() {
+  const list = document.querySelector('.page-rail-list');
+  if (!list) return;
+
+  let button = list.querySelector('.mobile-page-add-card');
+  if (!button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'page-rail-card mobile-page-add-card';
+    button.setAttribute('aria-label', 'Добавить страницу');
+    button.innerHTML = '<b>+</b><span>Страница</span>';
+    button.addEventListener('click', () => {
+      document.querySelector('.page-rail-add-v3')?.click();
+    });
+    list.prepend(button);
+  }
+}
+
 function ensureBackdrop() {
   let backdrop = document.querySelector('.mobile-editor-backdrop');
   if (!backdrop) {
@@ -142,7 +160,7 @@ function ensureBackdrop() {
 }
 
 function cleanupMobileControls() {
-  document.querySelectorAll('.mobile-editor-backdrop, .mobile-inspector-toggle, .mobile-booklet-toggle, .mobile-sheet-close')
+  document.querySelectorAll('.mobile-editor-backdrop, .mobile-inspector-toggle, .mobile-booklet-toggle, .mobile-sheet-close, .mobile-page-add-card')
     .forEach((node) => node.remove());
 }
 
@@ -171,6 +189,7 @@ function ensureMobileControls() {
   document.body.classList.add('mobile-editor-ready');
   ensureBackdrop();
   ensureSettingsTool();
+  ensureMobilePageAddCard();
 
   document.querySelectorAll('.editor-left-panel-v2, .workspace > .sidebar, .workspace > .inspector, .workspace > .album-mode-inspector')
     .forEach(addCloseButton);
