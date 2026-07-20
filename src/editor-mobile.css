@@ -1,9 +1,19 @@
+/* Mobile editor v2: every major control occupies its own row.
+   No toolbars or utility buttons float over the canvas. */
+
+.mobile-editor-backdrop,
+.mobile-inspector-toggle,
+.mobile-booklet-toggle,
+.mobile-sheet-close {
+  display: none;
+}
+
 @media (max-width: 760px), (max-width: 920px) and (pointer: coarse) and (orientation: landscape) {
   :root {
-    --mobile-header-height: 104px;
-    --mobile-tool-height: 64px;
-    --mobile-page-height: 82px;
-    --mobile-sheet-top: 104px;
+    --mobile-header-height: 96px;
+    --mobile-tool-height: calc(62px + env(safe-area-inset-bottom));
+    --mobile-page-height: 74px;
+    --mobile-sheet-height: min(72dvh, 640px);
   }
 
   html,
@@ -12,37 +22,46 @@
     width: 100%;
     height: 100%;
     min-height: 0;
-    overflow: hidden;
+    overflow: hidden !important;
     overscroll-behavior: none;
   }
 
   body {
     position: fixed;
     inset: 0;
+    min-width: 320px;
     touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .app-shell {
     display: flex;
-    width: 100%;
-    height: var(--mobile-vh, 100dvh);
-    min-height: 0;
-    overflow: hidden;
+    width: 100% !important;
+    height: var(--mobile-vh, 100dvh) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
     flex-direction: column;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
+  /* Header: one compact action row and one view row. */
   .app-header-v2 {
     position: relative;
     z-index: 130;
     display: grid;
     flex: 0 0 auto;
+    width: 100%;
+    min-height: var(--mobile-header-height);
     grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 38px;
     grid-template-areas:
       "brand actions"
       "view view";
+    align-items: center;
     gap: 6px 8px;
-    min-height: var(--mobile-header-height);
     border-bottom: 1px solid var(--shell-line);
+    background: var(--shell-panel);
     padding: max(6px, env(safe-area-inset-top)) 8px 6px;
   }
 
@@ -53,304 +72,155 @@
   }
 
   .app-brand-mark-v2 {
-    width: 30px;
-    height: 30px;
-    flex: 0 0 30px;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    font-size: 10px;
+  }
+
+  .app-brand-copy-v2 {
+    min-width: 0;
   }
 
   .app-brand-copy-v2 strong {
+    display: block;
     overflow: hidden;
-    max-width: 128px;
+    max-width: 122px;
     font-size: 13px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .app-brand-copy-v2 span {
-    overflow: hidden;
-    max-width: 150px;
-    font-size: 9px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: none !important;
   }
 
   .app-view-switch-v2 {
     grid-area: view;
     width: 100%;
+    min-width: 0;
   }
 
   .segmented-v2 {
     display: grid;
     width: 100%;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .segmented-v2 button {
     min-width: 0;
-    min-height: 40px;
-    padding: 0 6px;
+    min-height: 38px;
+    overflow: hidden;
+    padding: 0 5px;
     font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .app-header-actions-v2 {
     grid-area: actions;
+    display: grid;
+    grid-template-columns: repeat(4, 38px);
+    align-items: center;
     gap: 3px;
+    min-width: 0;
+  }
+
+  .app-header-actions-v2 > .button,
+  .app-header-actions-v2 .export-menu-v2,
+  .app-header-actions-v2 .export-menu-v2 > .button {
+    width: 38px;
+    min-width: 38px;
+    max-width: 38px;
   }
 
   .app-header-actions-v2 > .button,
   .app-header-actions-v2 .export-menu-v2 > .button {
     display: grid;
-    min-width: 43px;
-    min-height: 40px;
+    min-height: 36px;
+    height: 36px;
     place-items: center;
-    padding: 0 5px;
+    overflow: hidden;
+    border-radius: 6px;
+    padding: 0 2px;
     font-size: 0;
+    white-space: nowrap;
   }
 
   .app-header-actions-v2 > button:first-of-type::after {
     content: "Откр.";
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .app-header-actions-v2 .export-menu-v2 > button::after {
     content: "Эксп.";
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .app-header-actions-v2 .primary-save-v2::after {
     content: "Сохр.";
-    font-size: 10px;
+    font-size: 9px;
   }
 
-  .app-header-actions-v2 > button:nth-of-type(3)::after {
+  .app-header-actions-v2 > button:last-of-type::after {
     content: "Акк.";
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .export-popover-v2 {
     position: fixed;
-    z-index: 180;
+    z-index: 230;
     top: calc(var(--mobile-header-height) + env(safe-area-inset-top));
     right: 8px;
     left: 8px;
     display: grid;
     width: auto;
-    max-height: calc(var(--mobile-vh, 100dvh) - var(--mobile-header-height) - 24px);
-    grid-template-columns: 1fr 1fr;
+    max-height: calc(var(--mobile-vh, 100dvh) - var(--mobile-header-height) - 16px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
     overflow: auto;
     padding: 10px;
   }
 
   .export-popover-v2 .button {
-    min-height: 46px;
-    font-size: 12px;
+    min-height: 44px;
+    padding: 8px;
+    font-size: 11px;
+    white-space: normal;
   }
 
   .notice {
     position: fixed;
-    z-index: 210;
+    z-index: 240;
     top: calc(var(--mobile-header-height) + 8px);
-    right: 12px;
-    left: 12px;
+    right: 8px;
+    left: 8px;
     width: auto;
     max-width: none;
   }
 
+  /* Old top control bars never participate in the phone layout. */
   .album-bar,
-  .album-bar.clean-control-panel {
+  .album-bar.clean-control-panel,
+  .album-bar.booklet-mode-bar {
     display: none !important;
   }
 
-  .album-bar.booklet-mode-bar {
-    position: fixed !important;
-    z-index: 165;
-    top: auto !important;
-    right: 0;
-    bottom: calc(var(--mobile-tool-height) + env(safe-area-inset-bottom));
-    left: 0;
-    display: block !important;
-    max-height: calc(var(--mobile-vh, 100dvh) - var(--mobile-header-height) - var(--mobile-tool-height) - 18px);
-    overflow: auto;
-    border: 1px solid var(--shell-line-strong);
-    border-radius: 14px 14px 0 0;
-    background: var(--shell-panel);
-    padding: 44px 10px 12px;
-    box-shadow: 0 -18px 48px rgba(39, 43, 46, .22);
-    transform: translateY(110%);
-    transition: transform .2s ease;
-  }
-
-  body.mobile-booklet-open .album-bar.booklet-mode-bar {
-    transform: translateY(0);
-  }
-
-  .album-bar.booklet-mode-bar .primary-control-row {
-    display: none;
-  }
-
-  .album-bar.booklet-mode-bar .booklet-control-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .album-bar.booklet-mode-bar .booklet-control-card {
-    border: 0;
-    border-bottom: 1px solid var(--shell-line);
-    border-radius: 0;
-    padding: 0 0 12px;
-  }
-
-  .album-bar.booklet-mode-bar .booklet-inline-controls,
-  .album-bar.booklet-mode-bar .booklet-export-buttons {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
+  /* Real three-row workspace: canvas, pages, tools. */
   .editor-workspace-v2 {
     display: grid !important;
     flex: 1 1 auto;
     width: 100%;
+    height: auto !important;
     min-height: 0 !important;
     grid-template-columns: minmax(0, 1fr) !important;
-    grid-template-rows: minmax(0, 1fr) var(--mobile-page-height) !important;
+    grid-template-rows: minmax(0, 1fr) var(--mobile-page-height) var(--mobile-tool-height) !important;
     grid-template-areas:
       "canvas"
-      "pages" !important;
-    padding-bottom: calc(var(--mobile-tool-height) + env(safe-area-inset-bottom));
-  }
-
-  .editor-tool-rail-v2 {
-    position: fixed;
-    z-index: 140;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    display: grid;
-    height: calc(var(--mobile-tool-height) + env(safe-area-inset-bottom));
-    grid-template-columns: repeat(6, minmax(58px, 1fr));
-    grid-auto-flow: column;
-    gap: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border: 0;
-    border-top: 1px solid var(--shell-line-strong);
-    background: rgba(248, 249, 249, .98);
-    padding: 4px 4px max(4px, env(safe-area-inset-bottom));
-    box-shadow: 0 -8px 24px rgba(39, 43, 46, .12);
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .editor-tool-button-v2 {
-    min-width: 58px;
-    min-height: 54px;
-    border-radius: 6px;
-    padding: 4px 2px;
-    font-size: 9px;
-  }
-
-  .editor-tool-button-v2.active {
-    box-shadow: inset 0 3px 0 var(--shell-graphite);
-  }
-
-  .editor-left-panel-v2,
-  .workspace > .sidebar,
-  .workspace > .inspector,
-  .workspace > .album-mode-inspector {
-    position: fixed;
-    z-index: 160;
-    top: var(--mobile-sheet-top);
-    right: 0;
-    bottom: calc(var(--mobile-tool-height) + env(safe-area-inset-bottom));
-    left: 0;
-    width: auto;
-    max-height: none !important;
-    overflow: auto;
-    border: 0;
-    border-top: 1px solid var(--shell-line-strong);
-    border-radius: 14px 14px 0 0;
-    background: var(--shell-panel);
-    padding: 48px 14px 18px;
-    box-shadow: 0 -18px 48px rgba(39, 43, 46, .22);
-    transform: translateY(110%);
-    transition: transform .2s ease;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  body.mobile-left-panel-open .editor-left-panel-v2,
-  body.mobile-left-panel-open .workspace > .sidebar,
-  body.mobile-inspector-open .workspace > .inspector,
-  body.mobile-inspector-open .workspace > .album-mode-inspector {
-    transform: translateY(0);
-  }
-
-  .mobile-sheet-close {
-    position: absolute;
-    z-index: 2;
-    top: 8px;
-    right: 10px;
-    display: grid;
-    min-width: 44px;
-    min-height: 36px;
-    place-items: center;
-    border: 1px solid var(--shell-line);
-    border-radius: 6px;
-    background: #fff;
-    color: var(--shell-text);
-    font: inherit;
-    font-size: 12px;
-    font-weight: 800;
-  }
-
-  .mobile-editor-backdrop {
-    position: fixed;
-    z-index: 150;
-    inset: var(--mobile-header-height) 0 calc(var(--mobile-tool-height) + env(safe-area-inset-bottom)) 0;
-    display: none;
-    border: 0;
-    background: rgba(29, 34, 37, .34);
-    padding: 0;
-  }
-
-  body.mobile-left-panel-open .mobile-editor-backdrop,
-  body.mobile-inspector-open .mobile-editor-backdrop,
-  body.mobile-booklet-open .mobile-editor-backdrop {
-    display: block;
-  }
-
-  .mobile-inspector-toggle,
-  .mobile-booklet-toggle {
-    position: fixed;
-    z-index: 120;
-    bottom: calc(var(--mobile-tool-height) + var(--mobile-page-height) + env(safe-area-inset-bottom) + 8px);
-    display: grid;
-    min-width: 48px;
-    min-height: 44px;
-    place-items: center;
-    border: 1px solid var(--shell-line-strong);
-    border-radius: 22px;
-    background: var(--shell-graphite);
-    color: #fff;
-    padding: 0 12px;
-    box-shadow: 0 8px 24px rgba(39, 43, 46, .24);
-    font: inherit;
-    font-size: 11px;
-    font-weight: 850;
-  }
-
-  .mobile-inspector-toggle {
-    right: 10px;
-  }
-
-  .mobile-booklet-toggle {
-    left: 10px;
-  }
-
-  body:not(:has(.booklet-mode-bar)) .mobile-booklet-toggle,
-  body:not(.mobile-editor-ready) .mobile-inspector-toggle,
-  body:not(.mobile-editor-ready) .mobile-booklet-toggle {
-    display: none;
+      "pages"
+      "rail" !important;
+    overflow: hidden;
+    padding: 0 !important;
   }
 
   .canvas-area {
@@ -358,19 +228,21 @@
     display: flex;
     width: 100% !important;
     min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    padding: 6px 6px 8px;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding: 5px 6px 6px !important;
   }
 
   .canvas-toolbar {
     display: grid;
     flex: 0 0 auto;
-    min-height: 38px;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    width: 100%;
+    min-height: 34px;
+    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    align-items: center;
     gap: 4px;
-    margin-bottom: 4px;
-    padding: 0 0 5px;
+    margin: 0 0 4px;
+    padding: 0 0 4px;
   }
 
   .canvas-toolbar > div {
@@ -380,50 +252,67 @@
   .canvas-toolbar strong {
     display: block;
     overflow: hidden;
-    font-size: 11px;
+    font-size: 10.5px;
+    line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  .canvas-toolbar span,
+  .canvas-toolbar em {
+    display: none !important;
+  }
+
   .canvas-toolbar .small-button {
-    min-width: 40px;
-    min-height: 36px;
+    width: 44px;
+    min-width: 44px;
+    min-height: 34px;
+    height: 34px;
     overflow: hidden;
-    padding: 0 7px;
+    border-radius: 5px;
+    padding: 0 3px;
     font-size: 0;
   }
 
   .canvas-toolbar .small-button:first-of-type::after {
     content: "Рамки";
-    font-size: 9px;
+    font-size: 8.5px;
   }
 
   .canvas-toolbar .small-button:last-of-type::after {
-    content: "Очистить";
-    font-size: 9px;
+    content: "Очист.";
+    font-size: 8.5px;
   }
 
-  .stage-frame {
-    max-width: 100%;
-    max-height: 100%;
+  .stage-frame,
+  .stage-frame.album-preview {
+    max-width: 100% !important;
+    max-height: 100% !important;
     margin: auto;
+    overflow: hidden !important;
+  }
+
+  .stage-scale-shell {
+    transform-origin: top left !important;
   }
 
   .konvajs-content {
     touch-action: none;
   }
 
+  /* Page strip has a dedicated row above the tools. */
   .page-rail {
     grid-area: pages;
     display: block !important;
+    width: 100%;
     min-width: 0;
-    min-height: var(--mobile-page-height);
+    min-height: var(--mobile-page-height) !important;
     max-height: var(--mobile-page-height) !important;
     overflow: hidden;
     border: 0;
     border-top: 1px solid var(--shell-line);
-    background: rgba(248, 249, 249, .98);
-    padding: 6px;
+    background: rgba(248, 249, 249, .99);
+    padding: 5px 6px;
   }
 
   .page-rail > .panel-title,
@@ -433,38 +322,234 @@
 
   .page-rail-list {
     display: flex;
+    width: 100%;
     height: 100%;
     gap: 6px;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 0 2px 4px;
+    padding: 0 1px 3px;
     scroll-snap-type: x proximity;
+    scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
 
+  .page-rail-list::-webkit-scrollbar {
+    display: none;
+  }
+
   .page-rail-card {
-    flex: 0 0 66px;
-    width: 66px;
-    min-height: 66px;
+    flex: 0 0 62px;
+    width: 62px;
+    min-height: 62px;
+    height: 62px;
     scroll-snap-align: center;
+    overflow: hidden;
     padding: 5px;
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .page-rail-card span,
   .page-rail-card small {
     overflow: hidden;
+    max-width: 100%;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Seven equal tool slots, including Settings. Nothing is fixed over content. */
+  .editor-tool-rail-v2 {
+    grid-area: rail;
+    position: relative !important;
+    z-index: 140;
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    height: var(--mobile-tool-height);
+    grid-template-columns: repeat(7, minmax(50px, 1fr));
+    grid-auto-flow: column;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 0;
+    border-top: 1px solid var(--shell-line-strong);
+    background: rgba(248, 249, 249, .99);
+    padding: 3px 3px max(3px, env(safe-area-inset-bottom));
+    box-shadow: 0 -5px 18px rgba(39, 43, 46, .08);
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .editor-tool-rail-v2::-webkit-scrollbar {
+    display: none;
+  }
+
+  .editor-tool-button-v2,
+  .mobile-inspector-toggle {
+    display: grid;
+    min-width: 50px;
+    min-height: 54px;
+    grid-template-rows: 20px auto;
+    align-content: center;
+    justify-items: center;
+    gap: 2px;
+    overflow: hidden;
+    border-radius: 5px;
+    padding: 3px 1px;
+    font-size: 8px;
+    white-space: nowrap;
+  }
+
+  .editor-tool-button-v2 b,
+  .mobile-inspector-toggle b {
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .editor-tool-button-v2 span,
+  .mobile-inspector-toggle span {
+    display: block;
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+  }
+
+  .editor-tool-button-v2.active,
+  .mobile-inspector-toggle.active {
+    box-shadow: inset 0 3px 0 var(--shell-graphite);
+  }
+
+  .mobile-booklet-toggle {
+    display: none !important;
+  }
+
+  /* Bottom sheets stop above the real tool row. */
+  .editor-left-panel-v2,
+  .workspace > .sidebar,
+  .workspace > .inspector,
+  .workspace > .album-mode-inspector {
+    position: fixed !important;
+    z-index: 180;
+    top: auto !important;
+    right: 0 !important;
+    bottom: var(--mobile-tool-height) !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: var(--mobile-sheet-height);
+    min-height: 0 !important;
+    max-height: calc(var(--mobile-vh, 100dvh) - var(--mobile-header-height) - var(--mobile-tool-height)) !important;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid var(--shell-line-strong);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    background: var(--shell-panel);
+    padding: 10px 12px 24px !important;
+    box-shadow: 0 -18px 48px rgba(39, 43, 46, .24);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(calc(100% + 18px));
+    transition: transform 180ms ease, opacity 150ms ease, visibility 0s linear 180ms;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.mobile-left-panel-open .editor-left-panel-v2,
+  body.mobile-left-panel-open .workspace > .sidebar,
+  body.mobile-inspector-open .workspace > .inspector,
+  body.mobile-inspector-open .workspace > .album-mode-inspector {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+    transition: transform 180ms ease, opacity 150ms ease;
+  }
+
+  .mobile-sheet-close {
+    position: sticky;
+    z-index: 5;
+    top: 0;
+    display: inline-flex;
+    min-width: 72px;
+    min-height: 38px;
+    align-items: center;
+    justify-content: center;
+    float: right;
+    margin: 0 0 8px 8px;
+    border: 1px solid var(--shell-line-strong);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--shell-text);
+    padding: 0 14px;
+    box-shadow: 0 5px 16px rgba(39, 43, 46, .12);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .mobile-editor-backdrop {
+    position: fixed;
+    z-index: 170;
+    inset: var(--mobile-header-height) 0 var(--mobile-tool-height) 0;
+    display: block;
+    border: 0;
+    background: rgba(25, 29, 31, .34);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 150ms ease, visibility 0s linear 150ms;
+  }
+
+  body.mobile-left-panel-open .mobile-editor-backdrop,
+  body.mobile-inspector-open .mobile-editor-backdrop {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 150ms ease;
+  }
+
+  /* Form controls stay touch-friendly without inflating every button. */
+  .editor-left-panel-v2 .button,
+  .workspace > .inspector .button,
+  .workspace > .album-mode-inspector .button {
+    min-height: 42px;
+    font-size: 12px;
+  }
+
+  .field input,
+  .field select,
+  .field textarea,
+  input[type="text"],
+  input[type="number"],
+  select,
+  textarea {
+    min-height: 42px;
+    font-size: 16px;
+  }
+
+  .field textarea {
+    min-height: 104px;
+    resize: vertical;
+  }
+
+  .field > span,
+  .panel-title p,
+  .hint,
+  .empty-state p {
+    font-size: 12px;
   }
 
   .photo-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
+    max-height: none !important;
+    overflow: visible;
+    padding-right: 0;
   }
 
   .photo-card {
-    min-height: 112px;
+    min-height: 104px;
   }
 
   .photo-used-badge {
@@ -486,51 +571,48 @@
     font-size: 12px;
   }
 
-  .button,
-  .small-button,
-  .album-mode-button,
-  .field input,
-  .field select,
-  .field textarea,
-  input,
-  select,
-  textarea {
-    min-height: 44px;
-    font-size: 16px;
-  }
-
-  .field > span,
-  .panel-title p,
-  .hint,
-  .empty-state p {
-    font-size: 12px;
+  .geometry-grid,
+  .album-geometry-grid,
+  .document-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   body .cloud-auth-panel {
-    position: fixed;
-    z-index: 190;
-    top: var(--mobile-header-height);
-    right: 0;
-    bottom: calc(var(--mobile-tool-height) + env(safe-area-inset-bottom));
-    left: 0;
-    width: auto;
-    max-width: none;
-    max-height: none;
+    position: fixed !important;
+    z-index: 250 !important;
+    top: var(--mobile-header-height) !important;
+    right: 0 !important;
+    bottom: var(--mobile-tool-height) !important;
+    left: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: none !important;
     overflow: auto;
-    border-radius: 14px 14px 0 0;
+    border-radius: 16px 16px 0 0;
     padding-bottom: 20px;
   }
 }
 
 @media (max-width: 430px) {
+  .app-brand-mark-v2 {
+    display: none;
+  }
+
   .app-brand-copy-v2 strong {
-    max-width: 96px;
+    max-width: 102px;
+    font-size: 12px;
+  }
+
+  .app-header-actions-v2 {
+    grid-template-columns: repeat(4, 36px);
   }
 
   .app-header-actions-v2 > .button,
+  .app-header-actions-v2 .export-menu-v2,
   .app-header-actions-v2 .export-menu-v2 > .button {
-    min-width: 39px;
-    padding-inline: 3px;
+    width: 36px;
+    min-width: 36px;
+    max-width: 36px;
   }
 
   .photo-grid {
@@ -538,29 +620,98 @@
   }
 }
 
+@media (max-width: 350px) {
+  .app-brand-copy-v2 strong {
+    max-width: 78px;
+  }
+
+  .app-header-actions-v2 {
+    gap: 2px;
+    grid-template-columns: repeat(4, 34px);
+  }
+
+  .app-header-actions-v2 > .button,
+  .app-header-actions-v2 .export-menu-v2,
+  .app-header-actions-v2 .export-menu-v2 > .button {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+  }
+
+  .editor-tool-rail-v2 {
+    grid-template-columns: repeat(7, 52px);
+  }
+}
+
 @media (max-width: 920px) and (pointer: coarse) and (orientation: landscape) {
   :root {
     --mobile-header-height: 58px;
-    --mobile-page-height: 68px;
-    --mobile-sheet-top: 58px;
+    --mobile-tool-height: calc(56px + env(safe-area-inset-bottom));
+    --mobile-page-height: 62px;
+    --mobile-sheet-height: calc(var(--mobile-vh, 100dvh) - var(--mobile-header-height) - var(--mobile-tool-height));
   }
 
   .app-header-v2 {
-    grid-template-columns: 180px minmax(240px, 1fr) auto;
+    min-height: var(--mobile-header-height);
+    grid-template-columns: minmax(110px, .8fr) minmax(230px, 1.4fr) auto;
+    grid-template-rows: 42px;
     grid-template-areas: "brand view actions";
-    min-height: 58px;
-    padding-top: 6px;
+    gap: 6px;
+    padding-top: max(4px, env(safe-area-inset-top));
+    padding-bottom: 4px;
   }
 
-  .app-brand-copy-v2 span {
-    display: none;
+  .app-brand-copy-v2 strong {
+    max-width: 138px;
   }
 
   .segmented-v2 button {
-    min-height: 40px;
+    min-height: 38px;
+  }
+
+  .app-header-actions-v2 {
+    grid-template-columns: repeat(4, 34px);
+  }
+
+  .app-header-actions-v2 > .button,
+  .app-header-actions-v2 .export-menu-v2,
+  .app-header-actions-v2 .export-menu-v2 > .button {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+  }
+
+  .app-header-actions-v2 > .button,
+  .app-header-actions-v2 .export-menu-v2 > .button {
+    min-height: 34px;
+    height: 34px;
   }
 
   .page-rail-card {
-    min-height: 54px;
+    min-height: 52px;
+    height: 52px;
+  }
+
+  .editor-tool-button-v2,
+  .mobile-inspector-toggle {
+    min-height: 48px;
+  }
+
+  .editor-left-panel-v2,
+  .workspace > .sidebar,
+  .workspace > .inspector,
+  .workspace > .album-mode-inspector {
+    height: var(--mobile-sheet-height);
+    border-radius: 0;
+  }
+}
+
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) {
+  .editor-left-panel-v2,
+  .workspace > .sidebar,
+  .workspace > .inspector,
+  .workspace > .album-mode-inspector,
+  .mobile-editor-backdrop {
+    transition: none !important;
   }
 }
