@@ -1,0 +1,23 @@
+name: HEIC lint diagnostic
+
+on:
+  push:
+    branches:
+      - agent/heic-photo-support
+
+jobs:
+  lint-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create ESLint report
+        run: npx eslint src/editor/heicSupport.js src/editor/cloudPhotoBridge.js --format json > heic-lint.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heic-lint-report
+          path: heic-lint.json
