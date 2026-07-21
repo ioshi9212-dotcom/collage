@@ -19,15 +19,8 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
-      - name: Create lint report
-        run: npx eslint . --format json > eslint-report.json || true
-      - name: Upload lint report
-        uses: actions/upload-artifact@v4
-        with:
-          name: eslint-report
-          path: eslint-report.json
-      - name: Verify lint report
-        run: node -e "const fs=require('fs');const report=JSON.parse(fs.readFileSync('eslint-report.json','utf8'));const errors=report.flatMap(file=>file.messages.map(message=>({...message,filePath:file.filePath})));if(errors.length){console.error(errors);process.exit(1)}"
+      - name: Lint
+        run: npm run lint
       - name: Test
         run: npm test
       - name: Build
