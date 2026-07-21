@@ -5,9 +5,11 @@ import {
   cloudLibraryItem,
   normalizeCloudPhoto,
 } from './cloudPhotoModel.js';
+import { isHeicPhoto, prepareHeicPhotoFiles, preparePhotoForWeb } from './heicSupport.js';
 import { persistPhotoFiles } from './photoAssets.js';
 import {
   MAX_LIBRARY_PHOTOS,
+  MAX_PHOTO_FILE_BYTES,
   selectPhotoUploads,
 } from './reliability.js';
 
@@ -148,6 +150,47 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
+async function prepareSelectedPhotoFiles(files) {
+  const source = Array.from(files || []);
+  const candidates = [];
+  let rejectedHeicSize = 0;
+
+  for (const file of source) {
+    if (isHeicPhoto(file) && Number(file?.size) > MAX_PHOTO_FILE_BYTES) {
+      rejectedHeicSize += 1;
+    } else {
+      candidates.push(file);
+    }
+  }
+
+  const prepared = await prepareHeicPhotoFiles(candidates, {
+    onProgress: ({ index, total, name }) => {
+      setStatus(`Преобразую HEIC: ${index + 1} из ${total} · ${name}`);
+    },
+  });
+
+  return { ...prepared, rejectedHeicSize };
+}
+
+async function prepareStoredPhotoBlob(photo, blob) {
+  if (!isHeicPhoto(photo, { name: photo?.name, type: photo?.type || blob?.type })) {
+    return { blob, name: photo?.name || 'Фото', converted: false };
+  }
+
+  setStatus(`Преобразую HEIC: ${photo?.name || 'Фото'}`);
+  try {
+    return await preparePhotoForWeb(blob, {
+      name: photo?.name,
+      type: photo?.type || blob?.type,
+    });
+  } catch (error) {
+    throw new Error(
+      `Не удалось преобразовать HEIC «${photo?.name || 'Фото'}»: ${error?.message || 'ошибка конвертации'}`,
+      { cause: error },
+    );
+  }
+}
+
 async function migrateProjectPhotos(project, onProgress = () => {}) {
   const library = Array.isArray(project?.library) ? project.library : [];
   let finished = 0;
@@ -158,14 +201,22 @@ async function migrateProjectPhotos(project, onProgress = () => {}) {
       onProgress({ finished, total: library.length, name: photo.name, loaded: photo.size || 0, bytesTotal: photo.size || 0 });
       return normalizeCloudPhoto(photo);
     }
-    const blob = await resolvePhotoBlob(photo);
-    if (!blob) throw new Error(`Не найден оригинал фотографии «${photo?.name || 'Фото'}»`);
-    const asset = await uploadPhotoBlob(blob, photo?.name, (loaded, bytesTotal) => {
-      onProgress({ finished, total: library.length, name: photo.name, loaded, bytesTotal });
+    const originalBlob = await resolvePhotoBlob(photo);
+    if (!originalBlob) throw new Error(`Не найден оригинал фотографии «${photo?.name || 'Фото'}»`);
+    const prepared = await prepareStoredPhotoBlob(photo, originalBlob);
+    const uploadBlob = prepared.blob;
+    const uploadName = prepared.name || photo?.name || 'Фото';
+    const asset = await uploadPhotoBlob(uploadBlob, uploadName, (loaded, bytesTotal) => {
+      onProgress({ finished, total: library.length, name: uploadName, loaded, bytesTotal });
     });
     finished += 1;
-    onProgress({ finished, total: library.length, name: photo.name, loaded: blob.size, bytesTotal: blob.size });
-    return normalizeCloudPhoto(photo, asset);
+    onProgress({ finished, total: library.length, name: uploadName, loaded: uploadBlob.size, bytesTotal: uploadBlob.size });
+    return normalizeCloudPhoto({
+      ...photo,
+      name: uploadName,
+      type: uploadBlob.type || photo?.type,
+      size: uploadBlob.size,
+    }, asset);
   });
   return buildCloudProject(project, migrated.map(cloudLibraryItem));
 }
@@ -198,9 +249,16 @@ async function uploadNewPhotos(files) {
   const bridge = window.__collageApp;
   const project = bridge?.getProject?.();
   if (!project) throw new Error('Редактор ещё не готов');
-  const selection = selectPhotoUploads(files, project.library?.length || 0);
+
+  const preparation = await prepareSelectedPhotoFiles(files);
+  const selection = selectPhotoUploads(preparation.files, project.library?.length || 0);
+  const rejectedSize = selection.rejectedSize + preparation.rejectedHeicSize;
   if (!selection.accepted.length) {
-    if (selection.rejectedSize) throw new Error('Фото слишком большие. Максимум 25 МБ на файл.');
+    if (preparation.failed.length) {
+      const first = preparation.failed[0];
+      throw new Error(`Не удалось преобразовать HEIC «${first?.file?.name || 'Фото'}». Проверь интернет и повтори.`);
+    }
+    if (rejectedSize) throw new Error('Фото слишком большие. Максимум 25 МБ на файл.');
     if (selection.rejectedLimit) throw new Error(`В библиотеке можно хранить не больше ${MAX_LIBRARY_PHOTOS} фото`);
     throw new Error('Подходящих изображений не найдено');
   }
@@ -220,22 +278,27 @@ async function uploadNewPhotos(files) {
     ...additions.map(cloudLibraryItem),
   ].slice(0, MAX_LIBRARY_PHOTOS));
   await applyProject(nextProject);
-  const skipped = selection.rejectedType + selection.rejectedSize + selection.rejectedLimit;
-  setStatus(`Фото в облаке: ${additions.length}${skipped ? ` · пропущено: ${skipped}` : ''}`);
+  const skipped = selection.rejectedType + rejectedSize + selection.rejectedLimit + preparation.failed.length;
+  const converted = preparation.converted ? ` · HEIC → JPEG: ${preparation.converted}` : '';
+  setStatus(`Фото в облаке: ${additions.length}${converted}${skipped ? ` · пропущено: ${skipped}` : ''}`);
 }
 
 async function fallbackLocalUpload(files) {
   const bridge = window.__collageApp;
   const project = bridge?.getProject?.();
   if (!project) return;
-  const selection = selectPhotoUploads(files, project.library?.length || 0);
+  const preparation = await prepareSelectedPhotoFiles(files);
+  const selection = selectPhotoUploads(preparation.files, project.library?.length || 0);
   const result = await persistPhotoFiles(selection.accepted);
   const next = {
     ...project,
     library: [...(project.library || []), ...result.loaded].slice(0, MAX_LIBRARY_PHOTOS),
   };
   await bridge.openProject?.(next);
-  setStatus('Облако фото недоступно: фотографии сохранены только в этом браузере');
+  const failed = preparation.failed.length + result.failed.length;
+  setStatus(failed
+    ? `Облако фото недоступно: локально сохранено ${result.loaded.length}, пропущено ${failed}`
+    : 'Облако фото недоступно: фотографии сохранены только в этом браузере');
 }
 
 function isPhotoInput(input) {
