@@ -184,7 +184,10 @@ async function prepareStoredPhotoBlob(photo, blob) {
       type: photo?.type || blob?.type,
     });
   } catch (error) {
-    throw new Error(`Не удалось преобразовать HEIC «${photo?.name || 'Фото'}»: ${error?.message || 'ошибка конвертации'}`);
+    throw new Error(
+      `Не удалось преобразовать HEIC «${photo?.name || 'Фото'}»: ${error?.message || 'ошибка конвертации'}`,
+      { cause: error },
+    );
   }
 }
 
