@@ -16,6 +16,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1092.0",
     "@vitejs/plugin-react": "^4.3.4",
     "heic-to": "1.5.2",
     "konva": "^9.3.18",
@@ -29,7 +30,7 @@
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.55.0",
     "eslint": "10.7.0",
-    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-hooks": "6.1.1",
     "globals": "17.7.0"
   }
 }
