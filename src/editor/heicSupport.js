@@ -7,10 +7,9 @@ const HEIC_TYPES = new Set([
 
 const HEIC_EXTENSION = /\.(?:heic|heif)$/i;
 const DEFAULT_JPEG_QUALITY = 0.94;
-const CONVERTER_URLS = [
-  'https://cdn.jsdelivr.net/npm/heic-to@1.5.2/dist/csp/heic-to.js',
-  'https://unpkg.com/heic-to@1.5.2/dist/csp/heic-to.js',
-];
+const BUNDLED_CONVERTER_SOURCE = 'bundled:heic-to/csp';
+
+let bundledConverterPromise = null;
 
 function cleanType(value) {
   return String(value || '').trim().toLowerCase().split(';')[0];
@@ -32,27 +31,50 @@ export function jpegNameForHeic(value) {
   return `${name || 'Фото'}.jpg`;
 }
 
-async function defaultImportModule(url) {
-  return import(/* @vite-ignore */ url);
+async function defaultImportModule() {
+  return import('heic-to/csp');
 }
 
-export async function loadHeicConverter(options = {}) {
+function converterFromModule(module) {
+  const converter = module?.heicTo ?? module?.default?.heicTo ?? module?.default;
+  if (typeof converter !== 'function') {
+    throw new Error('Встроенный модуль HEIC не содержит функцию heicTo');
+  }
+  return converter;
+}
+
+async function importConverter(options = {}) {
   const importModule = options.importModule ?? defaultImportModule;
-  const urls = options.urls ?? CONVERTER_URLS;
+  const sources = Array.isArray(options.urls) && options.urls.length
+    ? options.urls
+    : [BUNDLED_CONVERTER_SOURCE];
   let lastError = null;
 
-  for (const url of urls) {
+  for (const source of sources) {
     try {
-      const module = await importModule(url);
-      const converter = module?.heicTo ?? module?.default?.heicTo ?? module?.default;
-      if (typeof converter === 'function') return converter;
-      lastError = new Error('Модуль конвертации HEIC не содержит функцию heicTo');
+      const module = await importModule(source);
+      return converterFromModule(module);
     } catch (error) {
       lastError = error;
     }
   }
 
-  throw new Error(`Не удалось загрузить конвертер HEIC${lastError?.message ? `: ${lastError.message}` : ''}`);
+  throw new Error(
+    `Не удалось загрузить встроенный конвертер HEIC${lastError?.message ? `: ${lastError.message}` : ''}`,
+    { cause: lastError ?? undefined },
+  );
+}
+
+export async function loadHeicConverter(options = {}) {
+  const customLoader = Boolean(options.importModule || options.urls);
+  if (customLoader) return importConverter(options);
+  if (!bundledConverterPromise) {
+    bundledConverterPromise = importConverter(options).catch((error) => {
+      bundledConverterPromise = null;
+      throw error;
+    });
+  }
+  return bundledConverterPromise;
 }
 
 function firstBlob(value) {
@@ -78,11 +100,19 @@ export async function preparePhotoForWeb(blob, options = {}) {
   }
 
   const converter = options.converter ?? await loadHeicConverter(options);
-  const output = await converter({
-    blob,
-    type: 'image/jpeg',
-    quality: Number.isFinite(Number(options.quality)) ? Number(options.quality) : DEFAULT_JPEG_QUALITY,
-  });
+  let output;
+  try {
+    output = await converter({
+      blob,
+      type: 'image/jpeg',
+      quality: Number.isFinite(Number(options.quality)) ? Number(options.quality) : DEFAULT_JPEG_QUALITY,
+    });
+  } catch (error) {
+    throw new Error(
+      `Декодер не смог прочитать HEIC «${name}»${error?.message ? `: ${error.message}` : ''}`,
+      { cause: error },
+    );
+  }
   const jpegBlob = firstBlob(output);
   const jpegName = jpegNameForHeic(name);
   const jpegFile = createJpegFile(jpegBlob, jpegName, blob.lastModified, options);
