@@ -1,0 +1,133 @@
+name: Apply local HEIC upload
+
+on:
+  push:
+    branches:
+      - agent/local-heic-upload
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Patch editor for local HEIC upload
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          main_path = Path('src/main.jsx')
+          main = main_path.read_text()
+          main = main.replace("import { installCloudPhotoBridge } from './editor/cloudPhotoBridge';\n", '')
+          main = main.replace('\ninstallCloudPhotoBridge();', '')
+          main_path.write_text(main)
+
+          package_path = Path('package.json')
+          package = package_path.read_text()
+          package = package.replace('"preview": "node --import ./server/bucketPreload.js server.js"', '"preview": "node server.js"')
+          package = package.replace('"start": "node --import ./server/bucketPreload.js server.js"', '"start": "node server.js"')
+          package_path.write_text(package)
+
+          app_path = Path('src/AppLive.jsx')
+          app = app_path.read_text()
+          marker = "import { cleanupOrphanedPhotoAssets } from './editor/photoAssetCleanup';\n"
+          addition = marker + "import { prepareHeicPhotoFiles } from './editor/heicSupport';\n"
+          if "from './editor/heicSupport'" not in app:
+              if marker not in app:
+                  raise SystemExit('App import marker not found')
+              app = app.replace(marker, addition)
+
+          replacement = r'''  async function uploadPhotos(event) {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (photoUploadInFlightRef.current) return show('Дождись окончания текущей загрузки фото');
+    if (!files.length) return;
+
+    photoUploadInFlightRef.current = true;
+    setPhotoImporting(true);
+
+    try {
+      const prepared = await prepareHeicPhotoFiles(files, {
+        onProgress: ({ index, total, name }) => {
+          show(`Преобразую HEIC: ${index + 1} из ${total} · ${name}`);
+        },
+      });
+      const selection = selectPhotoUploads(prepared.files, library.length);
+
+      if (!selection.accepted.length) {
+        if (prepared.failed.length) {
+          const first = prepared.failed[0];
+          throw new Error(`Не удалось преобразовать HEIC «${first?.file?.name || 'Фото'}»: ${first?.error?.message || 'неизвестная ошибка'}`);
+        }
+        if (selection.rejectedSize) throw new Error('Фото слишком большие. Максимум 25 МБ на файл.');
+        if (selection.rejectedLimit) throw new Error(`В библиотеке можно хранить не больше ${MAX_LIBRARY_PHOTOS} фото`);
+        throw new Error('Подходящих изображений не найдено');
+      }
+
+      const skippedBeforeStore = selection.rejectedType
+        + selection.rejectedSize
+        + selection.rejectedLimit
+        + prepared.failed.length;
+      show(`Сохраняю фотографии: ${selection.accepted.length}`);
+
+      const result = await persistPhotoFiles(selection.accepted, { idFactory: makeId });
+      const availableSlots = Math.max(0, MAX_LIBRARY_PHOTOS - library.length);
+      const additions = result.loaded.slice(0, availableSlots);
+      if (additions.length) {
+        setLibrary((current) => [...current, ...additions].slice(0, MAX_LIBRARY_PHOTOS));
+      }
+
+      const overflow = Math.max(0, result.loaded.length - additions.length);
+      const skipped = skippedBeforeStore + result.failed.length + overflow;
+      const converted = prepared.converted ? ` · HEIC → JPEG: ${prepared.converted}` : '';
+      const suffix = skipped ? ` · пропущено: ${skipped}` : '';
+      show(`Фото загружены: ${additions.length}${converted}${suffix}`);
+    } catch (error) {
+      console.warn('Photo import failed', error);
+      show(error?.message || 'Не удалось загрузить фотографии');
+    } finally {
+      photoUploadInFlightRef.current = false;
+      setPhotoImporting(false);
+    }
+  }
+
+  function putPhoto'''
+          pattern = re.compile(r"  async function uploadPhotos\(event\) \{[\s\S]*?\n  \}\n\n  function putPhoto")
+          if not pattern.search(app):
+              raise SystemExit('uploadPhotos function not found')
+          app = pattern.sub(replacement, app, count=1)
+          app = app.replace('accept="image/*"', 'accept="image/*,.heic,.heif"')
+          app_path.write_text(app)
+
+          test_path = Path('src/editor/appIntegration.test.mjs')
+          test = test_path.read_text()
+          test = test.replace(
+              "assert.match(appSource, /selectPhotoUploads\\(files, library\\.length\\)/, 'photo uploads must use bounded selection rules');",
+              "assert.match(appSource, /prepareHeicPhotoFiles\\(files/, 'local photo upload must convert HEIC before storage');\nassert.match(appSource, /selectPhotoUploads\\(prepared\\.files, library\\.length\\)/, 'photo uploads must use bounded selection rules after HEIC conversion');",
+          )
+          test_path.write_text(test)
+
+          workflow = Path('.github/workflows/apply-local-heic-upload.yml')
+          workflow.unlink()
+          PY
+      - name: Verify generated patch
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+      - name: Commit local HEIC upload
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json src/main.jsx src/AppLive.jsx src/editor/appIntegration.test.mjs .github/workflows/apply-local-heic-upload.yml
+          git commit -m "Restore local uploads with HEIC conversion"
+          git push
