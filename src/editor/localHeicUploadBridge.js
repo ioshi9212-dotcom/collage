@@ -8,7 +8,6 @@ const HEIC_TYPES = new Set([
 const HEIC_EXTENSION = /\.(?:heic|heif)$/i;
 const bypassInputs = new WeakSet();
 let conversionInProgress = false;
-let acceptObserver = null;
 
 function cleanType(value) {
   return String(value || '').trim().toLowerCase().split(';')[0];
@@ -61,13 +60,6 @@ function isPhotoInput(input) {
   return input instanceof HTMLInputElement
     && input.type === 'file'
     && String(input.accept || '').toLowerCase().includes('image');
-}
-
-function patchPhotoInputs(root = document) {
-  root.querySelectorAll?.('input[type="file"][accept*="image"]').forEach((input) => {
-    const accept = String(input.accept || 'image/*');
-    if (!accept.toLowerCase().includes('.heic')) input.accept = `${accept},.heic,.heif`;
-  });
 }
 
 async function parseErrorResponse(response) {
@@ -173,9 +165,5 @@ async function handlePhotoSelection(event) {
 
 export function installLocalHeicUploadBridge() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  patchPhotoInputs();
   document.addEventListener('change', handlePhotoSelection, true);
-  acceptObserver = new MutationObserver(() => patchPhotoInputs());
-  acceptObserver.observe(document.documentElement, { childList: true, subtree: true });
-  window.addEventListener('beforeunload', () => acceptObserver?.disconnect(), { once: true });
 }
