@@ -1,0 +1,32 @@
+name: Generate HEIC dependency lock
+
+on:
+  push:
+    branches:
+      - agent/bundle-heic-converter
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Update package lock
+        run: npm install heic-to@1.5.2 --save-exact --package-lock-only
+      - name: Commit generated lockfile
+        run: |
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "Lockfile is already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "Lock bundled HEIC converter"
+          git push
