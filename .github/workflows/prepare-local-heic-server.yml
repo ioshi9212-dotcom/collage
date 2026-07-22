@@ -41,3 +41,5 @@ jobs:
           git add package-lock.json .github/workflows/prepare-local-heic-server.yml
           git commit -m "Lock server HEIC conversion dependencies"
           git push
+
+# Trigger after workflow registration.
