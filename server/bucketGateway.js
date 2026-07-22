@@ -1,7 +1,8 @@
 import http from 'node:http';
-import { createHmac, createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { syncBuiltinESMExports } from 'node:module';
 import { Readable } from 'node:stream';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 export const CLOUD_PHOTO_SCHEMA = 'railway-bucket-v1';
 export const DEFAULT_MAX_PHOTO_BYTES = 25 * 1024 * 1024;
@@ -48,33 +49,6 @@ function hmac(key, value, encoding) {
   return createHmac('sha256', key).update(value).digest(encoding);
 }
 
-function sha256(value) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function encodeRfc3986(value) {
-  return encodeURIComponent(String(value)).replace(/[!'()*]/g, (character) => (
-    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
-  ));
-}
-
-function canonicalObjectPath(config, key) {
-  const parts = config.urlStyle === 'virtual'
-    ? String(key).split('/')
-    : [config.bucket, ...String(key).split('/')];
-  return `/${parts.map(encodeRfc3986).join('/')}`;
-}
-
-function objectEndpoint(config) {
-  const endpoint = new URL(config.endpoint);
-  if (config.urlStyle === 'virtual') endpoint.hostname = `${config.bucket}.${endpoint.hostname}`;
-  return endpoint;
-}
-
-function formatAmzDate(date) {
-  return date.toISOString().replace(/[:-]|\.\d{3}/g, '');
-}
-
 export function resolveBucketConfig(env = process.env) {
   const endpoint = String(env.AWS_ENDPOINT_URL || '').trim().replace(/\/+$/, '');
   const region = String(env.AWS_DEFAULT_REGION || 'auto').trim() || 'auto';
@@ -88,6 +62,25 @@ export function resolveBucketConfig(env = process.env) {
   const maxPhotoBytes = Math.max(1, Number(env.MAX_PHOTO_FILE_BYTES || DEFAULT_MAX_PHOTO_BYTES));
   const configured = Boolean(endpoint && bucket && accessKeyId && secretAccessKey);
   return { endpoint, region, bucket, accessKeyId, secretAccessKey, urlStyle, maxPhotoBytes, configured };
+}
+
+export function buildS3ClientOptions(config) {
+  if (!config?.configured) throw new Error('Bucket is not configured');
+  return {
+    region: config.region,
+    endpoint: config.endpoint,
+    forcePathStyle: config.urlStyle === 'path',
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+    },
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
+  };
+}
+
+export function createBucketS3Client(config) {
+  return new S3Client(buildS3ClientOptions(config));
 }
 
 export function verifySessionToken(cookieHeader, secret, now = Date.now()) {
@@ -123,53 +116,6 @@ export function isOwnedPhotoKey(userId, key) {
   return normalized.startsWith(`users/${Number(userId)}/photos/`) && !normalized.includes('..');
 }
 
-export function createPresignedObjectUrl({
-  config,
-  method,
-  key,
-  expiresSeconds = 900,
-  now = new Date(),
-}) {
-  if (!config?.configured) throw new Error('Bucket is not configured');
-  const endpoint = objectEndpoint(config);
-  const canonicalUri = canonicalObjectPath(config, key);
-  const amzDate = formatAmzDate(now);
-  const dateStamp = amzDate.slice(0, 8);
-  const credentialScope = `${dateStamp}/${config.region}/s3/aws4_request`;
-  const query = new URLSearchParams({
-    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
-    'X-Amz-Credential': `${config.accessKeyId}/${credentialScope}`,
-    'X-Amz-Date': amzDate,
-    'X-Amz-Expires': String(Math.max(1, Math.min(604800, Number(expiresSeconds) || 900))),
-    'X-Amz-SignedHeaders': 'host',
-  });
-  const canonicalQuery = [...query.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, value]) => `${encodeRfc3986(name)}=${encodeRfc3986(value)}`)
-    .join('&');
-  const canonicalHeaders = `host:${endpoint.host}\n`;
-  const canonicalRequest = [
-    String(method || 'GET').toUpperCase(),
-    canonicalUri,
-    canonicalQuery,
-    canonicalHeaders,
-    'host',
-    'UNSIGNED-PAYLOAD',
-  ].join('\n');
-  const stringToSign = [
-    'AWS4-HMAC-SHA256',
-    amzDate,
-    credentialScope,
-    sha256(canonicalRequest),
-  ].join('\n');
-  const dateKey = hmac(`AWS4${config.secretAccessKey}`, dateStamp);
-  const regionKey = hmac(dateKey, config.region);
-  const serviceKey = hmac(regionKey, 's3');
-  const signingKey = hmac(serviceKey, 'aws4_request');
-  const signature = hmac(signingKey, stringToSign, 'hex');
-  return `${endpoint.origin}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
-}
-
 function sendJson(response, status, payload) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -183,7 +129,17 @@ function sendBucketError(response, status, error, message) {
   sendJson(response, status, { error, message });
 }
 
-async function proxyUpload({ request, response, user, config, fetchImpl }) {
+function storageError(error, operation) {
+  const name = String(error?.name || error?.Code || 'S3Error').slice(0, 80);
+  const detail = String(error?.message || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+  const wrapped = new Error(`Bucket ${operation} failed: ${name}${detail ? ` · ${detail}` : ''}`, { cause: error });
+  wrapped.safeMessage = operation === 'upload'
+    ? `Bucket отклонил загрузку (${name}).`
+    : `Не удалось получить фотографию из Bucket (${name}).`;
+  return wrapped;
+}
+
+async function proxyUpload({ request, response, user, config, s3Client }) {
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   const type = normalizeImageType(request.headers['content-type']);
   const size = Number(request.headers['content-length']);
@@ -206,21 +162,17 @@ async function proxyUpload({ request, response, user, config, fetchImpl }) {
 
   const id = randomUUID();
   const key = buildPhotoObjectKey(user.id, type, id);
-  const uploadUrl = createPresignedObjectUrl({ config, method: 'PUT', key });
-  const upstream = await fetchImpl(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': type,
-      'Content-Length': String(size),
-      'Cache-Control': 'private, max-age=31536000, immutable',
-    },
-    body: request,
-    duplex: 'half',
-  });
-
-  if (!upstream.ok) {
-    const detail = (await upstream.text().catch(() => '')).slice(0, 500);
-    throw new Error(`Bucket upload failed: ${upstream.status} ${detail}`.trim());
+  try {
+    await s3Client.send(new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      Body: request,
+      ContentType: type,
+      ContentLength: size,
+      CacheControl: 'private, max-age=31536000, immutable',
+    }));
+  } catch (error) {
+    throw storageError(error, 'upload');
   }
 
   const src = `/api/photo-assets/file?key=${encodeURIComponent(key)}`;
@@ -237,7 +189,23 @@ async function proxyUpload({ request, response, user, config, fetchImpl }) {
   });
 }
 
-async function proxyDownload({ request, response, user, config, fetchImpl }) {
+function pipeObjectBody(body, response) {
+  if (typeof body?.pipe === 'function') {
+    body.pipe(response);
+    return true;
+  }
+  if (typeof body?.transformToWebStream === 'function') {
+    Readable.fromWeb(body.transformToWebStream()).pipe(response);
+    return true;
+  }
+  if (body instanceof ReadableStream) {
+    Readable.fromWeb(body).pipe(response);
+    return true;
+  }
+  return false;
+}
+
+async function proxyDownload({ request, response, user, config, s3Client }) {
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   const key = String(requestUrl.searchParams.get('key') || '');
   if (!isOwnedPhotoKey(user.id, key)) {
@@ -245,42 +213,52 @@ async function proxyDownload({ request, response, user, config, fetchImpl }) {
     return;
   }
 
-  const downloadUrl = createPresignedObjectUrl({ config, method: 'GET', key, expiresSeconds: 3600 });
-  const upstream = await fetchImpl(downloadUrl, { method: 'GET' });
-  if (!upstream.ok || !upstream.body) {
-    sendBucketError(response, upstream.status === 404 ? 404 : 502, 'photo_unavailable', 'Фотография недоступна в облачном хранилище.');
+  let object;
+  try {
+    object = await s3Client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+  } catch (error) {
+    const status = Number(error?.$metadata?.httpStatusCode) === 404 || error?.name === 'NoSuchKey' ? 404 : 502;
+    if (status === 404) {
+      sendBucketError(response, 404, 'photo_unavailable', 'Фотография не найдена в облачном хранилище.');
+      return;
+    }
+    throw storageError(error, 'download');
+  }
+
+  if (!object?.Body) {
+    sendBucketError(response, 502, 'photo_unavailable', 'Фотография недоступна в облачном хранилище.');
     return;
   }
 
   const headers = {
-    'Content-Type': upstream.headers.get('content-type') || 'application/octet-stream',
+    'Content-Type': object.ContentType || 'application/octet-stream',
     'Cache-Control': 'private, max-age=3600',
     'X-Content-Type-Options': 'nosniff',
   };
-  const contentLength = upstream.headers.get('content-length');
-  const etag = upstream.headers.get('etag');
-  const lastModified = upstream.headers.get('last-modified');
-  if (contentLength) headers['Content-Length'] = contentLength;
-  if (etag) headers.ETag = etag;
-  if (lastModified) headers['Last-Modified'] = lastModified;
+  if (Number.isFinite(Number(object.ContentLength))) headers['Content-Length'] = String(object.ContentLength);
+  if (object.ETag) headers.ETag = object.ETag;
+  if (object.LastModified instanceof Date) headers['Last-Modified'] = object.LastModified.toUTCString();
   response.writeHead(200, headers);
-  Readable.fromWeb(upstream.body).pipe(response);
+  if (!pipeObjectBody(object.Body, response)) {
+    response.destroy(new Error('Unsupported S3 response body'));
+  }
 }
 
-export function createPhotoAssetRequestHandler({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
+export function createPhotoAssetRequestHandler({ env = process.env, s3ClientFactory = createBucketS3Client } = {}) {
   const config = resolveBucketConfig(env);
   const sessionSecret = String(env.SESSION_SECRET || '');
+  const s3Client = config.configured ? s3ClientFactory(config) : null;
 
   return async function handlePhotoAssetRequest(request, response) {
     const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
     if (!requestUrl.pathname.startsWith('/api/photo-assets/')) return false;
 
     if (request.method === 'GET' && requestUrl.pathname === '/api/photo-assets/status') {
-      sendJson(response, 200, { configured: config.configured });
+      sendJson(response, 200, { configured: config.configured, urlStyle: config.urlStyle });
       return true;
     }
 
-    if (!config.configured) {
+    if (!config.configured || !s3Client) {
       request.resume?.();
       sendBucketError(response, 503, 'bucket_not_configured', 'Облачное хранилище фотографий не подключено.');
       return true;
@@ -294,12 +272,12 @@ export function createPhotoAssetRequestHandler({ env = process.env, fetchImpl = 
     }
 
     if (request.method === 'PUT' && requestUrl.pathname === '/api/photo-assets/upload') {
-      await proxyUpload({ request, response, user, config, fetchImpl });
+      await proxyUpload({ request, response, user, config, s3Client });
       return true;
     }
 
     if (request.method === 'GET' && requestUrl.pathname === '/api/photo-assets/file') {
-      await proxyDownload({ request, response, user, config, fetchImpl });
+      await proxyDownload({ request, response, user, config, s3Client });
       return true;
     }
 
@@ -325,7 +303,7 @@ export function installPhotoAssetServerPreload(options = {}) {
         .catch((error) => {
           console.error('Photo asset route failed', error);
           if (!response.headersSent) {
-            sendBucketError(response, 500, 'photo_storage_error', 'Не удалось обработать фотографию.');
+            sendBucketError(response, 502, 'photo_storage_error', error?.safeMessage || 'Не удалось обработать фотографию.');
           } else {
             response.destroy(error);
           }
