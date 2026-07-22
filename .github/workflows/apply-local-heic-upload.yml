@@ -131,3 +131,5 @@ jobs:
           git add package.json src/main.jsx src/AppLive.jsx src/editor/appIntegration.test.mjs .github/workflows/apply-local-heic-upload.yml
           git commit -m "Restore local uploads with HEIC conversion"
           git push
+
+# Trigger after workflow registration.
