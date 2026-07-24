@@ -32,7 +32,7 @@ test('photo import report keeps exact skipped file reasons visible', async ({ pa
   await expect(report).toContainText('Выбрано: 2 · добавлено: 1');
   await expect(report).toContainText('Не удалось: 1');
   await expect(report).toContainText('broken.HEIC');
-  await expect(report).toContainText('HEIC-файл не читается');
+  await expect(report).toContainText('Не удалось прочитать HEIC даже запасным конвертером');
 
   await page.waitForTimeout(3000);
   await expect(report).toBeVisible();
