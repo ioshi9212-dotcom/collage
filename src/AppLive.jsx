@@ -23,6 +23,7 @@ import {
 } from './editor/booklet';
 import { saveCloudProject } from './editor/cloudProjects';
 import PhotoLibraryThumbnail from './editor/PhotoLibraryThumbnail';
+import PhotoImportReport from './editor/PhotoImportReport';
 import {
   createLocalPhotoProject,
   createPortablePhotoProject,
@@ -33,6 +34,7 @@ import {
 } from './editor/photoAssets';
 import { cleanupOrphanedPhotoAssets } from './editor/photoAssetCleanup';
 import { prepareLocalPhotoFiles } from './editor/localHeicUploadBridge';
+import { buildPhotoImportReport } from './editor/photoImportReport';
 import { loadCachedImage as loadImage } from './editor/imageCache';
 import { prepareEditorProject } from './editor/projectLoad';
 import {
@@ -1170,6 +1172,7 @@ export default function App() {
     processed: 0,
     total: 0,
   });
+  const [photoImportReport, setPhotoImportReport] = useState(null);
   const [moveFrameWithPhotoId, setMoveFrameWithPhotoId] = useState(null);
   const [viewMode, setViewMode] = useState('spread');
   const [bookletSheetsPerBlock, setBookletSheetsPerBlock] = useState(DEFAULT_SHEETS_PER_BLOCK);
@@ -1700,14 +1703,20 @@ export default function App() {
     if (photoUploadInFlightRef.current) return show('Дождись окончания текущей загрузки фото');
     if (!rawFiles.length) return;
 
+    setPhotoImportReport(null);
     const unique = filterDuplicatePhotoUploads(rawFiles, library);
+    const initialSelection = selectPhotoUploads(unique.accepted, library.length);
+
     if (!unique.accepted.length) {
+      const report = buildPhotoImportReport({ selectedFiles: rawFiles, duplicates: unique.duplicates });
+      setPhotoImportReport(report);
       if (unique.duplicates.length === 1) return show(`Фото «${unique.duplicates[0]?.name || 'выбранное фото'}» уже загружено`);
       return show(`Все выбранные фото уже загружены: ${unique.duplicates.length}`);
     }
 
-    const initialSelection = selectPhotoUploads(unique.accepted, library.length);
     if (!initialSelection.accepted.length) {
+      const report = buildPhotoImportReport({ selectedFiles: rawFiles, duplicates: unique.duplicates, initialSelection });
+      setPhotoImportReport(report);
       if (initialSelection.rejectedSize) return show('Фото слишком большие. Максимум 25 МБ на файл.');
       if (initialSelection.rejectedLimit) return show(`В библиотеке можно хранить не больше ${MAX_LIBRARY_PHOTOS} фото`);
       return show('Подходящих изображений не найдено');
@@ -1715,17 +1724,22 @@ export default function App() {
 
     photoUploadInFlightRef.current = true;
     setPhotoImporting(true);
-    const uploadTotal = initialSelection.accepted.length;
+    const uploadTotal = rawFiles.length;
     showPhotoImportProgress({
       percent: 2,
       label: 'Подготавливаю фото',
-      detail: `0 из ${uploadTotal}`,
+      detail: `Выбрано: ${uploadTotal}`,
       processed: 0,
       total: uploadTotal,
     });
 
+    let prepared = { files: [], failed: [], converted: 0 };
+    let selection = { accepted: [], rejectedTypeFiles: [], rejectedSizeFiles: [], rejectedLimitFiles: [] };
+    let loadedCount = 0;
+    const storageFailures = [];
+
     try {
-      const prepared = await prepareLocalPhotoFiles(initialSelection.accepted, {
+      prepared = await prepareLocalPhotoFiles(initialSelection.accepted, {
         onProgress: ({ index, total, name }) => {
           const safeTotal = Math.max(1, total);
           showPhotoImportProgress({
@@ -1738,19 +1752,29 @@ export default function App() {
           show(`Преобразую HEIC: ${index + 1} из ${total} · ${name}`);
         },
       });
-      const selection = selectPhotoUploads(prepared.files, library.length);
+      selection = selectPhotoUploads(prepared.files, library.length);
 
       if (!selection.accepted.length) {
+        const report = buildPhotoImportReport({
+          selectedFiles: rawFiles,
+          duplicates: unique.duplicates,
+          initialSelection,
+          prepared,
+          finalSelection: selection,
+        });
+        setPhotoImportReport(report);
+        let errorMessage = 'Подходящих изображений не найдено';
         if (prepared.failed.length) {
           const first = prepared.failed[0];
-          throw new Error(`Не удалось преобразовать HEIC «${first?.file?.name || 'Фото'}»: ${first?.error?.message || 'неизвестная ошибка'}`);
+          errorMessage = `Не удалось преобразовать HEIC «${first?.file?.name || 'Фото'}»: ${first?.error?.message || 'неизвестная ошибка'}`;
+        } else if (selection.rejectedSize) {
+          errorMessage = 'После преобразования фото получилось больше 25 МБ.';
         }
-        if (selection.rejectedSize) throw new Error('После преобразования фото получилось больше 25 МБ.');
-        throw new Error('Подходящих изображений не найдено');
+        show(errorMessage);
+        finishPhotoImportProgress({ status: 'error', label: 'Фото не добавлены', detail: errorMessage });
+        return;
       }
 
-      let loadedCount = 0;
-      let failedToStore = 0;
       const chunkSize = 2;
       const storeTotal = selection.accepted.length;
       showPhotoImportProgress({
@@ -1773,7 +1797,7 @@ export default function App() {
         show(`Сохраняю фото: ${finish} из ${storeTotal}`);
         const result = await persistPhotoFiles(chunk, { idFactory: makeId, maxConcurrent: 1 });
         loadedCount += result.loaded.length;
-        failedToStore += result.failed.length;
+        storageFailures.push(...result.failed);
         if (result.loaded.length) {
           setLibrary((current) => [...current, ...result.loaded].slice(0, MAX_LIBRARY_PHOTOS));
         }
@@ -1787,27 +1811,40 @@ export default function App() {
         await new Promise((resolve) => requestAnimationFrame(() => resolve()));
       }
 
-      const rejected = initialSelection.rejectedType
-        + initialSelection.rejectedSize
-        + initialSelection.rejectedLimit
-        + selection.rejectedType
-        + selection.rejectedSize
-        + selection.rejectedLimit
-        + prepared.failed.length
-        + failedToStore;
-      const duplicateSuffix = unique.duplicates.length ? ` · уже были: ${unique.duplicates.length}` : '';
+      const report = buildPhotoImportReport({
+        selectedFiles: rawFiles,
+        added: loadedCount,
+        duplicates: unique.duplicates,
+        initialSelection,
+        prepared,
+        finalSelection: selection,
+        storageFailures,
+      });
+      setPhotoImportReport(report);
+
       const convertedSuffix = prepared.converted ? ` · HEIC → JPEG: ${prepared.converted}` : '';
-      const rejectedSuffix = rejected ? ` · пропущено: ${rejected}` : '';
-      const resultMessage = `Фото загружены: ${loadedCount}${duplicateSuffix}${convertedSuffix}${rejectedSuffix}`;
+      const notAddedSuffix = report.notAdded ? ` · не добавлено: ${report.notAdded}` : '';
+      const resultMessage = `Добавлено ${loadedCount} из ${report.selected}${convertedSuffix}${notAddedSuffix}`;
       show(resultMessage);
       finishPhotoImportProgress({
         status: 'done',
-        label: 'Фото загружены',
-        detail: `Готово: ${loadedCount} из ${storeTotal}${unique.duplicates.length ? ` · повторы: ${unique.duplicates.length}` : ''}`,
+        label: report.notAdded ? 'Загрузка завершена не полностью' : 'Фото загружены',
+        detail: `Добавлено: ${loadedCount} из выбранных ${report.selected}${report.notAdded ? ` · не добавлено: ${report.notAdded}` : ''}`,
       });
     } catch (error) {
       console.warn('Photo import failed', error);
       const errorMessage = error?.message || 'Не удалось загрузить фотографии';
+      const report = buildPhotoImportReport({
+        selectedFiles: rawFiles,
+        added: loadedCount,
+        duplicates: unique.duplicates,
+        initialSelection,
+        prepared,
+        finalSelection: selection,
+        storageFailures,
+        unexpectedError: error,
+      });
+      setPhotoImportReport(report);
       show(errorMessage);
       finishPhotoImportProgress({ status: 'error', label: 'Ошибка загрузки', detail: errorMessage });
     } finally {
@@ -3095,7 +3132,8 @@ export default function App() {
                   <small>{photoImportProgress.detail}</small>
                 </div>
               )}
-              <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); show('Список фото очищен'); }} disabled={library.length === 0 || photoImporting}>Очистить список фото</button>
+              <PhotoImportReport report={photoImportReport} onClose={() => setPhotoImportReport(null)} />
+              <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); setPhotoImportReport(null); show('Список фото очищен'); }} disabled={library.length === 0 || photoImporting}>Очистить список фото</button>
               {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
               {library.length === 0 ? <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div> : <div className="photo-grid">{library.map((photo) => {
                 const isUsed = usedPhotoIds.has(photo.id);
