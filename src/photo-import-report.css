@@ -1,0 +1,128 @@
+.photo-import-report {
+  display: grid;
+  gap: 10px;
+  padding: 12px 13px;
+  border: 1px solid rgba(47, 125, 82, 0.22);
+  border-radius: 14px;
+  background: rgba(248, 251, 249, 0.98);
+  box-shadow: 0 6px 18px rgba(36, 66, 50, 0.07);
+}
+
+.photo-import-report.has-problems {
+  border-color: rgba(177, 94, 58, 0.28);
+  background: rgba(255, 249, 245, 0.98);
+}
+
+.photo-import-report-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.photo-import-report-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.photo-import-report-head strong {
+  font-size: 14px;
+  color: #26372f;
+}
+
+.photo-import-report-head span {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #65736c;
+}
+
+.photo-import-report-head button {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(47, 125, 82, 0.08);
+  color: #496057;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.photo-import-report-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.photo-import-report-stats span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(47, 125, 82, 0.09);
+  color: #3f594d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.photo-import-report details {
+  border-top: 1px solid rgba(90, 108, 99, 0.14);
+  padding-top: 9px;
+}
+
+.photo-import-report summary {
+  cursor: pointer;
+  color: #704b3c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.photo-import-report ul {
+  display: grid;
+  gap: 7px;
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 210px;
+  overflow: auto;
+}
+
+.photo-import-report li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: rgba(177, 94, 58, 0.07);
+}
+
+.photo-import-report li.duplicate {
+  background: rgba(91, 110, 101, 0.08);
+}
+
+.photo-import-report li strong,
+.photo-import-report li span {
+  overflow-wrap: anywhere;
+}
+
+.photo-import-report li strong {
+  font-size: 12px;
+  color: #3d433f;
+}
+
+.photo-import-report li span {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #795b4e;
+}
+
+@media (max-width: 760px) {
+  .photo-import-report {
+    padding: 11px;
+  }
+
+  .photo-import-report-head button {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+}

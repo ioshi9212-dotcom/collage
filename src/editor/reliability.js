@@ -38,19 +38,37 @@ export function filterDuplicatePhotoUploads(files, library = []) {
 
 export function selectPhotoUploads(files, currentLibraryCount = 0) {
   const source = Array.from(files ?? []);
-  const imageFiles = source.filter((file) => (
-    String(file?.type || '').startsWith('image/')
-    || HEIC_EXTENSION.test(String(file?.name || ''))
-  ));
-  const withinSize = imageFiles.filter((file) => Number(file?.size) <= MAX_PHOTO_FILE_BYTES);
+  const imageFiles = [];
+  const rejectedTypeFiles = [];
+
+  for (const file of source) {
+    if (String(file?.type || '').startsWith('image/') || HEIC_EXTENSION.test(String(file?.name || ''))) {
+      imageFiles.push(file);
+    } else {
+      rejectedTypeFiles.push(file);
+    }
+  }
+
+  const withinSize = [];
+  const rejectedSizeFiles = [];
+  for (const file of imageFiles) {
+    if (Number(file?.size) <= MAX_PHOTO_FILE_BYTES) withinSize.push(file);
+    else rejectedSizeFiles.push(file);
+  }
+
   const availableSlots = Math.max(0, MAX_LIBRARY_PHOTOS - Math.max(0, Number(currentLibraryCount) || 0));
-  const accepted = withinSize.slice(0, Math.min(MAX_PHOTO_UPLOAD_BATCH, availableSlots));
+  const acceptedCount = Math.min(MAX_PHOTO_UPLOAD_BATCH, availableSlots);
+  const accepted = withinSize.slice(0, acceptedCount);
+  const rejectedLimitFiles = withinSize.slice(acceptedCount);
 
   return {
     accepted,
-    rejectedType: source.length - imageFiles.length,
-    rejectedSize: imageFiles.length - withinSize.length,
-    rejectedLimit: withinSize.length - accepted.length,
+    rejectedType: rejectedTypeFiles.length,
+    rejectedSize: rejectedSizeFiles.length,
+    rejectedLimit: rejectedLimitFiles.length,
+    rejectedTypeFiles,
+    rejectedSizeFiles,
+    rejectedLimitFiles,
   };
 }
 
