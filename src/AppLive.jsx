@@ -71,6 +71,7 @@ import {
   updateFramePhoto,
   validateFrameTransformBox,
 } from './editor/frameModel';
+import { addFreeFrameToPage, removeFreeFrameFromPage } from './editor/freeFrameActions';
 import {
   ALBUM_LAYERS_KEY,
   ALBUM_MODE_KEY,
@@ -1034,7 +1035,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
           collagePreviewOnly={collagePreviewOnly}
         />
       ))}
-      {!collagePreviewOnly && !printMode && locked && (
+      {!collagePreviewOnly && !printMode && locked && page.layout && (
         <GridHandles
           layout={page.layout}
           onActivate={() => onActivatePage(page.id)}
@@ -1989,13 +1990,52 @@ export default function App() {
 
 
 
+  function addFreeFrame() {
+    if (!currentPage || currentPage.isBlankPage) return show('На пустую страницу нельзя добавить фото-окно');
+    const existingFrames = Array.isArray(currentPage.frames) ? currentPage.frames : [];
+    if (existingFrames.length >= 9) return show('На странице можно разместить не больше 9 фото-окон');
+
+    const nextFrameCount = existingFrames.length + 1;
+    const nextSettings = { ...settings, frameCount: nextFrameCount, frameMode: 'free' };
+    const result = addFreeFrameToPage(currentPage, canvas, nextSettings, makeId);
+    if (!result.frame) return show('Не удалось добавить фото-окно');
+
+    setSettings(nextSettings);
+    setAlbum((current) => ({
+      ...current,
+      pages: current.pages.map((page) => (page.id === currentPage.id ? result.page : page)),
+    }));
+    setSelectedFrameId(result.frame.id);
+    setMoveFrameWithPhotoId(null);
+    setInspectorTab('object');
+    show(locked
+      ? 'Окно добавлено без перестройки. Включён свободный режим.'
+      : 'Окно добавлено. Остальные окна остались на своих местах.');
+  }
+
   function deleteSelectedFrame() {
     if (!selectedFrame || !currentPage) return;
     const frameCount = resolvePageFrameCount(currentPage, settings);
     if (frameCount <= 0) return show('На странице уже нет фото-окон');
     const nextFrameCount = frameCount - 1;
-    const keptFrames = removeFrameById(currentPage.frames, selectedFrame.id);
     const nextSettings = { ...settings, frameCount: nextFrameCount };
+
+    if (!locked) {
+      const nextPage = removeFreeFrameFromPage(currentPage, selectedFrame.id, canvas, nextSettings);
+      setSettings(nextSettings);
+      setAlbum((current) => ({
+        ...current,
+        pages: current.pages.map((page) => (page.id === currentPage.id ? nextPage : page)),
+      }));
+      setSelectedFrameId(null);
+      setMoveFrameWithPhotoId(null);
+      show(nextFrameCount > 0
+        ? `Окно удалено без перестройки. Осталось: ${nextFrameCount}`
+        : `На странице ${currentPageIndex + 1} больше нет фото-окон`);
+      return;
+    }
+
+    const keptFrames = removeFrameById(currentPage.frames, selectedFrame.id);
     setSettings(nextSettings);
     setAlbum((current) => ({
       ...current,
@@ -3168,6 +3208,8 @@ export default function App() {
             <>
               <div className="panel-title compact"><div><h2>Коллаж</h2><p>Сетка и размеры фото-окон текущей страницы.</p></div></div>
               <label className="field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count === 0 ? 'нет' : count}</option>)}</select></label>
+              <button className="button full accent" onClick={addFreeFrame} disabled={Boolean(currentPage?.isBlankPage) || currentPageFrameCount >= 9}>+ Добавить окно</button>
+              <p className="hint">Добавление и удаление в свободном режиме не меняют положение и размеры остальных окон.</p>
               <label className="field"><span>Зазор</span><SoftNumberInput min={0} max={200} value={settings.gap} onValue={(value) => updateSetting('gap', value)} /></label>
               <label className="field"><span>Поля макета</span><SoftNumberInput min={0} max={300} value={settings.padding} onValue={(value) => updateSetting('padding', value)} /></label>
               <button className={`button full ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка окон включена' : 'Свободные окна'}</button>

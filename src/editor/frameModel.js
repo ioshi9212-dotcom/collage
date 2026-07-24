@@ -4,6 +4,10 @@ function frameList(frames) {
   return Array.isArray(frames) ? frames : [];
 }
 
+function makeFrameId() {
+  return globalThis.crypto?.randomUUID?.() ?? `frame_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 export function coverPhotoRect(image, frame, photo) {
   if (!image || !photo) return null;
   const zoom = photo.zoom ?? 1;
@@ -81,6 +85,40 @@ export function updateFrameGeometry(frames, frameId, patch, canvas) {
 
 export function removeFrameById(frames, frameId) {
   return frameList(frames).filter((frame) => frame.id !== frameId);
+}
+
+export function createFreeFrame(frames, canvas, idFactory = makeFrameId) {
+  const items = frameList(frames);
+  const canvasWidth = Math.max(MIN_FRAME, Math.round(Number(canvas?.width) || MIN_FRAME));
+  const canvasHeight = Math.max(MIN_FRAME, Math.round(Number(canvas?.height) || MIN_FRAME));
+  const width = clamp(Math.round(canvasWidth * 0.38), MIN_FRAME, canvasWidth);
+  const height = clamp(Math.round(canvasHeight * 0.28), MIN_FRAME, canvasHeight);
+  const maxX = Math.max(0, canvasWidth - width);
+  const maxY = Math.max(0, canvasHeight - height);
+  const step = Math.max(28, Math.round(Math.min(width, height) * 0.08));
+  const offsets = [
+    [0, 0],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1],
+    [0, -1],
+    [-1, 0],
+    [1, 0],
+    [0, 1],
+  ];
+  const [offsetX, offsetY] = offsets[items.length % offsets.length];
+  const maxZ = Math.max(0, ...items.map((frame) => Number(frame.zIndex) || 0));
+
+  return cleanFrame({
+    id: idFactory(),
+    x: clamp(Math.round(maxX / 2 + offsetX * step), 0, maxX),
+    y: clamp(Math.round(maxY / 2 + offsetY * step), 0, maxY),
+    width,
+    height,
+    photo: null,
+    zIndex: maxZ + 1,
+  }, { width: canvasWidth, height: canvasHeight });
 }
 
 export function bringFrameToFront(frames, frameId) {
