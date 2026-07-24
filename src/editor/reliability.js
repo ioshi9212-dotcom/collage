@@ -5,9 +5,43 @@ export const MAX_PHOTO_UPLOAD_BATCH = 100;
 export const MAX_LIBRARY_PHOTOS = 1000;
 export const MAX_PROJECT_JSON_BYTES = 60 * 1024 * 1024;
 
+const HEIC_EXTENSION = /\.(?:heic|heif)$/i;
+
+function cleanPhotoName(value) {
+  return String(value || '').trim().toLocaleLowerCase();
+}
+
+export function photoUploadIdentity(photo) {
+  const name = cleanPhotoName(photo?.sourceName || photo?.name);
+  const size = Number(photo?.sourceSize ?? photo?.size);
+  if (!name || !Number.isFinite(size) || size < 0) return '';
+  return `${name}\u0000${Math.trunc(size)}`;
+}
+
+export function filterDuplicatePhotoUploads(files, library = []) {
+  const seen = new Set(Array.from(library || []).map(photoUploadIdentity).filter(Boolean));
+  const accepted = [];
+  const duplicates = [];
+
+  for (const file of Array.from(files || [])) {
+    const identity = photoUploadIdentity(file);
+    if (identity && seen.has(identity)) {
+      duplicates.push(file);
+      continue;
+    }
+    if (identity) seen.add(identity);
+    accepted.push(file);
+  }
+
+  return { accepted, duplicates };
+}
+
 export function selectPhotoUploads(files, currentLibraryCount = 0) {
   const source = Array.from(files ?? []);
-  const imageFiles = source.filter((file) => String(file?.type || '').startsWith('image/'));
+  const imageFiles = source.filter((file) => (
+    String(file?.type || '').startsWith('image/')
+    || HEIC_EXTENSION.test(String(file?.name || ''))
+  ));
   const withinSize = imageFiles.filter((file) => Number(file?.size) <= MAX_PHOTO_FILE_BYTES);
   const availableSlots = Math.max(0, MAX_LIBRARY_PHOTOS - Math.max(0, Number(currentLibraryCount) || 0));
   const accepted = withinSize.slice(0, Math.min(MAX_PHOTO_UPLOAD_BATCH, availableSlots));
