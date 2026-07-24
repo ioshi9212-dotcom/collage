@@ -20,12 +20,26 @@ export function jpegNameForUpload(name) {
   return HEIC_EXTENSION.test(source) ? source.replace(HEIC_EXTENSION, '.jpg') : `${source}.jpg`;
 }
 
-export function normalizeHeicFileType(file) {
-  if (!isHeicFileLike(file) || cleanType(file?.type)) return file;
-  return new File([file], file?.name || 'Фото.HEIC', {
-    type: 'image/heic',
-    lastModified: Number(file?.lastModified) || Date.now(),
-  });
+function withSourceIdentity(file, source) {
+  const sourceName = String(source?.name || file?.name || 'Фото').slice(0, 500);
+  const sourceSize = Math.max(0, Number(source?.size ?? file?.size) || 0);
+  try {
+    Object.defineProperties(file, {
+      sourceName: { value: sourceName, configurable: true },
+      sourceSize: { value: sourceSize, configurable: true },
+    });
+    return file;
+  } catch {
+    const copy = new File([file], file?.name || sourceName, {
+      type: file?.type || 'application/octet-stream',
+      lastModified: Number(file?.lastModified) || Date.now(),
+    });
+    Object.defineProperties(copy, {
+      sourceName: { value: sourceName, configurable: true },
+      sourceSize: { value: sourceSize, configurable: true },
+    });
+    return copy;
+  }
 }
 
 async function parseErrorResponse(response) {
@@ -65,13 +79,14 @@ export async function prepareLocalPhotoFiles(files, options = {}) {
   for (let index = 0; index < source.length; index += 1) {
     const file = source[index];
     if (!isHeicFileLike(file)) {
-      prepared.push(file);
+      prepared.push(withSourceIdentity(file, file));
       continue;
     }
 
     options.onProgress?.({ index, total: source.length, name: file?.name || 'Фото' });
     try {
-      prepared.push(await convertHeicThroughServer(file, options));
+      const jpeg = await convertHeicThroughServer(file, options);
+      prepared.push(withSourceIdentity(jpeg, file));
       converted += 1;
     } catch (error) {
       failed.push({ file, error });
