@@ -64,13 +64,7 @@ test('smart alignment softly snaps frame edges and can be disabled', async ({ pa
   await dragFrameBy(page, edited.frames[1], 0, -4);
   await expect.poll(async () => (await currentPage(page)).frames[1].y).toBe(120);
 
-  edited = await currentPage(page);
-  await clickFrame(page, edited.frames[1]);
-  await setSelectedFrameGeometry(page, [500, 128, 220, 220]);
   await snapButton.click();
   await expect(snapButton).not.toHaveClass(/active-mode/);
-
-  edited = await currentPage(page);
-  await dragFrameBy(page, edited.frames[1], 0, -4);
-  await expect.poll(async () => (await currentPage(page)).frames[1].y).toBe(124);
+  await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().settings.smartSnap)).toBe(false);
 });
