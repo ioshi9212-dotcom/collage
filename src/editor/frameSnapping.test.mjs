@@ -41,12 +41,12 @@ const frames = [moving, sibling];
     canvas,
     pageOffsetX: 90,
     oldBox: { x: 190, y: 100, width: 200, height: 200 },
-    newBox: { x: 190, y: 100, width: 392, height: 397 },
+    newBox: { x: 190, y: 100, width: 392, height: 297 },
   });
   assert.equal(result.box.width, 400, 'resized right edge should snap to sibling left edge');
-  assert.equal(result.box.height, 400, 'resized bottom edge should snap to page vertical center');
-  assert.deepEqual(result.guides.vertical, [590]);
-  assert.deepEqual(result.guides.horizontal, [500]);
+  assert.equal(result.box.height, 300, 'resized bottom edge should snap to sibling bottom edge');
+  assert.deepEqual(result.guides.vertical, [500], 'guide coordinates must stay local to the page');
+  assert.deepEqual(result.guides.horizontal, [400]);
 }
 
 {
