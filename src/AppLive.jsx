@@ -32,12 +32,14 @@ import {
   releaseUnusedPhotoRuntimeUrls,
 } from './editor/photoAssets';
 import { cleanupOrphanedPhotoAssets } from './editor/photoAssetCleanup';
+import { prepareLocalPhotoFiles } from './editor/localHeicUploadBridge';
 import { loadCachedImage as loadImage } from './editor/imageCache';
 import { prepareEditorProject } from './editor/projectLoad';
 import {
   MAX_LIBRARY_PHOTOS,
   createPreparedProjectSnapshot,
   describeSaveResult,
+  filterDuplicatePhotoUploads,
   projectJsonFileError,
   selectPhotoUploads,
 } from './editor/reliability';
@@ -1652,37 +1654,73 @@ export default function App() {
 
   async function uploadPhotos(event) {
     const input = event.currentTarget;
-    const files = Array.from(input.files ?? []);
+    const rawFiles = Array.from(input.files ?? []);
     input.value = '';
     if (photoUploadInFlightRef.current) return show('Дождись окончания текущей загрузки фото');
+    if (!rawFiles.length) return;
 
-    const selection = selectPhotoUploads(files, library.length);
-    if (!selection.accepted.length) {
-      if (selection.rejectedSize) return show('Фото слишком большие. Максимум 25 МБ на файл.');
-      if (selection.rejectedLimit) return show(`В библиотеке можно хранить не больше ${MAX_LIBRARY_PHOTOS} фото`);
+    const unique = filterDuplicatePhotoUploads(rawFiles, library);
+    if (!unique.accepted.length) {
+      if (unique.duplicates.length === 1) return show(`Фото «${unique.duplicates[0]?.name || 'выбранное фото'}» уже загружено`);
+      return show(`Все выбранные фото уже загружены: ${unique.duplicates.length}`);
+    }
+
+    const initialSelection = selectPhotoUploads(unique.accepted, library.length);
+    if (!initialSelection.accepted.length) {
+      if (initialSelection.rejectedSize) return show('Фото слишком большие. Максимум 25 МБ на файл.');
+      if (initialSelection.rejectedLimit) return show(`В библиотеке можно хранить не больше ${MAX_LIBRARY_PHOTOS} фото`);
       return show('Подходящих изображений не найдено');
     }
 
     photoUploadInFlightRef.current = true;
     setPhotoImporting(true);
-    const skippedBeforeStore = selection.rejectedType + selection.rejectedSize + selection.rejectedLimit;
-    show(`Сохраняю оригиналы: ${selection.accepted.length}`);
 
     try {
-      const result = await persistPhotoFiles(selection.accepted, { idFactory: makeId });
-      const availableSlots = Math.max(0, MAX_LIBRARY_PHOTOS - library.length);
-      const additions = result.loaded.slice(0, availableSlots);
-      if (additions.length) {
-        setLibrary((current) => [...current, ...additions].slice(0, MAX_LIBRARY_PHOTOS));
+      const prepared = await prepareLocalPhotoFiles(initialSelection.accepted, {
+        onProgress: ({ index, total, name }) => show(`Преобразую HEIC: ${index + 1} из ${total} · ${name}`),
+      });
+      const selection = selectPhotoUploads(prepared.files, library.length);
+
+      if (!selection.accepted.length) {
+        if (prepared.failed.length) {
+          const first = prepared.failed[0];
+          throw new Error(`Не удалось преобразовать HEIC «${first?.file?.name || 'Фото'}»: ${first?.error?.message || 'неизвестная ошибка'}`);
+        }
+        if (selection.rejectedSize) throw new Error('После преобразования фото получилось больше 25 МБ.');
+        throw new Error('Подходящих изображений не найдено');
       }
 
-      const overflow = Math.max(0, result.loaded.length - additions.length);
-      const skipped = skippedBeforeStore + result.failed.length + overflow;
-      const suffix = skipped ? ` · пропущено: ${skipped}` : '';
-      show(`Фото загружены: ${additions.length}${suffix}`);
+      let loadedCount = 0;
+      let failedToStore = 0;
+      const chunkSize = 2;
+      for (let offset = 0; offset < selection.accepted.length; offset += chunkSize) {
+        const chunk = selection.accepted.slice(offset, offset + chunkSize);
+        const finish = Math.min(selection.accepted.length, offset + chunk.length);
+        show(`Сохраняю фото: ${finish} из ${selection.accepted.length}`);
+        const result = await persistPhotoFiles(chunk, { idFactory: makeId, maxConcurrent: 1 });
+        loadedCount += result.loaded.length;
+        failedToStore += result.failed.length;
+        if (result.loaded.length) {
+          setLibrary((current) => [...current, ...result.loaded].slice(0, MAX_LIBRARY_PHOTOS));
+        }
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      }
+
+      const rejected = initialSelection.rejectedType
+        + initialSelection.rejectedSize
+        + initialSelection.rejectedLimit
+        + selection.rejectedType
+        + selection.rejectedSize
+        + selection.rejectedLimit
+        + prepared.failed.length
+        + failedToStore;
+      const duplicateSuffix = unique.duplicates.length ? ` · уже были: ${unique.duplicates.length}` : '';
+      const convertedSuffix = prepared.converted ? ` · HEIC → JPEG: ${prepared.converted}` : '';
+      const rejectedSuffix = rejected ? ` · пропущено: ${rejected}` : '';
+      show(`Фото загружены: ${loadedCount}${duplicateSuffix}${convertedSuffix}${rejectedSuffix}`);
     } catch (error) {
       console.warn('Photo import failed', error);
-      show('Не удалось загрузить фотографии');
+      show(error?.message || 'Не удалось загрузить фотографии');
     } finally {
       photoUploadInFlightRef.current = false;
       setPhotoImporting(false);
@@ -2946,7 +2984,7 @@ export default function App() {
         <aside className="sidebar editor-left-panel-v2">
           {leftPanel === 'photos' && (
             <>
-              <div className="panel-title"><div><h2>Фото</h2><p>Перетащи фото на рамку или выбери фото, затем нажми рамку.</p></div><span>{library.length}</span></div>
+              <div className="panel-title"><div><h2>Фото</h2><p>Загружено: {library.length} · используется: {usedPhotoIds.size}</p></div><span>{library.length}</span></div>
               <label className={`upload-box ${photoImporting ? 'disabled-upload-box' : ''}`}><strong>{photoImporting ? 'Загружаю фото…' : 'Загрузить фото'}</strong><small>{photoImporting ? 'Оригиналы сохраняются по очереди' : 'Можно сразу несколько'}</small><input type="file" accept="image/*" multiple disabled={photoImporting} onChange={uploadPhotos} /></label>
               <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); show('Список фото очищен'); }} disabled={library.length === 0 || photoImporting}>Очистить список фото</button>
               {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
