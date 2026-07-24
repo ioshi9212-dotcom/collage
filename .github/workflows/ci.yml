@@ -21,24 +21,7 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
-      - name: Capture test output
-        id: captured-tests
-        shell: bash
-        run: |
-          set +e
-          npm test > test-output.txt 2>&1
-          code=$?
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Upload test output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: photo-upload-test-output
-          path: test-output.txt
-          retention-days: 1
-      - name: Fail when tests failed
-        if: steps.captured-tests.outputs.exit_code != '0'
-        run: exit 1
+      - name: Test
+        run: npm test
       - name: Build
         run: npm run build
