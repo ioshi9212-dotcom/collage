@@ -72,6 +72,7 @@ import {
   validateFrameTransformBox,
 } from './editor/frameModel';
 import { addFreeFrameToPage, removeFreeFrameFromPage } from './editor/freeFrameActions';
+import { hasFrameSnapGuides, snapFramePosition, snapFrameTransformBox } from './editor/frameSnapping';
 import {
   ALBUM_LAYERS_KEY,
   ALBUM_MODE_KEY,
@@ -164,6 +165,7 @@ const DEFAULT_SETTINGS = {
   borderWidth: 0,
   borderColor: '#ffffff',
   showGuides: true,
+  smartSnap: true,
   frameMode: 'free',
   printDpi: DEFAULT_PRINT_DPI,
   bleedMm: DEFAULT_BLEED_MM,
@@ -758,7 +760,41 @@ function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhoto
   );
 }
 
-function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, collagePreviewOnly = false, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish }) {
+function SmartAlignmentGuides({ guides, canvas }) {
+  if (!hasFrameSnapGuides(guides)) return null;
+  return (
+    <Group listening={false}>
+      {(guides.vertical || []).map((x) => (
+        <Line
+          key={`smart-v-${x}`}
+          name="smart-alignment-guide"
+          points={[x, 0, x, canvas.height]}
+          stroke="#d04f72"
+          strokeWidth={3}
+          strokeScaleEnabled={false}
+          dash={[18, 10]}
+          opacity={0.92}
+          listening={false}
+        />
+      ))}
+      {(guides.horizontal || []).map((y) => (
+        <Line
+          key={`smart-h-${y}`}
+          name="smart-alignment-guide"
+          points={[0, y, canvas.width, y]}
+          stroke="#d04f72"
+          strokeWidth={3}
+          strokeScaleEnabled={false}
+          dash={[18, 10]}
+          opacity={0.92}
+          listening={false}
+        />
+      ))}
+    </Group>
+  );
+}
+
+function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, snapFrames = [], smartSnap = true, collagePreviewOnly = false, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onSnapGuidesChange = () => {} }) {
   const [image, setImage] = useState(null);
   const groupRef = useRef(null);
   const frameRectRef = useRef(null);
@@ -790,10 +826,29 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   // but empty photo windows must stay visible as template placeholders.
   if (printMode && !frame.photo) return null;
 
+  function clearSnapGuides() {
+    onSnapGuidesChange(null);
+  }
+
   function clampFrameNode(node) {
-    const next = clampFramePosition(frame, canvas, node.x(), node.y());
-    node.x(next.x);
-    node.y(next.y);
+    const bounded = clampFramePosition(frame, canvas, node.x(), node.y());
+    if (!smartSnap) {
+      node.x(bounded.x);
+      node.y(bounded.y);
+      clearSnapGuides();
+      return bounded;
+    }
+    const snapped = snapFramePosition({
+      frame,
+      frames: snapFrames,
+      canvas,
+      x: bounded.x,
+      y: bounded.y,
+    });
+    node.x(snapped.x);
+    node.y(snapped.y);
+    onSnapGuidesChange(hasFrameSnapGuides(snapped.guides) ? snapped.guides : null);
+    return snapped;
   }
 
   function commitFrameDrag(event) {
@@ -801,6 +856,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
     const node = event.target;
     clampFrameNode(node);
     onFrameChange(frame.id, { x: node.x(), y: node.y() });
+    clearSnapGuides();
     onFrameDragFinish?.();
   }
 
@@ -818,6 +874,27 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
     node.scaleX(1);
     node.scaleY(1);
     onFrameChange(frame.id, patch);
+    clearSnapGuides();
+  }
+
+  function snapTransformBox(oldBox, newBox) {
+    const bounded = validateFrameTransformBox(oldBox, newBox, { pageOffsetX, canvas, minFrame: MIN_FRAME });
+    if (bounded === oldBox || !smartSnap) {
+      if (!smartSnap) clearSnapGuides();
+      return bounded;
+    }
+    const snapped = snapFrameTransformBox({
+      frame,
+      frames: snapFrames,
+      canvas,
+      oldBox,
+      newBox: bounded,
+      pageOffsetX,
+      minFrame: MIN_FRAME,
+    });
+    const validated = validateFrameTransformBox(oldBox, snapped.box, { pageOffsetX, canvas, minFrame: MIN_FRAME });
+    onSnapGuidesChange(validated === oldBox || !hasFrameSnapGuides(snapped.guides) ? null : snapped.guides);
+    return validated;
   }
 
   return (
@@ -872,7 +949,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
           borderStrokeWidth={3}
           anchorStroke="#c27b4f"
           anchorFill="#fff7ef"
-          boundBoxFunc={(oldBox, newBox) => validateFrameTransformBox(oldBox, newBox, { pageOffsetX, canvas, minFrame: MIN_FRAME })}
+          boundBoxFunc={snapTransformBox}
         />
       )}
     </>
@@ -996,7 +1073,7 @@ function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, 
   );
 }
 
-function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onColumnResize, onRowResize, onActivatePage }) {
+function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, snapGuides = null, smartSnap = true, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onSnapGuidesChange, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const layoutInset = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
   const printGuide = getPrintGuideGeometry(canvas, settings);
@@ -1028,6 +1105,9 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
           canvas={canvas}
           pageOffsetX={x}
           moveFrameWithPhoto={!collagePreviewOnly && !printMode && frame.id === moveFrameWithPhotoId}
+          snapFrames={page.frames}
+          smartSnap={smartSnap}
+          onSnapGuidesChange={(guides) => !collagePreviewOnly && !printMode && onSnapGuidesChange?.(page.id, guides)}
           onSelect={() => !collagePreviewOnly && !printMode && onFrameSelect(page.id, frame.id)}
           onPhotoMove={(frameId, patch) => !collagePreviewOnly && !printMode && onPhotoMove(page.id, frameId, patch)}
           onFrameChange={(frameId, patch) => !collagePreviewOnly && !printMode && onFrameChange(page.id, frameId, patch)}
@@ -1035,6 +1115,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
           collagePreviewOnly={collagePreviewOnly}
         />
       ))}
+      {!collagePreviewOnly && !printMode && !locked && smartSnap && <SmartAlignmentGuides guides={snapGuides} canvas={canvas} />}
       {!collagePreviewOnly && !printMode && locked && page.layout && (
         <GridHandles
           layout={page.layout}
@@ -1175,6 +1256,7 @@ export default function App() {
   });
   const [photoImportReport, setPhotoImportReport] = useState(null);
   const [moveFrameWithPhotoId, setMoveFrameWithPhotoId] = useState(null);
+  const [frameSnapGuides, setFrameSnapGuides] = useState(null);
   const [viewMode, setViewMode] = useState('spread');
   const [bookletSheetsPerBlock, setBookletSheetsPerBlock] = useState(DEFAULT_SHEETS_PER_BLOCK);
   const [bookletPrintSettings, setBookletPrintSettings] = useState(DEFAULT_BOOKLET_PRINT_SETTINGS);
@@ -1564,6 +1646,10 @@ export default function App() {
     updatePageFrames(pageId, (frames) => updateFrameGeometry(frames, frameId, patch, canvas));
   }
 
+  function updateFrameSnapGuides(pageId, guides) {
+    setFrameSnapGuides(hasFrameSnapGuides(guides) ? { pageId, ...guides } : null);
+  }
+
   function rebuildPage(pageId, nextCanvas = canvas, nextSettings = settings, explicitFrameCount) {
     setAlbum((current) => ({
       ...current,
@@ -1617,10 +1703,12 @@ export default function App() {
     const next = { ...settings, [key]: value };
     setSettings(next);
 
-    if (key === 'showGuides' || key === 'borderColor' || key === 'borderWidth' || PRINT_ONLY_SETTING_KEYS.has(key)) return;
+    if (key === 'smartSnap' && !value) setFrameSnapGuides(null);
+    if (key === 'showGuides' || key === 'smartSnap' || key === 'borderColor' || key === 'borderWidth' || PRINT_ONLY_SETTING_KEYS.has(key)) return;
 
     if (key === 'frameMode') {
       setMoveFrameWithPhotoId(null);
+      setFrameSnapGuides(null);
       show(value === 'locked' ? 'Сетка включена. Раскладка сохранена.' : 'Свободный режим включён. Раскладка сохранена.');
       return;
     }
@@ -2747,10 +2835,13 @@ export default function App() {
         collagePreviewOnly={collagePreviewOnly || isBooklet}
         selectedFrameId={selectedFrameId}
         moveFrameWithPhotoId={moveFrameWithPhotoId}
+        snapGuides={frameSnapGuides?.pageId === entry.page?.id ? frameSnapGuides : null}
+        smartSnap={settings.smartSnap !== false}
         onFrameSelect={selectFrame}
         onPhotoMove={updatePhoto}
         onFrameChange={changeFrame}
         onFrameDragFinish={() => setMoveFrameWithPhotoId(null)}
+        onSnapGuidesChange={updateFrameSnapGuides}
         onColumnResize={resizeGridColumn}
         onRowResize={resizeGridRow}
         onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
@@ -2793,11 +2884,14 @@ export default function App() {
     activePageId: null,
     selectedFrameId: null,
     moveFrameWithPhotoId: null,
+    snapGuides: null,
+    smartSnap: false,
     printMode: true,
     onFrameSelect: () => {},
     onPhotoMove: () => {},
     onFrameChange: () => {},
     onFrameDragFinish: () => {},
+    onSnapGuidesChange: () => {},
     onColumnResize: () => {},
     onRowResize: () => {},
     onActivatePage: () => {},
@@ -3213,6 +3307,8 @@ export default function App() {
               <label className="field"><span>Зазор</span><SoftNumberInput min={0} max={200} value={settings.gap} onValue={(value) => updateSetting('gap', value)} /></label>
               <label className="field"><span>Поля макета</span><SoftNumberInput min={0} max={300} value={settings.padding} onValue={(value) => updateSetting('padding', value)} /></label>
               <button className={`button full ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка окон включена' : 'Свободные окна'}</button>
+              <button className={`button full ${settings.smartSnap !== false ? 'active-mode' : ''}`} onClick={() => updateSetting('smartSnap', settings.smartSnap === false)} disabled={locked}>Умная привязка</button>
+              <p className="hint">При движении и изменении размера края и центры окон мягко прилипают друг к другу. Розовая линия показывает выравнивание.</p>
               <button className="button full" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button>
               <button className="button full" onClick={() => { updatePageFrames(album.currentPageId, (frames) => clearAllFramePhotos(frames)); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button>
               <div className="inspector-block">
@@ -3309,7 +3405,7 @@ export default function App() {
           <div className="canvas-toolbar">
             <div>
               <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${stageRealWidth}×${stageRealHeight}px` : isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)} · ${canvas.width}×${canvas.height}px · печать ${spreadPrintGeometry.outputWidthPx}×${spreadPrintGeometry.outputHeightPx}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px · печать ${pagePrintGeometry.outputWidthPx}×${pagePrintGeometry.outputHeightPx}px`}</strong>
-              <span>{isBooklet ? 'Просмотр физической стороны А4: слева и справа показаны страницы, которые будут напечатаны рядом.' : locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать внутри страницы и менять размер за маркеры. Фото внутри можно двигать.'}</span>
+              <span>{isBooklet ? 'Просмотр физической стороны А4: слева и справа показаны страницы, которые будут напечатаны рядом.' : locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать и менять размер. Умная привязка выравнивает края и центры, розовая линия показывает совпадение.'}</span>
               <em>{isBooklet ? 'Это режим просмотра и PNG-экспорта брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.'}</em>
             </div>
             {!isBooklet && <button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button>}
@@ -3318,7 +3414,7 @@ export default function App() {
 
           <div className={`stage-frame ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''}`} onDragOver={(event) => { if (!isBooklet) event.preventDefault(); }} onDrop={isBooklet ? undefined : dropPhoto}>
             <div className="stage-scale-shell" style={{ width: stageRealWidth, height: stageRealHeight, transform: `scale(${previewScale})` }}>
-              <Stage ref={stageRef} width={stageRealWidth} height={stageRealHeight} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); setSelectedTextId(null); setSelectedDrawingId(null); } }}>
+              <Stage ref={stageRef} width={stageRealWidth} height={stageRealHeight} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); setFrameSnapGuides(null); setSelectedTextId(null); setSelectedDrawingId(null); } }}>
                 <Layer>
                   {isBooklet && <BookletSheetBackground canvas={canvas} printSettings={normalizedBookletPrintSettings} />}
                   {renderEntries}
