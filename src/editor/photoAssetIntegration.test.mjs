@@ -9,7 +9,8 @@ const projectStorageSource = readFileSync(resolve(process.cwd(), 'public/project
 const packageSource = readFileSync(resolve(process.cwd(), 'package.json'), 'utf8');
 
 assert.match(appSource, /from '\.\/editor\/photoAssets'/);
-assert.match(appSource, /await persistPhotoFiles\(selection\.accepted/);
+assert.match(appSource, /await persistPhotoFiles\(chunk, \{ idFactory: makeId, maxConcurrent: 1 \}\)/, 'photo assets must be persisted through small sequential chunks');
+assert.match(appSource, /filterDuplicatePhotoUploads\(rawFiles, library\)/, 'duplicate filtering must happen before storage and HEIC conversion');
 assert.doesNotMatch(appSource, /readPhotoFilesAsDataUrls/);
 assert.match(appSource, /function liveProject\(\)/);
 assert.match(appSource, /return createLocalPhotoProject\(liveProject\(\)\)/);
