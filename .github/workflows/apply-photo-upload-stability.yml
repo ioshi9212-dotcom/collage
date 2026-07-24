@@ -1,0 +1,242 @@
+name: Apply photo upload stability
+
+on:
+  push:
+    branches:
+      - agent/stabilize-photo-upload
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Patch unified photo upload flow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          app_path = Path('src/AppLive.jsx')
+          app = app_path.read_text()
+
+          cleanup_import = "import { cleanupOrphanedPhotoAssets } from './editor/photoAssetCleanup';\n"
+          heic_import = cleanup_import + "import { prepareLocalPhotoFiles } from './editor/localHeicUploadBridge';\n"
+          if "from './editor/localHeicUploadBridge'" not in app:
+              if cleanup_import not in app:
+                  raise SystemExit('cleanup import marker missing')
+              app = app.replace(cleanup_import, heic_import, 1)
+
+          reliability_marker = "  createPreparedProjectSnapshot,\n  describeSaveResult,\n"
+          reliability_replacement = "  createPreparedProjectSnapshot,\n  describeSaveResult,\n  filterDuplicatePhotoUploads,\n"
+          if 'filterDuplicatePhotoUploads' not in app:
+              if reliability_marker not in app:
+                  raise SystemExit('reliability import marker missing')
+              app = app.replace(reliability_marker, reliability_replacement, 1)
+
+          upload_replacement = r'''  async function uploadPhotos(event) {
+            const input = event.currentTarget;
+            const rawFiles = Array.from(input.files ?? []);
+            input.value = '';
+            if (photoUploadInFlightRef.current) return show('Дождись окончания текущей загрузки фото');
+            if (!rawFiles.length) return;
+
+            const unique = filterDuplicatePhotoUploads(rawFiles, library);
+            if (!unique.accepted.length) {
+              if (unique.duplicates.length === 1) return show(`Фото «${unique.duplicates[0]?.name || 'выбранное фото'}» уже загружено`);
+              return show(`Все выбранные фото уже загружены: ${unique.duplicates.length}`);
+            }
+
+            const initialSelection = selectPhotoUploads(unique.accepted, library.length);
+            if (!initialSelection.accepted.length) {
+              if (initialSelection.rejectedSize) return show('Фото слишком большие. Максимум 25 МБ на файл.');
+              if (initialSelection.rejectedLimit) return show(`В библиотеке можно хранить не больше ${MAX_LIBRARY_PHOTOS} фото`);
+              return show('Подходящих изображений не найдено');
+            }
+
+            photoUploadInFlightRef.current = true;
+            setPhotoImporting(true);
+
+            try {
+              const prepared = await prepareLocalPhotoFiles(initialSelection.accepted, {
+                onProgress: ({ index, total, name }) => show(`Преобразую HEIC: ${index + 1} из ${total} · ${name}`),
+              });
+              const selection = selectPhotoUploads(prepared.files, library.length);
+
+              if (!selection.accepted.length) {
+                if (prepared.failed.length) {
+                  const first = prepared.failed[0];
+                  throw new Error(`Не удалось преобразовать HEIC «${first?.file?.name || 'Фото'}»: ${first?.error?.message || 'неизвестная ошибка'}`);
+                }
+                if (selection.rejectedSize) throw new Error('После преобразования фото получилось больше 25 МБ.');
+                throw new Error('Подходящих изображений не найдено');
+              }
+
+              let loadedCount = 0;
+              let failedToStore = 0;
+              const chunkSize = 2;
+              for (let offset = 0; offset < selection.accepted.length; offset += chunkSize) {
+                const chunk = selection.accepted.slice(offset, offset + chunkSize);
+                const finish = Math.min(selection.accepted.length, offset + chunk.length);
+                show(`Сохраняю фото: ${finish} из ${selection.accepted.length}`);
+                const result = await persistPhotoFiles(chunk, { idFactory: makeId, maxConcurrent: 1 });
+                loadedCount += result.loaded.length;
+                failedToStore += result.failed.length;
+                if (result.loaded.length) {
+                  setLibrary((current) => [...current, ...result.loaded].slice(0, MAX_LIBRARY_PHOTOS));
+                }
+                await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+              }
+
+              const rejected = initialSelection.rejectedType
+                + initialSelection.rejectedSize
+                + initialSelection.rejectedLimit
+                + selection.rejectedType
+                + selection.rejectedSize
+                + selection.rejectedLimit
+                + prepared.failed.length
+                + failedToStore;
+              const duplicateSuffix = unique.duplicates.length ? ` · уже были: ${unique.duplicates.length}` : '';
+              const convertedSuffix = prepared.converted ? ` · HEIC → JPEG: ${prepared.converted}` : '';
+              const rejectedSuffix = rejected ? ` · пропущено: ${rejected}` : '';
+              show(`Фото загружены: ${loadedCount}${duplicateSuffix}${convertedSuffix}${rejectedSuffix}`);
+            } catch (error) {
+              console.warn('Photo import failed', error);
+              show(error?.message || 'Не удалось загрузить фотографии');
+            } finally {
+              photoUploadInFlightRef.current = false;
+              setPhotoImporting(false);
+            }
+          }
+
+          function putPhoto'''
+          pattern = re.compile(r"  async function uploadPhotos\(event\) \{[\s\S]*?\n  \}\n\n  function putPhoto")
+          if not pattern.search(app):
+              raise SystemExit('uploadPhotos function not found')
+          app = pattern.sub(upload_replacement, app, count=1)
+
+          old_title = '<div className="panel-title"><div><h2>Фото</h2><p>Перетащи фото на рамку или выбери фото, затем нажми рамку.</p></div><span>{library.length}</span></div>'
+          new_title = '<div className="panel-title"><div><h2>Фото</h2><p>Загружено: {library.length} · используется: {usedPhotoIds.size}</p></div><span>{library.length}</span></div>'
+          if old_title not in app:
+              raise SystemExit('photo panel title marker missing')
+          app = app.replace(old_title, new_title, 1)
+          app_path.write_text(app)
+
+          assets_path = Path('src/editor/photoAssets.js')
+          assets = assets_path.read_text()
+          old_draft = "    const draft = { id: photoId, name: file?.name || 'Фото', type: file?.type, size: file?.size };"
+          new_draft = "    const draft = {\n      id: photoId,\n      name: file?.name || 'Фото',\n      type: file?.type,\n      size: file?.size,\n      sourceName: file?.sourceName || file?.name || 'Фото',\n      sourceSize: Number(file?.sourceSize ?? file?.size) || 0,\n    };"
+          if old_draft not in assets:
+              raise SystemExit('photo asset draft marker missing')
+          assets = assets.replace(old_draft, new_draft, 1)
+          assets_path.write_text(assets)
+
+          reliability_test_path = Path('src/editor/reliability.test.mjs')
+          test = reliability_test_path.read_text()
+          test = test.replace(
+              "  describeSaveResult,\n  projectJsonFileError,",
+              "  describeSaveResult,\n  filterDuplicatePhotoUploads,\n  photoUploadIdentity,\n  projectJsonFileError,",
+              1,
+          )
+          insert_marker = "\nassert.deepEqual(\n  describeSaveResult"
+          duplicate_tests = r'''
+
+          {
+            const existing = [{ name: 'family.jpg', size: 1200 }];
+            const filtered = filterDuplicatePhotoUploads([
+              file('family.jpg', 'image/jpeg', 1200),
+              file('family.jpg', 'image/jpeg', 1400),
+              file('new.jpg', 'image/jpeg', 900),
+              file('new.jpg', 'image/jpeg', 900),
+            ], existing);
+            assert.deepEqual(filtered.accepted.map((item) => [item.name, item.size]), [
+              ['family.jpg', 1400],
+              ['new.jpg', 900],
+            ]);
+            assert.equal(filtered.duplicates.length, 2, 'same name and same size must be skipped, including repeats within one selection');
+          }
+
+          assert.equal(
+            photoUploadIdentity({ name: 'IMG_1001.jpg', size: 5000, sourceName: 'IMG_1001.HEIC', sourceSize: 3200 }),
+            photoUploadIdentity({ name: 'IMG_1001.HEIC', size: 3200 }),
+            'converted HEIC must retain the original identity for duplicate detection',
+          );
+          '''
+          if insert_marker not in test:
+              raise SystemExit('reliability test insert marker missing')
+          test = test.replace(insert_marker, duplicate_tests + insert_marker, 1)
+          reliability_test_path.write_text(test)
+
+          bridge_test_path = Path('src/editor/localHeicUploadBridge.test.mjs')
+          bridge_test = bridge_test_path.read_text()
+          bridge_test = bridge_test.replace(
+              "import { isHeicFileLike, jpegNameForUpload } from './localHeicUploadBridge.js';",
+              "import { isHeicFileLike, jpegNameForUpload, prepareLocalPhotoFiles } from './localHeicUploadBridge.js';",
+              1,
+          )
+          bridge_test += r'''
+
+          {
+            const ordinary = new File([new Uint8Array([1, 2, 3])], 'same.jpg', { type: 'image/jpeg' });
+            const result = await prepareLocalPhotoFiles([ordinary]);
+            assert.equal(result.files[0].sourceName, 'same.jpg');
+            assert.equal(result.files[0].sourceSize, 3);
+          }
+          '''
+          bridge_test_path.write_text(bridge_test)
+
+          integration_path = Path('src/editor/appIntegration.test.mjs')
+          integration = integration_path.read_text()
+          integration = integration.replace(
+              "assert.match(appSource, /selectPhotoUploads\\(files, library\\.length\\)/, 'photo uploads must use bounded selection rules');",
+              "assert.match(appSource, /filterDuplicatePhotoUploads\\(rawFiles, library\\)/, 'photo uploads must skip duplicates before conversion');\nassert.match(appSource, /prepareLocalPhotoFiles\\(initialSelection\\.accepted/, 'HEIC conversion must run inside the single React upload flow');\nassert.match(appSource, /Загружено: \\{library\\.length\\} · используется: \\{usedPhotoIds\\.size\\}/, 'photo panel must show loaded and used counts');",
+              1,
+          )
+          integration_path.write_text(integration)
+
+          e2e_path = Path('e2e/photo-duplicate-upload.spec.js')
+          e2e_path.write_text(r'''import { expect, test } from '@playwright/test';
+          import { openEditor, tinyPngUpload } from './helpers.mjs';
+
+          test('duplicate photos are skipped by name and size while same-name different-size photos are kept', async ({ page }) => {
+            await openEditor(page);
+            const input = page.locator('.upload-box input[type="file"][accept="image/*"]');
+
+            await input.setInputFiles(tinyPngUpload('family.png'));
+            await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library.length)).toBe(1);
+
+            await input.setInputFiles(tinyPngUpload('family.png'));
+            await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library.length)).toBe(1);
+
+            await input.setInputFiles({
+              name: 'family.png',
+              mimeType: 'image/png',
+              buffer: Buffer.concat([tinyPngUpload('family.png').buffer, Buffer.from([0])]),
+            });
+            await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library.length)).toBe(2);
+            await expect(page.locator('.editor-left-panel-v2')).toContainText('Загружено: 2');
+          });
+          ''')
+
+          workflow = Path('.github/workflows/apply-photo-upload-stability.yml')
+          workflow.unlink()
+          PY
+      - name: Verify changes
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+      - name: Commit generated changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/AppLive.jsx src/editor/photoAssets.js src/editor/reliability.test.mjs src/editor/localHeicUploadBridge.test.mjs src/editor/appIntegration.test.mjs e2e/photo-duplicate-upload.spec.js .github/workflows/apply-photo-upload-stability.yml
+          git commit -m "Stabilize photo imports and skip duplicates"
+          git push
