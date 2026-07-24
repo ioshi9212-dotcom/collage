@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function PhotoImportReport({ report, onClose }) {
   if (!report) return null;
   const duplicateCount = Math.max(0, Number(report.duplicates) || 0);
