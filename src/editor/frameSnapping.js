@@ -48,9 +48,9 @@ function bestMatch(anchorValues, targetValues, threshold) {
   return best;
 }
 
-function guideResult(verticalMatch, horizontalMatch) {
+function guideResult(verticalMatch, horizontalMatch, verticalOffset = 0) {
   return {
-    vertical: verticalMatch ? [verticalMatch.target] : [],
+    vertical: verticalMatch ? [verticalMatch.target - verticalOffset] : [],
     horizontal: horizontalMatch ? [horizontalMatch.target] : [],
   };
 }
@@ -155,6 +155,6 @@ export function snapFrameTransformBox({
       width: horizontalBox.end - horizontalBox.start,
       height: verticalBox.end - verticalBox.start,
     },
-    guides: guideResult(horizontalBox.match, verticalBox.match),
+    guides: guideResult(horizontalBox.match, verticalBox.match, pageOffsetX),
   };
 }
