@@ -9,7 +9,9 @@ const stylesSource = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf
 assert.match(appSource, /import PhotoLibraryThumbnail from '\.\/editor\/PhotoLibraryThumbnail'/);
 assert.match(appSource, /persistPhotoFiles/);
 assert.match(appSource, /async function uploadPhotos\(event\)/);
-assert.match(appSource, /await persistPhotoFiles\(selection\.accepted/);
+assert.match(appSource, /const chunkSize = 2/, 'large selections must be split into small responsive chunks');
+assert.match(appSource, /await persistPhotoFiles\(chunk, \{ idFactory: makeId, maxConcurrent: 1 \}\)/, 'each chunk must be written sequentially to reduce memory and storage contention');
+assert.match(appSource, /await new Promise\(\(resolve\) => requestAnimationFrame/, 'the browser must be allowed to repaint between photo chunks');
 assert.doesNotMatch(appSource, /readPhotoFilesAsDataUrls/, 'uploads must store File blobs without creating Base64 copies');
 assert.doesNotMatch(appSource, /selection\.accepted\.forEach\(\(file\)/, 'uploads must not start one storage operation per photo at once');
 assert.match(appSource, /<PhotoLibraryThumbnail photo=\{photo\} \/>/);
