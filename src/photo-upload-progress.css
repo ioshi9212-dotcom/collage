@@ -1,0 +1,22 @@
+.photo-upload-progress {
+  display: grid;
+  gap: 8px;
+  padding: 12px 13px;
+  border: 1px solid rgba(47, 125, 82, 0.24);
+  border-radius: 14px;
+  background: rgba(244, 250, 246, 0.96);
+  box-shadow: 0 6px 18px rgba(36, 66, 50, 0.08);
+}
+
+.photo-upload-progress-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.photo-upload-progress-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.photo-upload-progress-head span { flex: 0 0 auto; font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.photo-upload-progress-track { position: relative; height: 11px; overflow: hidden; border-radius: 999px; background: rgba(47, 125, 82, 0.14); }
+.photo-upload-progress-track i { display: block; width: 0; height: 100%; border-radius: inherit; background: #2f7d52; transition: width 180ms ease-out; }
+.photo-upload-progress > small { overflow: hidden; color: #59665f; font-size: 12px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.photo-upload-progress.done { border-color: rgba(47, 125, 82, 0.38); background: rgba(239, 249, 242, 0.98); }
+.photo-upload-progress.error { border-color: rgba(166, 61, 61, 0.34); background: rgba(255, 244, 244, 0.98); }
+.photo-upload-progress.error .photo-upload-progress-track { background: rgba(166, 61, 61, 0.14); }
+.photo-upload-progress.error .photo-upload-progress-track i { background: #a63d3d; }
+@media (max-width: 760px) { .photo-upload-progress { padding: 10px 11px; border-radius: 12px; } .photo-upload-progress > small { white-space: normal; } }
+@media (prefers-reduced-motion: reduce) { .photo-upload-progress-track i { transition: none; } }

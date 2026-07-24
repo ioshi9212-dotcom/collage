@@ -1152,6 +1152,7 @@ export default function App() {
   const noticeTimerRef = useRef(null);
   const canvasAreaRef = useRef(null);
   const photoUploadInFlightRef = useRef(false);
+  const photoProgressTimerRef = useRef(null);
 
   const [album, setAlbum] = useState(() => createInitialAlbum(DEFAULT_CANVAS, DEFAULT_SETTINGS));
   const [library, setLibrary] = useState([]);
@@ -1160,6 +1161,15 @@ export default function App() {
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
   const [photoImporting, setPhotoImporting] = useState(false);
+  const [photoImportProgress, setPhotoImportProgress] = useState({
+    visible: false,
+    status: 'idle',
+    percent: 0,
+    label: '',
+    detail: '',
+    processed: 0,
+    total: 0,
+  });
   const [moveFrameWithPhotoId, setMoveFrameWithPhotoId] = useState(null);
   const [viewMode, setViewMode] = useState('spread');
   const [bookletSheetsPerBlock, setBookletSheetsPerBlock] = useState(DEFAULT_SHEETS_PER_BLOCK);
@@ -1201,7 +1211,10 @@ export default function App() {
     try { localStorage.removeItem(ALBUM_LAYERS_KEY); } catch { /* ignore localStorage errors */ }
   }, []);
 
-  useEffect(() => () => releaseAllPhotoRuntimeUrls(), []);
+  useEffect(() => () => {
+    releaseAllPhotoRuntimeUrls();
+    window.clearTimeout(photoProgressTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1652,6 +1665,34 @@ export default function App() {
     updateLayoutPage(pageId, (layout) => resizeRow(layout, rowIndex, centerY));
   }
 
+  function showPhotoImportProgress({ status = 'active', percent = 0, label = '', detail = '', processed = 0, total = 0 }) {
+    window.clearTimeout(photoProgressTimerRef.current);
+    setPhotoImportProgress({
+      visible: true,
+      status,
+      percent: clamp(Math.round(Number(percent) || 0), 0, 100),
+      label,
+      detail,
+      processed,
+      total,
+    });
+  }
+
+  function finishPhotoImportProgress({ status = 'done', label, detail }) {
+    window.clearTimeout(photoProgressTimerRef.current);
+    setPhotoImportProgress((current) => ({
+      ...current,
+      visible: true,
+      status,
+      percent: status === 'done' ? 100 : current.percent,
+      label,
+      detail,
+    }));
+    photoProgressTimerRef.current = window.setTimeout(() => {
+      setPhotoImportProgress((current) => ({ ...current, visible: false }));
+    }, status === 'done' ? 2600 : 6500);
+  }
+
   async function uploadPhotos(event) {
     const input = event.currentTarget;
     const rawFiles = Array.from(input.files ?? []);
@@ -1674,10 +1715,28 @@ export default function App() {
 
     photoUploadInFlightRef.current = true;
     setPhotoImporting(true);
+    const uploadTotal = initialSelection.accepted.length;
+    showPhotoImportProgress({
+      percent: 2,
+      label: 'Подготавливаю фото',
+      detail: `0 из ${uploadTotal}`,
+      processed: 0,
+      total: uploadTotal,
+    });
 
     try {
       const prepared = await prepareLocalPhotoFiles(initialSelection.accepted, {
-        onProgress: ({ index, total, name }) => show(`Преобразую HEIC: ${index + 1} из ${total} · ${name}`),
+        onProgress: ({ index, total, name }) => {
+          const safeTotal = Math.max(1, total);
+          showPhotoImportProgress({
+            percent: 5 + (index / safeTotal) * 30,
+            label: 'Преобразую HEIC',
+            detail: `${index + 1} из ${total} · ${name}`,
+            processed: index,
+            total,
+          });
+          show(`Преобразую HEIC: ${index + 1} из ${total} · ${name}`);
+        },
       });
       const selection = selectPhotoUploads(prepared.files, library.length);
 
@@ -1693,16 +1752,38 @@ export default function App() {
       let loadedCount = 0;
       let failedToStore = 0;
       const chunkSize = 2;
-      for (let offset = 0; offset < selection.accepted.length; offset += chunkSize) {
+      const storeTotal = selection.accepted.length;
+      showPhotoImportProgress({
+        percent: 35,
+        label: 'Сохраняю фото',
+        detail: `0 из ${storeTotal}`,
+        processed: 0,
+        total: storeTotal,
+      });
+      for (let offset = 0; offset < storeTotal; offset += chunkSize) {
         const chunk = selection.accepted.slice(offset, offset + chunkSize);
-        const finish = Math.min(selection.accepted.length, offset + chunk.length);
-        show(`Сохраняю фото: ${finish} из ${selection.accepted.length}`);
+        const finish = Math.min(storeTotal, offset + chunk.length);
+        showPhotoImportProgress({
+          percent: 35 + (offset / Math.max(1, storeTotal)) * 65,
+          label: 'Сохраняю фото',
+          detail: `${offset + 1}–${finish} из ${storeTotal}`,
+          processed: offset,
+          total: storeTotal,
+        });
+        show(`Сохраняю фото: ${finish} из ${storeTotal}`);
         const result = await persistPhotoFiles(chunk, { idFactory: makeId, maxConcurrent: 1 });
         loadedCount += result.loaded.length;
         failedToStore += result.failed.length;
         if (result.loaded.length) {
           setLibrary((current) => [...current, ...result.loaded].slice(0, MAX_LIBRARY_PHOTOS));
         }
+        showPhotoImportProgress({
+          percent: 35 + (finish / Math.max(1, storeTotal)) * 65,
+          label: 'Сохраняю фото',
+          detail: `${finish} из ${storeTotal}`,
+          processed: finish,
+          total: storeTotal,
+        });
         await new Promise((resolve) => requestAnimationFrame(() => resolve()));
       }
 
@@ -1717,10 +1798,18 @@ export default function App() {
       const duplicateSuffix = unique.duplicates.length ? ` · уже были: ${unique.duplicates.length}` : '';
       const convertedSuffix = prepared.converted ? ` · HEIC → JPEG: ${prepared.converted}` : '';
       const rejectedSuffix = rejected ? ` · пропущено: ${rejected}` : '';
-      show(`Фото загружены: ${loadedCount}${duplicateSuffix}${convertedSuffix}${rejectedSuffix}`);
+      const resultMessage = `Фото загружены: ${loadedCount}${duplicateSuffix}${convertedSuffix}${rejectedSuffix}`;
+      show(resultMessage);
+      finishPhotoImportProgress({
+        status: 'done',
+        label: 'Фото загружены',
+        detail: `Готово: ${loadedCount} из ${storeTotal}${unique.duplicates.length ? ` · повторы: ${unique.duplicates.length}` : ''}`,
+      });
     } catch (error) {
       console.warn('Photo import failed', error);
-      show(error?.message || 'Не удалось загрузить фотографии');
+      const errorMessage = error?.message || 'Не удалось загрузить фотографии';
+      show(errorMessage);
+      finishPhotoImportProgress({ status: 'error', label: 'Ошибка загрузки', detail: errorMessage });
     } finally {
       photoUploadInFlightRef.current = false;
       setPhotoImporting(false);
@@ -2986,6 +3075,26 @@ export default function App() {
             <>
               <div className="panel-title"><div><h2>Фото</h2><p>Загружено: {library.length} · используется: {usedPhotoIds.size}</p></div><span>{library.length}</span></div>
               <label className={`upload-box ${photoImporting ? 'disabled-upload-box' : ''}`}><strong>{photoImporting ? 'Загружаю фото…' : 'Загрузить фото'}</strong><small>{photoImporting ? 'Оригиналы сохраняются по очереди' : 'Можно сразу несколько'}</small><input type="file" accept="image/*" multiple disabled={photoImporting} onChange={uploadPhotos} /></label>
+              {photoImportProgress.visible && (
+                <div className={`photo-upload-progress ${photoImportProgress.status}`} aria-live="polite">
+                  <div className="photo-upload-progress-head">
+                    <strong>{photoImportProgress.label}</strong>
+                    <span>{photoImportProgress.percent}%</span>
+                  </div>
+                  <div
+                    className="photo-upload-progress-track"
+                    role="progressbar"
+                    aria-label={photoImportProgress.label || 'Загрузка фотографий'}
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow={photoImportProgress.percent}
+                    aria-valuetext={photoImportProgress.detail}
+                  >
+                    <i style={{ width: `${photoImportProgress.percent}%` }} />
+                  </div>
+                  <small>{photoImportProgress.detail}</small>
+                </div>
+              )}
               <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); show('Список фото очищен'); }} disabled={library.length === 0 || photoImporting}>Очистить список фото</button>
               {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
               {library.length === 0 ? <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div> : <div className="photo-grid">{library.map((photo) => {
