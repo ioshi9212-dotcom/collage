@@ -51,7 +51,7 @@ async function readBody(request, maxBytes) {
 
 export async function convertHeicBuffer(input, options = {}) {
   const sharpImpl = options.sharpImpl || sharp;
-  const quality = Number.isFinite(Number(options.quality)) ? Number(options.quality) : 94;
+  const quality = Number.isFinite(Number(options.quality)) ? Number(options.quality) : 92;
   const image = sharpImpl(input, {
     failOn: 'none',
     limitInputPixels: 120_000_000,
@@ -59,7 +59,11 @@ export async function convertHeicBuffer(input, options = {}) {
   });
   return image
     .rotate()
-    .jpeg({ quality, mozjpeg: true, chromaSubsampling: '4:4:4' })
+    .jpeg({
+      quality,
+      chromaSubsampling: '4:2:0',
+      optimiseScans: true,
+    })
     .toBuffer();
 }
 
@@ -100,7 +104,7 @@ export function createHeicConversionHandler({ env = process.env, sharpImpl = sha
 
     try {
       const input = await readBody(request, maxBytes);
-      const output = await convertHeicBuffer(input, { sharpImpl, quality: 94 });
+      const output = await convertHeicBuffer(input, { sharpImpl, quality: 92 });
       response.writeHead(200, {
         'Content-Type': 'image/jpeg',
         'Content-Length': String(output.length),
