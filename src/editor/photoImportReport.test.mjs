@@ -19,6 +19,7 @@ assert.equal(report.selected, 5);
 assert.equal(report.added, 1);
 assert.equal(report.notAdded, 4);
 assert.equal(report.duplicates, 1);
+assert.equal(report.failed, 3);
 assert.equal(report.issues.length, 4);
 assert.deepEqual(report.issues.map((item) => item.name), ['same.jpg', 'large.jpg', 'broken.HEIC', 'quota.jpg']);
 assert.match(report.issues[2].reason, /HEIC не читается/);
