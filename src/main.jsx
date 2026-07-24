@@ -17,6 +17,7 @@ import './editor-shell-stage4c-larger-canvas.css';
 import './font-picker-live.css';
 import './editor-mobile.css';
 import './editor-mobile-mode-fixes.css';
+import './photo-upload-progress.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
 import { installToolStateBehavior } from './editor/toolStateBehavior';
 import { installTextEditingBehavior } from './editor/textEditingBehavior';
