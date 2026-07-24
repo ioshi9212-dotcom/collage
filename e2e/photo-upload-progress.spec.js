@@ -21,5 +21,5 @@ test('shows percentage and a progress bar while a HEIC photo is processed', asyn
   await expect.poll(() => page.evaluate(() => window.__collageApp?.getProject?.().library?.length || 0)).toBe(1);
   await expect(progress).toHaveClass(/done/);
   await expect(bar).toHaveAttribute('aria-valuenow', '100');
-  await expect(progress).toContainText('Готово: 1 из 1');
+  await expect(progress).toContainText('Добавлено: 1 из выбранных 1');
 });
