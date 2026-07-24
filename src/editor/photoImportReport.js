@@ -61,12 +61,14 @@ export function buildPhotoImportReport({
   const selected = Array.from(selectedFiles || []).length;
   const addedCount = Math.max(0, Number(added) || 0);
   const duplicateCount = Array.from(duplicates || []).length;
+  const failedCount = issues.filter((item) => item.kind !== 'duplicate').length;
 
   return {
     selected,
     added: addedCount,
     notAdded: Math.max(0, selected - addedCount),
     duplicates: duplicateCount,
+    failed: failedCount,
     converted: Math.max(0, Number(prepared.converted) || 0),
     issues,
     createdAt: Date.now(),
