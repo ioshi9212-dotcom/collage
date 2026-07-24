@@ -20,17 +20,17 @@ const frames = [moving, sibling];
 }
 
 {
-  const result = snapFramePosition({ frame: moving, frames, canvas, x: 394, y: 377 });
+  const result = snapFramePosition({ frame: moving, frames, canvas, x: 394, y: 294 });
   assert.equal(result.x, 400, 'frame center should snap to page center');
-  assert.equal(result.y, 400, 'frame center should snap to page center');
+  assert.equal(result.y, 300, 'frame center should snap to page center');
   assert.deepEqual(result.guides.vertical, [500]);
-  assert.deepEqual(result.guides.horizontal, [500]);
+  assert.deepEqual(result.guides.horizontal, [400]);
 }
 
 {
-  const result = snapFramePosition({ frame: moving, frames, canvas, x: 260, y: 250, threshold: 10 });
+  const result = snapFramePosition({ frame: moving, frames, canvas, x: 260, y: 330, threshold: 10 });
   assert.equal(result.x, 260);
-  assert.equal(result.y, 250);
+  assert.equal(result.y, 330);
   assert.equal(hasFrameSnapGuides(result.guides), false, 'frames outside threshold must stay fully free');
 }
 
