@@ -202,7 +202,14 @@ export async function persistPhotoFiles(files, options = {}) {
   const maxConcurrent = options.maxConcurrent ?? DEFAULT_PHOTO_ASSET_CONCURRENCY;
   const results = await mapWithConcurrency(source, maxConcurrent, async (file) => {
     const photoId = (options.idFactory ?? makeId)();
-    const draft = { id: photoId, name: file?.name || 'Фото', type: file?.type, size: file?.size };
+    const draft = {
+      id: photoId,
+      name: file?.name || 'Фото',
+      type: file?.type,
+      size: file?.size,
+      sourceName: file?.sourceName || file?.name || 'Фото',
+      sourceSize: Number(file?.sourceSize ?? file?.size) || 0,
+    };
     try {
       return { ok: true, photo: await persistOnePhotoBlob(file, draft, options) };
     } catch (error) {

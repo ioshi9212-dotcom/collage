@@ -6,6 +6,8 @@ import {
   MAX_PROJECT_JSON_BYTES,
   createPreparedProjectSnapshot,
   describeSaveResult,
+  filterDuplicatePhotoUploads,
+  photoUploadIdentity,
   projectJsonFileError,
   selectPhotoUploads,
 } from './reliability.js';
@@ -41,6 +43,28 @@ function file(name, type, size) {
   assert.equal(selected.accepted.length, 1);
   assert.equal(selected.rejectedLimit, 1);
 }
+
+
+{
+  const existing = [{ name: 'family.jpg', size: 1200 }];
+  const filtered = filterDuplicatePhotoUploads([
+    file('family.jpg', 'image/jpeg', 1200),
+    file('family.jpg', 'image/jpeg', 1400),
+    file('new.jpg', 'image/jpeg', 900),
+    file('new.jpg', 'image/jpeg', 900),
+  ], existing);
+  assert.deepEqual(filtered.accepted.map((item) => [item.name, item.size]), [
+    ['family.jpg', 1400],
+    ['new.jpg', 900],
+  ]);
+  assert.equal(filtered.duplicates.length, 2, 'same name and same size must be skipped, including repeats within one selection');
+}
+
+assert.equal(
+  photoUploadIdentity({ name: 'IMG_1001.jpg', size: 5000, sourceName: 'IMG_1001.HEIC', sourceSize: 3200 }),
+  photoUploadIdentity({ name: 'IMG_1001.HEIC', size: 3200 }),
+  'converted HEIC must retain the original identity for duplicate detection',
+);
 
 assert.deepEqual(
   describeSaveResult({ cloud: { id: 'project' }, local: { ok: false }, indexedDb: { ok: false } }),

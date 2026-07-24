@@ -6,8 +6,6 @@ const HEIC_TYPES = new Set([
 ]);
 
 const HEIC_EXTENSION = /\.(?:heic|heif)$/i;
-const bypassInputs = new WeakSet();
-let conversionInProgress = false;
 
 function cleanType(value) {
   return String(value || '').trim().toLowerCase().split(';')[0];
@@ -22,44 +20,26 @@ export function jpegNameForUpload(name) {
   return HEIC_EXTENSION.test(source) ? source.replace(HEIC_EXTENSION, '.jpg') : `${source}.jpg`;
 }
 
-function showStatus(message) {
-  document.querySelectorAll('.cloud-auth-status').forEach((node) => {
-    node.textContent = message;
-  });
-
-  let toast = document.querySelector('.local-heic-toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.className = 'local-heic-toast';
-    Object.assign(toast.style, {
-      position: 'fixed',
-      left: '50%',
-      bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
-      transform: 'translateX(-50%)',
-      zIndex: '100001',
-      maxWidth: 'min(620px, calc(100vw - 24px))',
-      padding: '11px 16px',
-      borderRadius: '12px',
-      color: '#fff',
-      background: '#2f6f52',
-      font: '600 14px/1.35 Arial, sans-serif',
-      boxShadow: '0 10px 30px rgba(0,0,0,.24)',
-      pointerEvents: 'none',
-      textAlign: 'center',
+function withSourceIdentity(file, source) {
+  const sourceName = String(source?.name || file?.name || 'Фото').slice(0, 500);
+  const sourceSize = Math.max(0, Number(source?.size ?? file?.size) || 0);
+  try {
+    Object.defineProperties(file, {
+      sourceName: { value: sourceName, configurable: true },
+      sourceSize: { value: sourceSize, configurable: true },
     });
-    document.body.append(toast);
+    return file;
+  } catch {
+    const copy = new File([file], file?.name || sourceName, {
+      type: file?.type || 'application/octet-stream',
+      lastModified: Number(file?.lastModified) || Date.now(),
+    });
+    Object.defineProperties(copy, {
+      sourceName: { value: sourceName, configurable: true },
+      sourceSize: { value: sourceSize, configurable: true },
+    });
+    return copy;
   }
-
-  toast.textContent = message;
-  toast.style.display = 'block';
-  clearTimeout(showStatus.timer);
-  showStatus.timer = setTimeout(() => { toast.style.display = 'none'; }, 5000);
-}
-
-function isPhotoInput(input) {
-  return input instanceof HTMLInputElement
-    && input.type === 'file'
-    && String(input.accept || '').toLowerCase().includes('image');
 }
 
 async function parseErrorResponse(response) {
@@ -90,7 +70,7 @@ export async function convertHeicThroughServer(file, options = {}) {
   });
 }
 
-async function prepareFiles(files) {
+export async function prepareLocalPhotoFiles(files, options = {}) {
   const source = Array.from(files || []);
   const prepared = [];
   const failed = [];
@@ -99,71 +79,19 @@ async function prepareFiles(files) {
   for (let index = 0; index < source.length; index += 1) {
     const file = source[index];
     if (!isHeicFileLike(file)) {
-      prepared.push(file);
+      prepared.push(withSourceIdentity(file, file));
       continue;
     }
 
-    showStatus(`Преобразую HEIC: ${index + 1} из ${source.length} · ${file.name || 'Фото'}`);
+    options.onProgress?.({ index, total: source.length, name: file?.name || 'Фото' });
     try {
-      prepared.push(await convertHeicThroughServer(file));
+      const jpeg = await convertHeicThroughServer(file, options);
+      prepared.push(withSourceIdentity(jpeg, file));
       converted += 1;
     } catch (error) {
       failed.push({ file, error });
     }
   }
 
-  return { prepared, failed, converted };
-}
-
-async function handlePhotoSelection(event) {
-  const input = event.target;
-  if (!isPhotoInput(input) || bypassInputs.has(input)) return;
-
-  const files = Array.from(input.files || []);
-  if (!files.some(isHeicFileLike)) return;
-
-  event.preventDefault();
-  event.stopImmediatePropagation();
-
-  if (conversionInProgress) {
-    input.value = '';
-    showStatus('Дождись окончания преобразования HEIC');
-    return;
-  }
-
-  conversionInProgress = true;
-  try {
-    const result = await prepareFiles(files);
-    if (!result.prepared.length) {
-      const first = result.failed[0];
-      throw new Error(`Не удалось преобразовать HEIC «${first?.file?.name || 'Фото'}»: ${first?.error?.message || 'неизвестная ошибка'}`);
-    }
-
-    if (typeof DataTransfer !== 'function') {
-      throw new Error('Этот браузер не позволяет передать преобразованный файл редактору');
-    }
-
-    const transfer = new DataTransfer();
-    result.prepared.forEach((file) => transfer.items.add(file));
-    bypassInputs.add(input);
-    input.files = transfer.files;
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    queueMicrotask(() => bypassInputs.delete(input));
-
-    if (result.failed.length) {
-      showStatus(`HEIC → JPEG: ${result.converted}. Не удалось преобразовать: ${result.failed.length}`);
-    } else {
-      showStatus(`HEIC → JPEG: ${result.converted}. Сохраняю фото в браузере…`);
-    }
-  } catch (error) {
-    input.value = '';
-    showStatus(error?.message || 'Не удалось преобразовать HEIC');
-  } finally {
-    conversionInProgress = false;
-  }
-}
-
-export function installLocalHeicUploadBridge() {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  document.addEventListener('change', handlePhotoSelection, true);
+  return { files: prepared, failed, converted };
 }

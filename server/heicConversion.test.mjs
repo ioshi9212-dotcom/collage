@@ -35,7 +35,8 @@ assert.equal(calls[0][0], 'create');
 assert.equal(calls[1][0], 'rotate');
 assert.equal(calls[2][0], 'jpeg');
 assert.equal(calls[2][1].quality, 94);
-assert.equal(calls[2][1].chromaSubsampling, '4:4:4');
+assert.equal(calls[2][1].chromaSubsampling, '4:2:0');
+assert.equal(calls[2][1].optimiseScans, true);
 assert.equal(calls[3][0], 'toBuffer');
 
 console.log('HEIC conversion server tests passed');

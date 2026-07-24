@@ -15,7 +15,9 @@ const softNumberChange = appSource.match(/onChange=\{\(event\) => \{([\s\S]*?)\n
 assert.match(softNumberChange, /setDraft\(raw\)/);
 assert.doesNotMatch(softNumberChange, /commit\(/, 'number inputs must not rebuild the document on every typed character');
 
-assert.match(appSource, /selectPhotoUploads\(files, library\.length\)/, 'photo uploads must use bounded selection rules');
+assert.match(appSource, /filterDuplicatePhotoUploads\(rawFiles, library\)/, 'photo uploads must skip duplicates before conversion');
+assert.match(appSource, /prepareLocalPhotoFiles\(initialSelection\.accepted/, 'HEIC conversion must run inside the single React upload flow');
+assert.match(appSource, /Загружено: \{library\.length\} · используется: \{usedPhotoIds\.size\}/, 'photo panel must show loaded and used counts');
 assert.match(appSource, /projectJsonFileError\(file\)/, 'project imports must enforce the JSON file limit');
 assert.match(appSource, /describeSaveResult\(\{ local, indexedDb, cloud, cloudError \}\)/, 'save feedback must be based on confirmed storage outcomes');
 assert.match(appSource, /createPreparedProjectSnapshot\(prepared\)/, 'opened cloud projects must persist the validated normalized snapshot');
