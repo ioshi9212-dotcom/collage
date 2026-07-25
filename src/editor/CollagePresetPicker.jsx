@@ -5,6 +5,7 @@ import {
   collagePresetsFor,
 } from './collagePresetCatalog.js';
 import './collagePresetPicker.css';
+import './collagePresetPickerExtended.css';
 
 function PreviewFrame({ definition, index }) {
   return (
