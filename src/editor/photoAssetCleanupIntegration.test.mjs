@@ -10,7 +10,7 @@ assert.match(appSource, /import \{ cleanupOrphanedPhotoAssets \} from '\.\/edito
 assert.match(appSource, /function cleanupPhotoAssetsInBackground\(currentProject\)/);
 assert.match(appSource, /cleanupOrphanedPhotoAssets\(\{ currentProject \}\)/);
 assert.match(appSource, /setTimeout\([\s\S]{0,500}cleanupPhotoAssetsInBackground\(window\.__collageApp\?\.getProject\?\.\(\)\)/);
-assert.match(appSource, /if \(outcome\.ok\) cleanupPhotoAssetsInBackground\(data\)/);
+assert.match(appSource, /if \(outcome\.ok\) cleanupPhotoAssetsInBackground\(savedData\)/, 'cleanup must inspect the final snapshot including remembered cloud keys');
 assert.match(appSource, /result\.deletedCount[\s\S]{0,160}releaseUnusedPhotoRuntimeUrls\(result\.activeAssetIds\)/);
 assert.doesNotMatch(appSource, /cleanupOrphanedPhotoAssets\(\{[^}]*force:\s*true/, 'normal editor cleanup must keep the grace and throttle guards');
 
