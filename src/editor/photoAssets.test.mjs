@@ -53,6 +53,48 @@ assert.equal(await dataUrlToBlob(tinyDataUrl).text(), 'hello');
 }
 
 {
+  const cloudKey = 'users/7/photos/recovered/original.jpg';
+  const runtime = await hydratePhotoProject({
+    library: [{
+      id: 'cloud-photo',
+      name: 'Cloud',
+      cloudKey,
+      cloudSchema: 'railway-bucket-v1',
+    }],
+    pages: [{
+      id: 'cloud-page',
+      frames: [{
+        id: 'cloud-frame',
+        photo: { id: 'cloud-photo', name: 'Cloud', cloudKey },
+      }],
+    }],
+  });
+  const expectedUrl = `/api/photo-assets/file?key=${encodeURIComponent(cloudKey)}`;
+  assert.equal(runtime.library[0].src, expectedUrl, 'cloud metadata must restore a missing library source');
+  assert.equal(runtime.pages[0].frames[0].photo.src, expectedUrl, 'cloud metadata must restore the photo inside a frame');
+}
+
+{
+  const cloudKey = 'users/7/photos/frame-only/original.jpg';
+  const runtime = await hydratePhotoProject({
+    library: [],
+    pages: [{
+      id: 'frame-only-cloud-page',
+      frames: [{
+        id: 'frame-only-cloud-frame',
+        photo: { id: 'frame-only-cloud-photo', name: 'Frame Cloud', cloudKey },
+      }],
+    }],
+  });
+  assert.equal(runtime.library.length, 0);
+  assert.equal(
+    runtime.pages[0].frames[0].photo.src,
+    `/api/photo-assets/file?key=${encodeURIComponent(cloudKey)}`,
+    'a frame must recover directly from its own cloud metadata',
+  );
+}
+
+{
   const active = { count: 0, max: 0 };
   const urls = new Map();
   let serial = 0;
