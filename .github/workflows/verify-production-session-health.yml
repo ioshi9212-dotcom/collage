@@ -1,0 +1,32 @@
+name: Verify production session health
+
+on:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check production auth persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(curl --fail --silent --show-error --retry 5 --retry-delay 3 https://collage-creator.up.railway.app/api/health)"
+          echo "$payload"
+          HEALTH_PAYLOAD="$payload" node <<'NODE'
+          const payload = JSON.parse(process.env.HEALTH_PAYLOAD || '{}');
+          if (payload.ok !== true || payload.db !== true) {
+            throw new Error(`Production health is not ready: ${JSON.stringify(payload)}`);
+          }
+          if (payload.auth?.sessionPersistent !== true) {
+            throw new Error(`Production session key is not persistent: ${JSON.stringify(payload.auth)}`);
+          }
+          if (!['database', 'environment'].includes(payload.auth?.sessionSecretSource)) {
+            throw new Error(`Unexpected session secret source: ${payload.auth?.sessionSecretSource}`);
+          }
+          const serialized = JSON.stringify(payload).toLowerCase();
+          if (serialized.includes('secret_value') || serialized.includes('effectiveSessionSecret'.toLowerCase())) {
+            throw new Error('Health response exposes a secret field');
+          }
+          console.log(`Verified persistent session source: ${payload.auth.sessionSecretSource}`);
+          NODE
