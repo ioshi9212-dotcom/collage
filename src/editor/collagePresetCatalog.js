@@ -225,7 +225,7 @@ export function collagePresetById(id) {
   return COLLAGE_PRESET_CATALOG.find((preset) => preset.id === id) || null;
 }
 
-function frameForCanvas(definition, canvas, id, photo) {
+function frameForCanvas(definition, canvas, id, photo, previous) {
   const canvasWidth = Math.max(MIN_FRAME, Math.round(Number(canvas?.width) || MIN_FRAME));
   const canvasHeight = Math.max(MIN_FRAME, Math.round(Number(canvas?.height) || MIN_FRAME));
   const width = clamp(Math.round(definition.width * canvasWidth), MIN_FRAME, canvasWidth);
@@ -240,6 +240,10 @@ function frameForCanvas(definition, canvas, id, photo) {
     height,
     zIndex: Number(definition.zIndex) || 0,
     photo: photo || null,
+    ...(previous?.borderStyle !== undefined ? { borderStyle: previous.borderStyle } : {}),
+    ...(previous?.borderWidth !== undefined ? { borderWidth: previous.borderWidth } : {}),
+    ...(previous?.borderColor !== undefined ? { borderColor: previous.borderColor } : {}),
+    ...(previous?.cornerRadius !== undefined ? { cornerRadius: previous.cornerRadius } : {}),
   };
 }
 
@@ -257,6 +261,7 @@ export function applyCollagePresetToPage(page, preset, canvas, idFactory) {
     canvas,
     sourceFrames[index]?.id || idFactory(),
     photos[index] || null,
+    sourceFrames[index],
   ));
 
   return {

@@ -82,6 +82,11 @@ import { addFreeFrameToPage, removeFreeFrameFromPage } from './editor/freeFrameA
 import { applyCollagePresetToPage } from './editor/collagePresetCatalog';
 import { hasFrameSnapGuides, snapFramePosition, snapFrameTransformBox } from './editor/frameSnapping';
 import {
+  applyFrameStyleToPages,
+  borderDashFor,
+  normalizeFrameStyle,
+} from './editor/frameStyle';
+import {
   ALBUM_LAYERS_KEY,
   ALBUM_MODE_KEY,
   cloneExtraLayerPage,
@@ -178,6 +183,12 @@ const DEFAULT_SETTINGS = {
   printDpi: DEFAULT_PRINT_DPI,
   bleedMm: DEFAULT_BLEED_MM,
   safeMm: DEFAULT_SAFE_MM,
+};
+const DEFAULT_FRAME_STYLE = {
+  borderStyle: 'none',
+  borderWidth: 0,
+  borderColor: '#ffffff',
+  cornerRadius: 0,
 };
 
 const DEFAULT_BOOKLET_PRINT_SETTINGS = {
@@ -802,6 +813,60 @@ function SmartAlignmentGuides({ guides, canvas }) {
   );
 }
 
+function roundedFramePath(context, width, height, requestedRadius) {
+  const radius = Math.min(Math.max(0, Number(requestedRadius) || 0), width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(radius, 0);
+  context.lineTo(width - radius, 0);
+  context.quadraticCurveTo(width, 0, width, radius);
+  context.lineTo(width, height - radius);
+  context.quadraticCurveTo(width, height, width - radius, height);
+  context.lineTo(radius, height);
+  context.quadraticCurveTo(0, height, 0, height - radius);
+  context.lineTo(0, radius);
+  context.quadraticCurveTo(0, 0, radius, 0);
+  context.closePath();
+}
+
+function FrameBorder({ frame, style }) {
+  if (style.borderStyle === 'none' || style.borderWidth <= 0) return null;
+  const inset = style.borderWidth / 2;
+  const width = Math.max(0, frame.width - style.borderWidth);
+  const height = Math.max(0, frame.height - style.borderWidth);
+  const radius = Math.max(0, style.cornerRadius - inset);
+  const common = {
+    x: inset,
+    y: inset,
+    width,
+    height,
+    cornerRadius: radius,
+    stroke: style.borderColor,
+    strokeWidth: style.borderWidth,
+    strokeScaleEnabled: false,
+    dash: borderDashFor(style.borderStyle, style.borderWidth),
+    lineCap: style.borderStyle === 'dotted' ? 'round' : 'butt',
+    listening: false,
+  };
+  if (style.borderStyle !== 'double') return <Rect {...common} />;
+
+  const outerWidth = Math.max(1, style.borderWidth / 3);
+  const innerInset = style.borderWidth * 1.25;
+  return (
+    <>
+      <Rect {...common} strokeWidth={outerWidth} />
+      <Rect
+        {...common}
+        x={innerInset}
+        y={innerInset}
+        width={Math.max(0, frame.width - innerInset * 2)}
+        height={Math.max(0, frame.height - innerInset * 2)}
+        cornerRadius={Math.max(0, style.cornerRadius - innerInset)}
+        strokeWidth={outerWidth}
+      />
+    </>
+  );
+}
+
 function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, snapFrames = [], smartSnap = true, collagePreviewOnly = false, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onSnapGuidesChange = () => {} }) {
   const [image, setImage] = useState(null);
   const groupRef = useRef(null);
@@ -809,6 +874,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
   const transformerRef = useRef(null);
   const rect = coverPhotoRect(image, frame, frame.photo);
   const canDragFrame = !collagePreviewOnly && !printMode && selected && !locked;
+  const frameStyle = normalizeFrameStyle(frame, { borderWidth, borderColor });
 
   useEffect(() => {
     let active = true;
@@ -921,7 +987,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
         }}
         onDragEnd={commitFrameDrag}
       >
-        <Group clipX={0} clipY={0} clipWidth={frame.width} clipHeight={frame.height}>
+        <Group clipFunc={(context) => roundedFramePath(context, frame.width, frame.height, frameStyle.cornerRadius)}>
           <Rect
             ref={frameRectRef}
             x={0}
@@ -929,12 +995,11 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
             width={frame.width}
             height={frame.height}
             fill="#fbf7f2"
-            stroke={selected && !printMode ? (locked ? '#2f7d52' : '#c27b4f') : borderColor}
-            strokeWidth={selected && !printMode ? Math.max(5, borderWidth) : borderWidth}
             strokeScaleEnabled={false}
             onTransformEnd={commitTransform}
           />
           <PhotoImage frame={frame} selected={selected} image={image} rect={rect} printMode={printMode} onSelect={onSelect} onPhotoMove={onPhotoMove} />
+          <FrameBorder frame={frame} style={frameStyle} />
           {moveFrameWithPhoto && !printMode && selected && !locked && (
             <Rect x={0} y={0} width={frame.width} height={frame.height} fill="rgba(47, 125, 82, 0.01)" stroke="#2f7d52" strokeWidth={6} strokeScaleEnabled={false} dash={[18, 12]} />
           )}
@@ -942,6 +1007,19 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
             <Rect x={14} y={14} width={Math.max(0, frame.width - 28)} height={Math.max(0, frame.height - 28)} stroke="#d8c7b9" strokeWidth={2} strokeScaleEnabled={false} dash={[14, 10]} cornerRadius={12} listening={false} />
           )}
         </Group>
+        {selected && !printMode && (
+          <Rect
+            x={0}
+            y={0}
+            width={frame.width}
+            height={frame.height}
+            cornerRadius={frameStyle.cornerRadius}
+            stroke={locked ? '#2f7d52' : '#c27b4f'}
+            strokeWidth={Math.max(5, frameStyle.borderWidth)}
+            strokeScaleEnabled={false}
+            listening={false}
+          />
+        )}
       </Group>
       {selected && !printMode && !locked && (
         <Transformer
@@ -1253,6 +1331,8 @@ export default function App() {
   const [canvas, setCanvas] = useState(DEFAULT_CANVAS);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [selectedFrameId, setSelectedFrameId] = useState(null);
+  const [frameStyleScope, setFrameStyleScope] = useState('frame');
+  const [frameStyleDraft, setFrameStyleDraft] = useState(DEFAULT_FRAME_STYLE);
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
   const [photoImporting, setPhotoImporting] = useState(false);
   const [photoImportProgress, setPhotoImportProgress] = useState({
@@ -1502,6 +1582,11 @@ export default function App() {
       : [{ page: currentPage, pageIndex: currentPageIndex, x: 0 }];
 
   const selectedFrame = useMemo(() => currentPage?.frames.find((frame) => frame.id === selectedFrameId) ?? null, [currentPage, selectedFrameId]);
+
+  useEffect(() => {
+    if (!selectedFrame) return;
+    setFrameStyleDraft(normalizeFrameStyle(selectedFrame, settings));
+  }, [selectedFrame, settings]);
   const selectedPhoto = useMemo(() => library.find((photo) => photo.id === selectedPhotoId) ?? null, [library, selectedPhotoId]);
   const usedPhotoIds = useMemo(() => {
     const used = new Set();
@@ -1656,6 +1741,37 @@ export default function App() {
 
   function changeFrame(pageId, frameId, patch) {
     updatePageFrames(pageId, (frames) => updateFrameGeometry(frames, frameId, patch, canvas));
+  }
+
+  function updateFrameStyleDraft(key, value) {
+    setFrameStyleDraft((current) => {
+      const next = { ...current, [key]: value };
+      if (key === 'borderStyle' && value !== 'none' && current.borderWidth <= 0) next.borderWidth = 6;
+      if (key === 'borderWidth') next.borderStyle = Number(value) > 0 && current.borderStyle === 'none' ? 'solid' : current.borderStyle;
+      return next;
+    });
+  }
+
+  function applyFrameStyle() {
+    if (frameStyleScope === 'frame' && !selectedFrame) {
+      show('Сначала выбери окно');
+      return;
+    }
+    setAlbum((current) => ({
+      ...current,
+      pages: applyFrameStyleToPages(current.pages, {
+        scope: frameStyleScope,
+        pageId: current.currentPageId,
+        frameId: selectedFrameId,
+        patch: frameStyleDraft,
+      }),
+    }));
+    const label = frameStyleScope === 'album'
+      ? 'ко всем окнам альбома'
+      : frameStyleScope === 'page'
+        ? 'ко всем окнам страницы'
+        : 'к выбранному окну';
+    show(`Оформление применено ${label}`);
   }
 
   function updateFrameSnapGuides(pageId, guides) {
@@ -3596,7 +3712,42 @@ export default function App() {
           {inspectorTab === 'object' ? (
             <>
               <div className="panel-title compact"><div><h2>Настройки окна</h2><p>{selectedFrame ? (locked ? 'В сетке двигай разделители между окнами.' : 'Двигай рамку и фото мышкой.') : 'Выбери рамку на холсте'}</p></div></div>
-              <div className="inspector-block"><h3>Цвет и рамка</h3><label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label><label className="field"><span>Обводка внутри окна</span><SoftNumberInput min={0} max={80} value={settings.borderWidth} onValue={(value) => updateSetting('borderWidth', value)} /></label></div>
+              <div className="inspector-block frame-style-controls">
+                <h3>Рамка и скругление</h3>
+                <label className="field">
+                  <span>Применить к</span>
+                  <select value={frameStyleScope} onChange={(event) => setFrameStyleScope(event.target.value)}>
+                    <option value="frame" disabled={!selectedFrame}>Выбранному окну</option>
+                    <option value="page">Всем окнам страницы</option>
+                    <option value="album">Всем окнам альбома</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Вид рамки</span>
+                  <select value={frameStyleDraft.borderStyle} onChange={(event) => updateFrameStyleDraft('borderStyle', event.target.value)}>
+                    <option value="none">Без рамки</option>
+                    <option value="solid">Сплошная</option>
+                    <option value="dashed">Штриховая</option>
+                    <option value="dotted">Точечная</option>
+                    <option value="double">Двойная</option>
+                  </select>
+                </label>
+                <label className="field color-field">
+                  <span>Цвет рамки</span>
+                  <input type="color" value={frameStyleDraft.borderColor} onChange={(event) => updateFrameStyleDraft('borderColor', event.target.value)} />
+                </label>
+                <label className="range-row">
+                  <span>Толщина</span>
+                  <input type="range" min="0" max="80" step="1" value={frameStyleDraft.borderWidth} onChange={(event) => updateFrameStyleDraft('borderWidth', Number(event.target.value))} />
+                  <b>{Math.round(frameStyleDraft.borderWidth)}</b>
+                </label>
+                <label className="range-row">
+                  <span>Скругление</span>
+                  <input type="range" min="0" max="500" step="1" value={frameStyleDraft.cornerRadius} onChange={(event) => updateFrameStyleDraft('cornerRadius', Number(event.target.value))} />
+                  <b>{Math.round(frameStyleDraft.cornerRadius)}</b>
+                </label>
+                <button className="button full accent" onClick={applyFrameStyle} disabled={frameStyleScope === 'frame' && !selectedFrame}>Применить оформление</button>
+              </div>
               {selectedFrame ? (
                 <>
                   <div className="inspector-block">
