@@ -21,7 +21,15 @@ function clonePhotoReference(photo) {
   return reference;
 }
 
-const PHOTO_ASSET_METADATA_KEYS = ['assetId', 'assetSchema', 'type', 'size', 'persistenceFallback'];
+const PHOTO_ASSET_METADATA_KEYS = [
+  'assetId',
+  'assetSchema',
+  'cloudKey',
+  'cloudSchema',
+  'type',
+  'size',
+  'persistenceFallback',
+];
 
 function copyPhotoAssetMetadata(target, source) {
   for (const key of PHOTO_ASSET_METADATA_KEYS) {
