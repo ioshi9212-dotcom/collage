@@ -1,7 +1,7 @@
 import { createReadStream, existsSync } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 import { createServer } from 'node:http';
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import pg from 'pg';
 import {
   createAuthRateLimiter,
@@ -19,6 +19,7 @@ import {
 import { RequestBodyError, readJsonBody } from './server/requestBody.js';
 import { resolveStaticRequest } from './server/staticFiles.js';
 import { createPhotoAssetRequestHandler } from './server/bucketGateway.js';
+import { describeSessionSecretState, resolveSessionSecret } from './server/sessionSecret.js';
 
 const { Pool } = pg;
 const port = Number(process.env.PORT || 3000);
@@ -35,20 +36,6 @@ const projectQuotaLimits = getProjectQuotaLimits({
 });
 const publicNoCacheFiles = new Set(['cloud-auth.js', 'cloud-auth.css', 'album-layers.js', 'album-layers.css']);
 
-// In production, SESSION_SECRET is strongly recommended.
-// Do not crash the whole Railway service when it is missing: use an ephemeral
-// per-boot secret instead. Existing sessions will be logged out after restart,
-// but the site stays online and no hardcoded shared production secret is used.
-if (isProduction && !configuredSessionSecret) {
-  console.warn('WARNING: SESSION_SECRET is missing. Using an ephemeral per-boot session secret. Add SESSION_SECRET in Railway Variables for stable logins.');
-}
-
-const effectiveSessionSecret = configuredSessionSecret || (isProduction ? randomBytes(32).toString('hex') : 'collage-dev-secret-change-me');
-const handlePhotoAssetRequest = createPhotoAssetRequestHandler({
-  env: process.env,
-  sessionSecret: effectiveSessionSecret,
-});
-
 let pool = null;
 let dbReadyPromise = null;
 
@@ -58,6 +45,24 @@ if (databaseUrl) {
     ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: process.env.PGSSL_REJECT_UNAUTHORIZED === 'true' },
   });
 }
+
+const sessionSecretState = await resolveSessionSecret({
+  configuredSecret: configuredSessionSecret,
+  pool,
+  isProduction,
+});
+const sessionSecretMessage = describeSessionSecretState(sessionSecretState);
+if (sessionSecretState.source === 'ephemeral' || !sessionSecretState.recommendedStrength) {
+  console.warn(sessionSecretMessage);
+} else {
+  console.info(sessionSecretMessage);
+}
+
+const effectiveSessionSecret = sessionSecretState.secret;
+const handlePhotoAssetRequest = createPhotoAssetRequestHandler({
+  env: process.env,
+  sessionSecret: effectiveSessionSecret,
+});
 
 const AUTH_WINDOW_MS = Number(process.env.AUTH_WINDOW_MS || 15 * 60 * 1000);
 const AUTH_MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS || 20);
@@ -255,7 +260,15 @@ async function handleApi(request, response) {
   const method = request.method || 'GET';
 
   if (method === 'GET' && path === '/api/health') {
-    sendJson(response, 200, { ok: true, db: Boolean(pool) });
+    sendJson(response, 200, {
+      ok: true,
+      db: Boolean(pool),
+      auth: {
+        sessionPersistent: sessionSecretState.persistent,
+        sessionSecretSource: sessionSecretState.source,
+        recommendedStrength: sessionSecretState.recommendedStrength,
+      },
+    });
     return true;
   }
 
