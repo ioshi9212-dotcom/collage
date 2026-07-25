@@ -126,7 +126,10 @@ export async function createCloudPhotoProject(project, options = {}) {
         ...photo,
         type: blob.type || photo?.type,
         size: blob.size,
-      }, asset);
+      }, {
+        ...asset,
+        id: photo?.id ?? asset?.id,
+      });
     },
   );
 
