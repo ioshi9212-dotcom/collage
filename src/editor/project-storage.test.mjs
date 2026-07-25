@@ -150,8 +150,10 @@ const saveClickBlock = source.match(/if \(label === 'Сохранить'\) \{([\
 assert.ok(saveClickBlock, 'storage click listener must keep a save branch');
 assert.doesNotMatch(saveClickBlock, /saveFullProjectSnapshot/, 'storage click listener must not duplicate the editor save');
 assert.match(appSource, /const data = project\(\);[\s\S]{0,900}saveLocalProject\(\{ silent: true, data \}\)/, 'editor save must build one compact local snapshot');
-assert.match(appSource, /saveCloudProject\(await portableProject\(\)\)/, 'cloud save must materialize a separate portable snapshot');
-assert.match(appSource, /getPortableProject: \(\) => portableProject\(\)/, 'cloud panel must receive a portable project bridge');
+assert.match(appSource, /const cloudData = await cloudProject\(data\);[\s\S]{0,160}saveCloudProject\(cloudData\)/, 'cloud save must upload photos separately and persist a metadata-only project');
+assert.doesNotMatch(appSource, /saveCloudProject\(await portableProject\(\)\)/, 'normal cloud save must not materialize Base64 photos');
+assert.match(appSource, /getCloudProject: async \(\) =>/, 'account panel must receive a bucket-backed cloud project bridge');
+assert.match(appSource, /getPortableProject: \(\) => portableProject\(\)/, 'explicit portable JSON export bridge must remain available');
 assert.match(appSource, /const storeSnapshot = window\.__collageProjectStorage\?\.storeSnapshot;/, 'editor save must resolve the IndexedDB target once');
 assert.match(appSource, /storeSnapshot\(data, \{ source: 'manual-save' \}\)/, 'IndexedDB save must reuse the compact local snapshot');
 assert.match(appSource, /describeSaveResult\(\{ local, indexedDb, cloud, cloudError \}\)/, 'save feedback must reflect confirmed storage outcomes');
