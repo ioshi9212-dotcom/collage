@@ -1,4 +1,5 @@
 import { compactProjectPhotos } from './photoStorage.js';
+import { cloudKeyFromPhoto, photoAssetUrl } from './cloudPhotoModel.js';
 
 export const PHOTO_ASSET_DB_NAME = 'collage-photo-assets-v1';
 export const PHOTO_ASSET_DB_VERSION = 1;
@@ -270,6 +271,15 @@ async function hydrateLibraryItem(item, options) {
     };
   }
 
+  const cloudKey = cloudKeyFromPhoto(photo);
+  if (cloudKey) {
+    return {
+      ...photo,
+      cloudKey,
+      src: photoAssetUrl(cloudKey),
+    };
+  }
+
   return photo;
 }
 
@@ -288,7 +298,22 @@ export async function hydratePhotoProject(prepared, options = {}) {
       const photo = frame?.photo;
       if (!photo || typeof photo !== 'object') return frame;
       const runtime = photo.id != null ? byId.get(String(photo.id)) : byAssetId.get(String(photo.assetId || ''));
-      return runtime ? { ...frame, photo: { ...photo, assetId: runtime.assetId, assetSchema: runtime.assetSchema, src: runtime.src, name: photo.name || runtime.name } } : frame;
+      const cloudKey = cloudKeyFromPhoto(photo) || cloudKeyFromPhoto(runtime);
+      const src = runtime?.src || (cloudKey ? photoAssetUrl(cloudKey) : photo.src);
+      if (!runtime && !src) return frame;
+      return {
+        ...frame,
+        photo: {
+          ...photo,
+          ...(runtime ? {
+            assetId: runtime.assetId,
+            assetSchema: runtime.assetSchema,
+            name: photo.name || runtime.name,
+          } : {}),
+          ...(cloudKey ? { cloudKey } : {}),
+          ...(src ? { src } : {}),
+        },
+      };
     }) : [],
   }));
   const missingPhotoCount = library.filter((item) => !item?.src).length;
