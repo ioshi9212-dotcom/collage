@@ -23,6 +23,26 @@ function PreviewFrame({ definition, index }) {
   );
 }
 
+function PreviewTextZone({ definition }) {
+  if (!definition) return null;
+  return (
+    <span
+      className="collage-preset-preview-text-zone"
+      style={{
+        left: `${definition.x * 100}%`,
+        top: `${definition.y * 100}%`,
+        width: `${definition.width * 100}%`,
+        height: `${definition.height * 100}%`,
+      }}
+    >
+      <b>Текст</b>
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
 export default function CollagePresetPicker({ activeCount = 5, disabled = false, onApply }) {
   const initialCount = COLLAGE_PRESET_COUNTS.includes(Number(activeCount)) ? Number(activeCount) : 5;
   const [count, setCount] = useState(initialCount);
@@ -40,7 +60,7 @@ export default function CollagePresetPicker({ activeCount = 5, disabled = false,
       <div className="collage-preset-picker-heading">
         <div>
           <h3>Готовые композиции</h3>
-          <p>Сетки, журнальные варианты и фото внахлёст.</p>
+          <p>Сетки, фото внахлёст и варианты с местом для надписей.</p>
         </div>
         <b>{count} фото</b>
       </div>
@@ -85,6 +105,7 @@ export default function CollagePresetPicker({ activeCount = 5, disabled = false,
             title={`${preset.name}. ${preset.description}`}
           >
             <span className="collage-preset-preview" aria-hidden="true">
+              <PreviewTextZone definition={preset.textZone} />
               {[...preset.frames]
                 .sort((left, right) => (Number(left.zIndex) || 0) - (Number(right.zIndex) || 0))
                 .map((definition, index) => (
@@ -100,7 +121,7 @@ export default function CollagePresetPicker({ activeCount = 5, disabled = false,
       </div>
 
       {!presets.length && <p className="collage-preset-empty">Для этой категории пока нет вариантов.</p>}
-      <p className="collage-preset-note">Уже вставленные фото сохранятся и распределятся по новым окнам по порядку.</p>
+      <p className="collage-preset-note">Фото сохранятся по порядку. Пунктир «Текст» только показывает свободное место — надпись добавляется отдельно.</p>
     </section>
   );
 }
