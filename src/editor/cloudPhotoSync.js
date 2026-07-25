@@ -8,6 +8,7 @@ import {
 const PHOTO_ASSET_DB_NAME = 'collage-photo-assets-v1';
 const PHOTO_ASSET_STORE_NAME = 'assets';
 export const DEFAULT_CLOUD_PHOTO_CONCURRENCY = 2;
+export const DEFAULT_CLOUD_PHOTO_DELETE_CONCURRENCY = 4;
 
 function positiveInteger(value, fallback) {
   const number = Number(value);
@@ -29,7 +30,11 @@ async function mapWithConcurrency(items, limit, mapper) {
     }
   }
 
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  const workers = await Promise.allSettled(
+    Array.from({ length: workerCount }, () => worker()),
+  );
+  const failed = workers.find((result) => result.status === 'rejected');
+  if (failed) throw failed.reason;
   return results;
 }
 
@@ -95,6 +100,42 @@ export function uploadCloudPhotoBlob(blob, name, options = {}) {
   });
 }
 
+export async function deleteCloudPhotoAssets(keys, options = {}) {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const uniqueKeys = [...new Set(keys || [])].filter(Boolean);
+  const results = await mapWithConcurrency(
+    uniqueKeys,
+    options.maxConcurrent ?? DEFAULT_CLOUD_PHOTO_DELETE_CONCURRENCY,
+    async (key) => {
+      try {
+        const response = await fetchImpl(
+          `/api/photo-assets/file?key=${encodeURIComponent(key)}`,
+          {
+            method: 'DELETE',
+            credentials: 'include',
+          },
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.message || payload?.error || `Ошибка удаления ${response.status}`);
+        }
+        return { ok: true, key };
+      } catch (error) {
+        return { ok: false, error };
+      }
+    }
+  );
+
+  return {
+    deleted: results
+      .filter((result) => result.ok)
+      .map((result) => result.key),
+    failed: results
+      .filter((result) => !result.ok)
+      .map((result) => result.error),
+  };
+}
+
 export async function createCloudPhotoProject(project, options = {}) {
   const library = Array.isArray(project?.library) ? project.library : [];
   const resolvePhotoBlob = options.resolvePhotoBlob ?? ((photo) => defaultResolvePhotoBlob(photo, options));
@@ -120,6 +161,7 @@ export async function createCloudPhotoProject(project, options = {}) {
       const asset = await uploadPhotoBlob(blob, photo?.name || 'Фото', (loaded, bytesTotal) => {
         options.onProgress?.({ finished, total: library.length, name: photo?.name || 'Фото', loaded, bytesTotal });
       });
+      options.onUploaded?.(asset);
       finished += 1;
       options.onProgress?.({ finished, total: library.length, name: photo?.name || 'Фото', loaded: blob.size, bytesTotal: blob.size });
       return normalizeCloudPhoto({

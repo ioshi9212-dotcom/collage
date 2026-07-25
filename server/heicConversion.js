@@ -1,17 +1,28 @@
-import http from 'node:http';
-import { syncBuiltinESMExports } from 'node:module';
 import sharp from 'sharp';
 import { verifySessionToken } from './bucketGateway.js';
+import { createFixedWindowRateLimiter } from './rateLimit.js';
 
 export const DEFAULT_MAX_HEIC_BYTES = 25 * 1024 * 1024;
+export const DEFAULT_MAX_HEIC_PIXELS = 50_000_000;
 const HEIC_TYPES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
 const HEIC_EXTENSION = /\.(?:heic|heif)$/i;
 
-function sendJson(response, status, payload) {
+function positiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+}
+
+function nonNegativeInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : fallback;
+}
+
+function sendJson(response, status, payload, headers = {}) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    ...headers,
   });
   response.end(JSON.stringify(payload));
 }
@@ -35,7 +46,7 @@ async function readBody(request, maxBytes) {
   for await (const chunk of request) {
     total += chunk.length;
     if (total > maxBytes) {
-      const error = new Error('HEIC больше допустимого лимита 25 МБ');
+      const error = new Error('HEIC больше допустимого лимита');
       error.status = 413;
       throw error;
     }
@@ -49,14 +60,75 @@ async function readBody(request, maxBytes) {
   return Buffer.concat(chunks, total);
 }
 
+export function createConcurrencyGate({ maxConcurrent = 1, maxQueued = 2 } = {}) {
+  const concurrency = Math.max(1, Math.floor(Number(maxConcurrent) || 1));
+  const queueLimit = Math.max(0, Math.floor(Number(maxQueued) || 0));
+  const queue = [];
+  let active = 0;
+
+  function release() {
+    active = Math.max(0, active - 1);
+    const next = queue.shift();
+    if (next) {
+      active += 1;
+      next.resolve();
+    }
+  }
+
+  async function acquire() {
+    if (active < concurrency) {
+      active += 1;
+      return;
+    }
+    if (queue.length >= queueLimit) {
+      const error = new Error('Сервер уже обрабатывает другие HEIC-файлы');
+      error.code = 'heic_server_busy';
+      error.status = 503;
+      error.retryAfterSeconds = 10;
+      throw error;
+    }
+    await new Promise((resolve) => queue.push({ resolve }));
+  }
+
+  async function run(operation) {
+    await acquire();
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  return {
+    run,
+    stats: () => ({ active, queued: queue.length, maxConcurrent: concurrency, maxQueued: queueLimit }),
+  };
+}
+
 export async function convertHeicBuffer(input, options = {}) {
   const sharpImpl = options.sharpImpl || sharp;
   const quality = Number.isFinite(Number(options.quality)) ? Number(options.quality) : 92;
+  const maxPixels = positiveInteger(options.maxPixels, DEFAULT_MAX_HEIC_PIXELS);
+  const timeoutSeconds = positiveInteger(options.timeoutSeconds, 30);
   const image = sharpImpl(input, {
-    failOn: 'none',
-    limitInputPixels: 120_000_000,
+    failOn: 'error',
+    limitInputPixels: maxPixels,
     sequentialRead: true,
   });
+
+  if (typeof image.timeout === 'function') image.timeout({ seconds: timeoutSeconds });
+  if (typeof image.metadata === 'function') {
+    const metadata = await image.metadata();
+    const pixels = Math.max(0, Number(metadata?.width) || 0)
+      * Math.max(0, Number(metadata?.height) || 0);
+    if (pixels > maxPixels) {
+      const error = new Error(`Изображение слишком большое: ${pixels} пикселей`);
+      error.code = 'heic_too_many_pixels';
+      error.status = 413;
+      throw error;
+    }
+  }
+
   return image
     .rotate()
     .jpeg({
@@ -67,9 +139,24 @@ export async function convertHeicBuffer(input, options = {}) {
     .toBuffer();
 }
 
-export function createHeicConversionHandler({ env = process.env, sharpImpl = sharp } = {}) {
-  const sessionSecret = String(env.SESSION_SECRET || '');
-  const maxBytes = Math.max(1, Number(env.MAX_HEIC_FILE_BYTES || DEFAULT_MAX_HEIC_BYTES));
+export function createHeicConversionHandler({
+  env = process.env,
+  sharpImpl = sharp,
+  sessionSecret: sessionSecretOverride,
+} = {}) {
+  const sessionSecret = String(sessionSecretOverride ?? env.SESSION_SECRET ?? '');
+  const maxBytes = positiveInteger(env.MAX_HEIC_FILE_BYTES, DEFAULT_MAX_HEIC_BYTES);
+  const maxPixels = positiveInteger(env.MAX_HEIC_INPUT_PIXELS, DEFAULT_MAX_HEIC_PIXELS);
+  const timeoutSeconds = positiveInteger(env.HEIC_CONVERSION_TIMEOUT_SECONDS, 30);
+  const conversionGate = createConcurrencyGate({
+    maxConcurrent: positiveInteger(env.HEIC_MAX_CONCURRENT, 1),
+    maxQueued: nonNegativeInteger(env.HEIC_MAX_QUEUED, 2),
+  });
+  const conversionLimiter = createFixedWindowRateLimiter({
+    windowMs: positiveInteger(env.HEIC_RATE_WINDOW_MS, 60 * 60 * 1000),
+    maxRequests: positiveInteger(env.HEIC_RATE_MAX_REQUESTS, 30),
+    maxTrackedKeys: positiveInteger(env.HEIC_RATE_MAX_TRACKED_USERS, 10_000),
+  });
 
   return async function handleHeicConversion(request, response) {
     const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
@@ -98,13 +185,32 @@ export function createHeicConversionHandler({ env = process.env, sharpImpl = sha
     const announcedSize = Number(request.headers['content-length']);
     if (Number.isFinite(announcedSize) && announcedSize > maxBytes) {
       request.resume?.();
-      sendJson(response, 413, { error: 'heic_too_large', message: 'HEIC больше допустимого лимита 25 МБ.' });
+      sendJson(response, 413, { error: 'heic_too_large', message: 'HEIC больше допустимого лимита.' });
+      return true;
+    }
+
+    const rateLimit = conversionLimiter.consume(`user:${user.id}`);
+    if (!rateLimit.allowed) {
+      request.resume?.();
+      sendJson(
+        response,
+        429,
+        { error: 'heic_rate_limited', message: 'Слишком много HEIC-конвертаций. Подожди и повтори.' },
+        { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      );
       return true;
     }
 
     try {
-      const input = await readBody(request, maxBytes);
-      const output = await convertHeicBuffer(input, { sharpImpl, quality: 92 });
+      const output = await conversionGate.run(async () => {
+        const input = await readBody(request, maxBytes);
+        return convertHeicBuffer(input, {
+          sharpImpl,
+          quality: 92,
+          maxPixels,
+          timeoutSeconds,
+        });
+      });
       response.writeHead(200, {
         'Content-Type': 'image/jpeg',
         'Content-Length': String(output.length),
@@ -114,43 +220,14 @@ export function createHeicConversionHandler({ env = process.env, sharpImpl = sha
       });
       response.end(output);
     } catch (error) {
-      console.error('HEIC conversion failed', error);
+      request.resume?.();
+      if (error?.code !== 'heic_server_busy') console.error('HEIC conversion failed', error);
       sendJson(response, Number(error?.status) || 422, {
-        error: 'heic_conversion_failed',
+        error: error?.code || 'heic_conversion_failed',
         message: `Не удалось преобразовать HEIC: ${String(error?.message || 'неподдерживаемый файл').slice(0, 220)}`,
-      });
+      }, error?.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : {});
     }
 
     return true;
   };
-}
-
-export function installHeicConversionPreload(options = {}) {
-  const originalCreateServer = http.createServer;
-  const handleHeicConversion = createHeicConversionHandler(options);
-
-  http.createServer = function createServerWithHeicConversion(...args) {
-    const listenerIndex = typeof args[0] === 'function' ? 0 : 1;
-    const originalListener = args[listenerIndex];
-    if (typeof originalListener !== 'function') return originalCreateServer.apply(this, args);
-
-    args[listenerIndex] = function wrappedRequestListener(request, response) {
-      Promise.resolve(handleHeicConversion(request, response))
-        .then((handled) => {
-          if (!handled) originalListener(request, response);
-        })
-        .catch((error) => {
-          console.error('HEIC route failed', error);
-          if (!response.headersSent) {
-            sendJson(response, 500, { error: 'heic_route_failed', message: 'Не удалось обработать HEIC.' });
-          } else {
-            response.destroy(error);
-          }
-        });
-    };
-
-    return originalCreateServer.apply(this, args);
-  };
-
-  syncBuiltinESMExports();
 }

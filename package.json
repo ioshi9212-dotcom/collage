@@ -4,33 +4,33 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": ">=22.12 <23"
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
-    "test": "node src/editor/layout.test.mjs && node src/editor/printGeometry.test.mjs && node src/editor/printFiles.test.mjs && node src/editor/printFilesIntegration.test.mjs && node src/editor/bookletPrint.test.mjs && node src/editor/bookletPrintIntegration.test.mjs && node src/editor/previewFit.test.mjs && node src/editor/previewFitIntegration.test.mjs && node src/editor/printGeometryIntegration.test.mjs && node src/editor/font-assets.test.mjs && node src/editor/photoStorage.test.mjs && node src/editor/photoAssets.test.mjs && node src/editor/photoAssetCleanup.test.mjs && node src/editor/project-storage.test.mjs && node src/editor/imageCache.test.mjs && node src/editor/photoThumbnails.test.mjs && node src/editor/photoMemoryIntegration.test.mjs && node src/editor/photoAssetIntegration.test.mjs && node src/editor/photoAssetCleanupIntegration.test.mjs && node src/editor/projectLoad.test.mjs && node src/editor/reliability.test.mjs && node src/editor/photoImportReport.test.mjs && node src/editor/heicSupport.test.mjs && node src/editor/localHeicUploadBridge.test.mjs && node src/editor/appIntegration.test.mjs && node src/editor/extraLayersSafety.test.mjs && node src/editor/templateRecords.test.mjs && node src/editor/layerSafetyIntegration.test.mjs && node server/auth.test.mjs && node server/sessionSecret.test.mjs && node server/sessionSecretIntegration.test.mjs && node server/projectQuotas.test.mjs && node server/requestBody.test.mjs && node server/staticFiles.test.mjs && node server/bucketGateway.test.mjs && node server/heicConversion.test.mjs && node public/cloud-auth.test.mjs && node public/cloud-auth-cloud-sync.test.mjs && node src/editor/cloudPhotoModel.test.mjs && node src/editor/cloudPhotoSync.test.mjs && node src/editor/extraLayers.test.mjs && node src/editor/pageModel.test.mjs && node src/editor/frameModel.test.mjs && node src/editor/freeFrameActions.test.mjs && node src/editor/frameSnapping.test.mjs && node src/editor/collagePresetCatalog.test.mjs",
-    "preview": "node --import ./server/heicConversionPreload.js server.js",
-    "start": "node --import ./server/heicConversionPreload.js server.js",
+    "build": "vite build && node scripts/compress-dist.mjs",
+    "test": "node src/editor/layout.test.mjs && node src/editor/printGeometry.test.mjs && node src/editor/printFiles.test.mjs && node src/editor/printFilesIntegration.test.mjs && node src/editor/bookletPrint.test.mjs && node src/editor/bookletPrintIntegration.test.mjs && node src/editor/previewFit.test.mjs && node src/editor/previewFitIntegration.test.mjs && node src/editor/printGeometryIntegration.test.mjs && node src/editor/font-assets.test.mjs && node src/editor/photoStorage.test.mjs && node src/editor/photoAssets.test.mjs && node src/editor/photoAssetCleanup.test.mjs && node src/editor/project-storage.test.mjs && node src/editor/imageCache.test.mjs && node src/editor/photoThumbnails.test.mjs && node src/editor/photoMemoryIntegration.test.mjs && node src/editor/photoAssetIntegration.test.mjs && node src/editor/photoAssetCleanupIntegration.test.mjs && node src/editor/projectLoad.test.mjs && node src/editor/reliability.test.mjs && node src/editor/photoImportReport.test.mjs && node src/editor/heicSupport.test.mjs && node src/editor/localHeicUploadBridge.test.mjs && node src/editor/appIntegration.test.mjs && node src/editor/extraLayersSafety.test.mjs && node src/editor/templateRecords.test.mjs && node src/editor/layerSafetyIntegration.test.mjs && node server/auth.test.mjs && node server/rateLimit.test.mjs && node server/securityHeaders.test.mjs && node server/sessionSecret.test.mjs && node server/sessionSecretIntegration.test.mjs && node server/projectQuotas.test.mjs && node server/photoAssetStore.test.mjs && node server/requestBody.test.mjs && node server/staticFiles.test.mjs && node server/bucketGateway.test.mjs && node server/heicConversion.test.mjs && node tests/cloud-auth.test.mjs && node tests/cloud-auth-cloud-sync.test.mjs && node src/editor/cloudPhotoModel.test.mjs && node src/editor/cloudPhotoSync.test.mjs && node src/editor/extraLayers.test.mjs && node src/editor/pageModel.test.mjs && node src/editor/frameModel.test.mjs && node src/editor/freeFrameActions.test.mjs && node src/editor/frameSnapping.test.mjs && node src/editor/collagePresetCatalog.test.mjs",
+    "preview": "node server.js",
+    "start": "node server.js",
     "lint": "eslint . --max-warnings=0",
     "e2e": "playwright test"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
     "heic-to": "1.5.2",
     "konva": "^9.3.18",
     "pg": "^8.13.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-konva": "^18.2.10",
-    "sharp": "0.34.3",
-    "vite": "^5.4.11"
+    "sharp": "0.35.3"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@playwright/test": "1.55.0",
+    "@playwright/test": "1.62.0",
+    "@vitejs/plugin-react": "6.0.4",
     "eslint": "10.7.0",
     "eslint-plugin-react-hooks": "7.1.1",
-    "globals": "17.7.0"
+    "globals": "17.7.0",
+    "vite": "8.1.5"
   }
 }

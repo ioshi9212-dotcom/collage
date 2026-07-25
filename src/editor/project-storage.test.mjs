@@ -150,7 +150,8 @@ const saveClickBlock = source.match(/if \(label === 'Сохранить'\) \{([\
 assert.ok(saveClickBlock, 'storage click listener must keep a save branch');
 assert.doesNotMatch(saveClickBlock, /saveFullProjectSnapshot/, 'storage click listener must not duplicate the editor save');
 assert.match(appSource, /const data = project\(\);[\s\S]{0,900}saveLocalProject\(\{ silent: true, data \}\)/, 'editor save must build one compact local snapshot');
-assert.match(appSource, /const cloudData = await cloudProject\(data\);[\s\S]{0,160}saveCloudProject\(cloudData\)/, 'cloud save must upload photos separately and persist a metadata-only project');
+assert.match(appSource, /cloudData = await cloudProject\(data,[\s\S]{0,900}saveCloudProject\(cloudData\)/, 'cloud save must upload photos separately and persist a metadata-only project');
+assert.match(appSource, /rememberCloudPhotoMetadata\(data, cloudData,[\s\S]{0,500}saveCloudProject\(cloudData\)/, 'uploaded cloud keys must be remembered before the project request so retries do not duplicate photos');
 assert.doesNotMatch(appSource, /saveCloudProject\(await portableProject\(\)\)/, 'normal cloud save must not materialize Base64 photos');
 assert.match(appSource, /getCloudProject: async \(\) =>/, 'account panel must receive a bucket-backed cloud project bridge');
 assert.match(appSource, /getPortableProject: \(\) => portableProject\(\)/, 'explicit portable JSON export bridge must remain available');

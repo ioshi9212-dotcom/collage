@@ -64,6 +64,7 @@ export default [
     files: [
       'server.js',
       'server/**/*.{js,mjs}',
+      'scripts/**/*.mjs',
       '**/*.test.mjs',
       'e2e/**/*.{js,mjs}',
       'playwright.config.{js,mjs}',

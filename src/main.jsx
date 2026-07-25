@@ -27,6 +27,12 @@ import { installInspectorContextBehavior } from './editor/inspectorContextBehavi
 import { installMobileEditorBehavior } from './editor/mobileEditorBehavior';
 import App from './AppLive.jsx';
 
+try {
+  localStorage.setItem('collage-cloud-panel-collapsed', '1');
+} catch {
+  // The editor remains usable when storage is blocked by the browser.
+}
+
 const MOBILE_CANVAS_QUERY = '(max-width: 760px), (max-width: 920px) and (pointer: coarse) and (orientation: landscape)';
 
 function configureCanvasPerformance() {

@@ -9,6 +9,12 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:4173',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    ...(process.env.E2E_CHROMIUM_PATH ? {
+      launchOptions: {
+        executablePath: process.env.E2E_CHROMIUM_PATH,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      },
+    } : {}),
   },
   webServer: {
     command: 'npm run build && npm run preview',

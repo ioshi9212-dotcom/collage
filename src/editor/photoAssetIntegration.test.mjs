@@ -17,7 +17,7 @@ assert.match(appSource, /return createLocalPhotoProject\(liveProject\(\)\)/);
 assert.match(appSource, /async function portableProject\(\)/);
 assert.match(appSource, /return createPortablePhotoProject\(liveProject\(\)\)/, 'explicit portable JSON must retain embedded photo support');
 assert.match(appSource, /getPortableProject: \(\) => portableProject\(\)/);
-assert.match(appSource, /async function cloudProject\(data = project\(\)\)/);
+assert.match(appSource, /async function cloudProject\(data = project\(\), options = \{\}\)/);
 assert.match(appSource, /return createCloudPhotoProject\(data, \{/);
 assert.match(appSource, /getCloudProject: async \(\) =>/);
 assert.match(appSource, /async function applyProjectData\(data, message\)/);
@@ -26,7 +26,7 @@ assert.match(appSource, /releaseUnusedPhotoRuntimeUrls\(runtimePrepared\.library
 assert.match(appSource, /async function downloadProjectJson\(\)/);
 assert.match(appSource, /downloadProjectJson[\s\S]{0,140}>Скачать JSON/);
 assert.match(appSource, /const canSaveCloud = window\.__collageCloudAuth\?\.isAuthenticated\?\.\(\) === true/);
-assert.match(appSource, /if \(canSaveCloud\) \{[\s\S]{0,240}const cloudData = await cloudProject\(data\)/, 'logged-out saves must remain local and authenticated saves must use Bucket metadata');
+assert.match(appSource, /if \(canSaveCloud\) \{[\s\S]{0,320}cloudData = await cloudProject\(data,/, 'logged-out saves must remain local and authenticated saves must use Bucket metadata');
 assert.doesNotMatch(appSource, /saveCloudProject\(await portableProject\(\)\)/, 'normal saves must not materialize Base64 photos');
 
 assert.match(reliabilitySource, /import \{ createLocalPhotoProject \} from '\.\/photoAssets\.js'/);

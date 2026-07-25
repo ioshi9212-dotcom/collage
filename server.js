@@ -1,9 +1,10 @@
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, statSync } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 import { createServer } from 'node:http';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import pg from 'pg';
 import {
+  clientIp,
   createAuthRateLimiter,
   hashPassword,
   validateAuthInput,
@@ -18,23 +19,49 @@ import {
 } from './server/projectQuotas.js';
 import { RequestBodyError, readJsonBody } from './server/requestBody.js';
 import { resolveStaticRequest } from './server/staticFiles.js';
-import { createPhotoAssetRequestHandler } from './server/bucketGateway.js';
+import { createPhotoAssetGateway } from './server/bucketGateway.js';
+import {
+  createPostgresPhotoAssetStore,
+  extractCloudPhotoAssets,
+  extractCloudPhotoKeys,
+  getPhotoAssetLimits,
+} from './server/photoAssetStore.js';
+import { createFixedWindowRateLimiter } from './server/rateLimit.js';
+import { createHeicConversionHandler } from './server/heicConversion.js';
+import { applySecurityHeaders } from './server/securityHeaders.js';
 import { describeSessionSecretState, resolveSessionSecret } from './server/sessionSecret.js';
 
 const { Pool } = pg;
-const port = Number(process.env.PORT || 3000);
+
+function positiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+}
+
+const port = positiveInteger(process.env.PORT, 3000);
 const host = '0.0.0.0';
 const distDir = resolve(process.cwd(), 'dist');
 const isProduction = process.env.NODE_ENV === 'production';
 const configuredSessionSecret = process.env.SESSION_SECRET || '';
 const databaseUrl = process.env.DATABASE_URL || '';
-const jsonLimitBytes = Number(process.env.JSON_LIMIT_BYTES || 60 * 1024 * 1024);
-const authJsonLimitBytes = Number(process.env.AUTH_JSON_LIMIT_BYTES || 16 * 1024);
+const jsonLimitBytes = positiveInteger(process.env.JSON_LIMIT_BYTES, 60 * 1024 * 1024);
+const authJsonLimitBytes = positiveInteger(process.env.AUTH_JSON_LIMIT_BYTES, 16 * 1024);
+const photoBackfillBatchSize = positiveInteger(process.env.PHOTO_BACKFILL_BATCH_SIZE, 5);
+const registrationEnabled = process.env.REGISTRATION_ENABLED !== 'false';
 const projectQuotaLimits = getProjectQuotaLimits({
   MAX_PROJECTS_PER_USER: process.env.MAX_PROJECTS_PER_USER,
   MAX_USER_STORAGE_BYTES: process.env.MAX_USER_STORAGE_BYTES,
 });
-const publicNoCacheFiles = new Set(['cloud-auth.js', 'cloud-auth.css', 'album-layers.js', 'album-layers.css']);
+const photoAssetLimits = getPhotoAssetLimits(process.env);
+const publicNoCacheFiles = new Set([
+  'cloud-auth.js',
+  'cloud-auth.css',
+  'project-storage.js',
+  'local-font-aliases.css',
+  'album-layers.js',
+  'album-layers.css',
+]);
+const compressibleStaticExtensions = new Set(['.css', '.html', '.js', '.json', '.mjs', '.svg', '.txt', '.xml']);
 
 let pool = null;
 let dbReadyPromise = null;
@@ -59,21 +86,38 @@ if (sessionSecretState.source === 'ephemeral' || !sessionSecretState.recommended
 }
 
 const effectiveSessionSecret = sessionSecretState.secret;
-const handlePhotoAssetRequest = createPhotoAssetRequestHandler({
+const photoAssetStore = pool
+  ? createPostgresPhotoAssetStore({ pool, limits: photoAssetLimits })
+  : null;
+const photoAssetGateway = createPhotoAssetGateway({
+  env: process.env,
+  sessionSecret: effectiveSessionSecret,
+  assetStore: photoAssetStore,
+  requireAssetStore: true,
+});
+const handleHeicConversion = createHeicConversionHandler({
   env: process.env,
   sessionSecret: effectiveSessionSecret,
 });
 
-const AUTH_WINDOW_MS = Number(process.env.AUTH_WINDOW_MS || 15 * 60 * 1000);
-const AUTH_MAX_ATTEMPTS = Number(process.env.AUTH_MAX_ATTEMPTS || 20);
-const AUTH_BLOCK_MS = Number(process.env.AUTH_BLOCK_MS || 15 * 60 * 1000);
-const AUTH_MAX_TRACKED_KEYS = Number(process.env.AUTH_MAX_TRACKED_KEYS || 10_000);
+const AUTH_WINDOW_MS = positiveInteger(process.env.AUTH_WINDOW_MS, 15 * 60 * 1000);
+const AUTH_MAX_ATTEMPTS = positiveInteger(process.env.AUTH_MAX_ATTEMPTS, 20);
+const AUTH_BLOCK_MS = positiveInteger(process.env.AUTH_BLOCK_MS, 15 * 60 * 1000);
+const AUTH_MAX_TRACKED_KEYS = positiveInteger(process.env.AUTH_MAX_TRACKED_KEYS, 10_000);
+const trustProxy = process.env.TRUST_PROXY
+  ? process.env.TRUST_PROXY === 'true'
+  : Boolean(process.env.RAILWAY_ENVIRONMENT);
 const authRateLimiter = createAuthRateLimiter({
   windowMs: AUTH_WINDOW_MS,
   maxAttempts: AUTH_MAX_ATTEMPTS,
   blockMs: AUTH_BLOCK_MS,
   maxTrackedKeys: AUTH_MAX_TRACKED_KEYS,
-  trustProxy: process.env.TRUST_PROXY === 'true',
+  trustProxy,
+});
+const registrationRateLimiter = createFixedWindowRateLimiter({
+  windowMs: positiveInteger(process.env.REGISTER_WINDOW_MS, 60 * 60 * 1000),
+  maxRequests: positiveInteger(process.env.REGISTER_MAX_REQUESTS, 5),
+  maxTrackedKeys: AUTH_MAX_TRACKED_KEYS,
 });
 
 const mimeTypes = {
@@ -110,14 +154,56 @@ function cacheControlFor(filePath) {
   return 'public, max-age=31536000, immutable';
 }
 
-function sendFile(response, filePath) {
+function encodingQuality(header, encoding) {
+  let wildcard = 0;
+  for (const part of String(header || '').toLowerCase().split(',')) {
+    const [name, ...parameters] = part.trim().split(';');
+    const qualityParameter = parameters.find((parameter) => parameter.trim().startsWith('q='));
+    const quality = qualityParameter ? Number(qualityParameter.trim().slice(2)) : 1;
+    const normalizedQuality = Number.isFinite(quality) ? Math.max(0, Math.min(1, quality)) : 0;
+    if (name === encoding) return normalizedQuality;
+    if (name === '*') wildcard = normalizedQuality;
+  }
+  return wildcard;
+}
+
+function selectStaticVariant(request, filePath) {
+  if (!compressibleStaticExtensions.has(extname(filePath).toLowerCase())) {
+    return { path: filePath, encoding: '' };
+  }
+
+  const accepted = request.headers['accept-encoding'];
+  const variants = [
+    { path: `${filePath}.br`, encoding: 'br', quality: encodingQuality(accepted, 'br'), preference: 2 },
+    { path: `${filePath}.gz`, encoding: 'gzip', quality: encodingQuality(accepted, 'gzip'), preference: 1 },
+  ]
+    .filter((variant) => variant.quality > 0 && existsSync(variant.path))
+    .sort((left, right) => right.quality - left.quality || right.preference - left.preference);
+  if (variants[0]) return { path: variants[0].path, encoding: variants[0].encoding };
+
+  return { path: filePath, encoding: '' };
+}
+
+function sendFile(request, response, filePath) {
   const extension = extname(filePath).toLowerCase();
-  response.writeHead(200, {
+  const variant = selectStaticVariant(request, filePath);
+  const headers = {
     'Content-Type': mimeTypes[extension] || 'application/octet-stream',
+    'Content-Length': String(statSync(variant.path).size),
     'Cache-Control': cacheControlFor(filePath),
     'X-Content-Type-Options': 'nosniff',
+  };
+  if (compressibleStaticExtensions.has(extension)) headers.Vary = 'Accept-Encoding';
+  if (variant.encoding) headers['Content-Encoding'] = variant.encoding;
+
+  response.writeHead(200, {
+    ...headers,
   });
-  createReadStream(filePath).pipe(response);
+  if (request.method === 'HEAD') {
+    response.end();
+    return;
+  }
+  createReadStream(variant.path).pipe(response);
 }
 
 function parseCookies(cookieHeader = '') {
@@ -181,6 +267,43 @@ function clearSessionCookie() {
   return `collage_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
 }
 
+async function backfillLegacyPhotoAssets() {
+  if (!photoAssetStore) return;
+  let cursorUserId = 0;
+  let cursorProjectId = '';
+
+  while (true) {
+    const legacyProjects = await pool.query(
+      `SELECT id, user_id, data_json
+         FROM projects
+        WHERE POSITION('"cloudKey"' IN data_json::text) > 0
+          AND (
+            user_id > $1
+            OR (user_id = $1 AND id > $2)
+          )
+        ORDER BY user_id, id
+        LIMIT $3`,
+      [cursorUserId, cursorProjectId, photoBackfillBatchSize],
+    );
+    if (!legacyProjects.rows.length) return;
+
+    const assetsByUser = new Map();
+    for (const project of legacyProjects.rows) {
+      const assets = assetsByUser.get(project.user_id) || [];
+      assets.push(...extractCloudPhotoAssets(project.data_json, project.user_id));
+      assetsByUser.set(project.user_id, assets);
+    }
+    for (const [userId, assets] of assetsByUser.entries()) {
+      await photoAssetStore.registerLegacyBatch({ userId, assets });
+    }
+
+    const lastProject = legacyProjects.rows.at(-1);
+    cursorUserId = Number(lastProject.user_id);
+    cursorProjectId = String(lastProject.id);
+    if (legacyProjects.rows.length < photoBackfillBatchSize) return;
+  }
+}
+
 async function ensureDb() {
   if (!pool) throw new Error('DATABASE_URL is not configured');
   if (!dbReadyPromise) {
@@ -206,7 +329,28 @@ async function ensureDb() {
       UPDATE projects SET data_bytes = OCTET_LENGTH(data_json::text) WHERE data_bytes = 0;
 
       CREATE INDEX IF NOT EXISTS projects_user_updated_idx ON projects(user_id, updated_at DESC);
-    `).catch((error) => {
+
+      CREATE TABLE IF NOT EXISTS photo_assets (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        object_key TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL DEFAULT 'Фото',
+        content_type TEXT NOT NULL,
+        size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0),
+        status TEXT NOT NULL CHECK (status IN ('pending', 'ready')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS photo_assets_user_status_idx
+        ON photo_assets(user_id, status, updated_at DESC);
+    `).then(async () => {
+      try {
+        await backfillLegacyPhotoAssets();
+      } catch (error) {
+        console.warn('Legacy photo asset accounting could not be backfilled', error);
+      }
+    }).catch((error) => {
       dbReadyPromise = null;
       throw error;
     });
@@ -231,6 +375,23 @@ async function requireUser(request, response) {
     return null;
   }
   return user;
+}
+
+async function touchProjectPhotoAssets(userId, data) {
+  if (!photoAssetStore) return;
+  const keys = extractCloudPhotoKeys(data, userId);
+  await photoAssetStore.touchKeys({ userId, keys })
+    .catch((error) => console.warn('Photo asset references could not be refreshed', error));
+}
+
+async function cleanupRemovedProjectPhotos(userId, previousData, nextData = null) {
+  if (!photoAssetStore || !previousData) return;
+  const previousKeys = extractCloudPhotoKeys(previousData, userId);
+  const retainedKeys = new Set(extractCloudPhotoKeys(nextData, userId));
+  const candidates = previousKeys.filter((key) => !retainedKeys.has(key));
+  if (!candidates.length) return;
+  const cleanup = await photoAssetGateway.cleanupUnreferenced({ userId, keys: candidates });
+  if (cleanup.failed) console.warn('Some unreferenced cloud photos could not be removed', cleanup);
 }
 
 function sendProjectMutationError(response, error) {
@@ -268,6 +429,10 @@ async function handleApi(request, response) {
         sessionSecretSource: sessionSecretState.source,
         recommendedStrength: sessionSecretState.recommendedStrength,
       },
+      photos: {
+        bucketConfigured: photoAssetGateway.config.configured,
+        quotaEnforced: Boolean(photoAssetStore),
+      },
     });
     return true;
   }
@@ -300,6 +465,25 @@ async function handleApi(request, response) {
     }
 
     if (path === '/api/auth/register') {
+      if (!registrationEnabled) {
+        sendJson(response, 403, {
+          error: 'Регистрация временно закрыта. Используй уже созданный аккаунт.',
+        });
+        return true;
+      }
+
+      const registrationKey = `ip:${clientIp(request, { trustProxy })}`;
+      const registrationLimit = registrationRateLimiter.consume(registrationKey);
+      if (!registrationLimit.allowed) {
+        sendJson(
+          response,
+          429,
+          { error: 'Слишком много регистраций. Попробуй позже.' },
+          { 'Retry-After': String(registrationLimit.retryAfterSeconds) },
+        );
+        return true;
+      }
+
       try {
         const passwordHash = await hashPassword(password);
         const created = await pool.query(
@@ -364,6 +548,7 @@ async function handleApi(request, response) {
         data,
         limits: projectQuotaLimits,
       });
+      await touchProjectPhotoAssets(user.id, data);
       sendJson(response, 200, result);
     } catch (error) {
       if (!sendProjectMutationError(response, error)) throw error;
@@ -388,6 +573,10 @@ async function handleApi(request, response) {
     }
 
     if (method === 'PUT') {
+      const previous = await pool.query(
+        'SELECT data_json AS data FROM projects WHERE id = $1 AND user_id = $2',
+        [projectId, user.id],
+      );
       const body = await readBody(request);
       const title = String(body.title || 'Без названия').trim().slice(0, 120) || 'Без названия';
       const data = body.data || {};
@@ -401,6 +590,8 @@ async function handleApi(request, response) {
           data,
           limits: projectQuotaLimits,
         });
+        await touchProjectPhotoAssets(user.id, data);
+        await cleanupRemovedProjectPhotos(user.id, previous.rows[0]?.data, data);
         sendJson(response, 200, result);
       } catch (error) {
         if (!sendProjectMutationError(response, error)) throw error;
@@ -409,7 +600,11 @@ async function handleApi(request, response) {
     }
 
     if (method === 'DELETE') {
-      await pool.query('DELETE FROM projects WHERE id = $1 AND user_id = $2', [projectId, user.id]);
+      const deleted = await pool.query(
+        'DELETE FROM projects WHERE id = $1 AND user_id = $2 RETURNING data_json AS data',
+        [projectId, user.id],
+      );
+      await cleanupRemovedProjectPhotos(user.id, deleted.rows[0]?.data);
       sendJson(response, 200, { ok: true });
       return true;
     }
@@ -420,9 +615,16 @@ async function handleApi(request, response) {
 }
 
 const server = createServer(async (request, response) => {
+  applySecurityHeaders(response, { isProduction });
   try {
+    if ((request.url || '').startsWith('/api/heic/')) {
+      const handled = await handleHeicConversion(request, response);
+      if (handled) return;
+    }
+
     if ((request.url || '').startsWith('/api/photo-assets/')) {
-      const handled = await handlePhotoAssetRequest(request, response);
+      if (pool) await ensureDb();
+      const handled = await photoAssetGateway.handle(request, response);
       if (handled) return;
     }
 
@@ -460,7 +662,7 @@ const server = createServer(async (request, response) => {
   });
 
   if (staticResult.kind === 'file' || staticResult.kind === 'spa') {
-    sendFile(response, staticResult.path);
+    sendFile(request, response, staticResult.path);
     return;
   }
 
