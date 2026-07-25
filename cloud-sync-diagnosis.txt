@@ -1,0 +1,611 @@
+===== node src/editor/cloudPhotoSync.test.mjs =====
+cloud photo sync checks passed
+exit=0
+===== node server/bucketGateway.test.mjs =====
+bucketGateway tests passed
+exit=0
+===== node public/cloud-auth-cloud-sync.test.mjs =====
+cloud auth bucket save checks passed
+exit=0
+===== node public/cloud-auth.test.mjs =====
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /typeof bridge\.getPortableProject === 'function'/. Input:
+
+'(() => {\n' +
+  "  const CURRENT_STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';\n" +
+  "  const LEGACY_PREFIX = 'collage-creator-album';\n" +
+  "  const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';\n" +
+  "  const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';\n" +
+  '  const MAX_CLOUD_PROJECT_BYTES = 50 * 1024 * 1024;\n' +
+  '\n' +
+  '  const state = {\n' +
+  '    user: null,\n' +
+  '    projects: [],\n' +
+  "    collapsed: localStorage.getItem('collage-cloud-panel-collapsed') === '1',\n" +
+  '    busy: false,\n' +
+  '  };\n' +
+  '\n' +
+  '  window.__collageCloudAuth = {\n' +
+  '    isAuthenticated: () => Boolean(state.user),\n' +
+  '  };\n' +
+  '\n' +
+  '  function el(tag, attrs = {}, children = []) {\n' +
+  '    const node = document.createElement(tag);\n' +
+  '    Object.entries(attrs).forEach(([key, value]) => {\n' +
+  "      if (key === 'class') node.className = value;\n" +
+  "      else if (key === 'text') node.textContent = value;\n" +
+  "      else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2), value);\n" +
+  '      else if (value !== undefined && value !== null) node.setAttribute(key, value);\n' +
+  '    });\n' +
+  '    children.forEach((child) => node.append(child));\n' +
+  '    return node;\n' +
+  '  }\n' +
+  '\n' +
+  '  function friendlyApiError(payload) {\n' +
+  "    if (payload?.error === 'database_not_configured' || String(payload?.message || '').includes('DATABASE_URL')) {\n" +
+  "      return 'База не подключена: в Railway у сервиса нет DATABASE_URL. Добавь Postgres к этому проекту и сделай Redeploy.';\n" +
+  '    }\n' +
+  "    return payload?.message || payload?.error || 'Ошибка запроса';\n" +
+  '  }\n' +
+  '\n' +
+  '  function byteLength(text) {\n' +
+  "    return new Blob([String(text ?? '')]).size;\n" +
+  '  }\n' +
+  '\n' +
+  '  function formatBytes(bytes) {\n' +
+  "    if (!Number.isFinite(bytes)) return '';\n" +
+  '    if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} КБ`;\n' +
+  '    return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;\n' +
+  '  }\n' +
+  '\n' +
+  '  async function api(path, options = {}) {\n' +
+  '    const response = await fetch(path, {\n' +
+  "      credentials: 'include',\n" +
+  "      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },\n" +
+  '      ...options,\n' +
+  '    });\n' +
+  '    const payload = await response.json().catch(() => ({}));\n' +
+  '    if (!response.ok) throw new Error(friendlyApiError(payload));\n' +
+  '    return payload;\n' +
+  '  }\n' +
+  '\n' +
+  '  function setStatus(text) {\n' +
+  "    const status = document.querySelector('.cloud-auth-status');\n" +
+  "    if (status) status.textContent = text || '';\n" +
+  '  }\n' +
+  '\n' +
+  '  function formatDate(value) {\n' +
+  "    if (!value) return '';\n" +
+  '    try {\n' +
+  "      return new Date(value).toLocaleString('ru-RU', {\n" +
+  "        day: '2-digit',\n" +
+  "        month: '2-digit',\n" +
+  "        hour: '2-digit',\n" +
+  "        minute: '2-digit',\n" +
+  '      });\n' +
+  '    } catch {\n' +
+  "      return '';\n" +
+  '    }\n' +
+  '  }\n' +
+  '\n' +
+  '  function projectKeys() {\n' +
+  '    return Object.keys(localStorage).filter((key) => key.startsWith(LEGACY_PREFIX));\n' +
+  '  }\n' +
+  '\n' +
+  '  function getLatestLocalProject() {\n' +
+  '    const parsed = projectKeys()\n' +
+  '      .map((key) => {\n' +
+  '        try {\n' +
+  '          const data = JSON.parse(localStorage.getItem(key));\n' +
+  "          return { key, data, savedAt: Date.parse(data.savedAt || '') || 0 };\n" +
+  '        } catch {\n' +
+  '          return null;\n' +
+  '        }\n' +
+  '      })\n' +
+  '      .filter(Boolean)\n' +
+  '      .sort((a, b) => b.savedAt - a.savedAt);\n' +
+  '\n' +
+  '    const currentRaw = localStorage.getItem(CURRENT_STORAGE_KEY);\n' +
+  '    if (currentRaw) {\n' +
+  '      try {\n' +
+  '        const current = JSON.parse(currentRaw);\n' +
+  '        return { key: CURRENT_STORAGE_KEY, data: current };\n' +
+  '      } catch {\n' +
+  '        // fall through to latest parsed project\n' +
+  '      }\n' +
+  '    }\n' +
+  '\n' +
+  '    return parsed[0] || null;\n' +
+  '  }\n' +
+  '\n' +
+  '  async function getEditorProject() {\n' +
+  '    const bridge = window.__collageApp;\n' +
+  "    if (bridge && typeof bridge.getCloudProject === 'function') {\n" +
+  '      const data = await bridge.getCloudProject();\n' +
+  "      if (data && typeof data === 'object') return { source: 'bridge', data };\n" +
+  '    }\n' +
+  "    if (bridge && typeof bridge.getProject === 'function') {\n" +
+  '      const data = bridge.getProject();\n' +
+  "      if (data && typeof data === 'object') return { source: 'bridge', data };\n" +
+  '    }\n' +
+  '\n' +
+  '    const localProject = getLatestLocalProject();\n' +
+  '    if (localProject?.data) {\n' +
+  '      const requiresAssets = Array.isArray(localProject.data.library)\n' +
+  '        && localProject.data.library.some((photo) => photo?.assetId && !photo?.src);\n' +
+  "      if (requiresAssets) throw new Error('Редактор ещё загружается. Повтори сохранение через несколько секунд.');\n" +
+  "      return { source: 'localStorage', data: localProject.data };\n" +
+  '    }\n' +
+  '    return null;\n' +
+  '  }\n' +
+  '\n' +
+  '  function guessTitle(data) {\n' +
+  '    const savedTitle = localStorage.getItem(CURRENT_PROJECT_TITLE_KEY);\n' +
+  '    if (savedTitle) return savedTitle;\n' +
+  '    const pages = Array.isArray(data?.pages) ? data.pages.length : 0;\n' +
+  "    const date = new Date().toLocaleDateString('ru-RU');\n" +
+  '    return pages ? `Альбом ${date} · ${pages} стр.` : `Альбом ${date}`;\n' +
+  '  }\n' +
+  '\n' +
+  '  async function loadMe() {\n' +
+  '    try {\n' +
+  "      const result = await api('/api/me');\n" +
+  '      state.user = result.user || null;\n' +
+  '      if (state.user) await loadProjects(false);\n' +
+  '    } catch (error) {\n' +
+  '      state.user = null;\n' +
+  '      setTimeout(() => setStatus(error.message), 0);\n' +
+  '    }\n' +
+  '    render();\n' +
+  '  }\n' +
+  '\n' +
+  '  async function auth(mode) {\n' +
+  "    const email = document.querySelector('.cloud-email')?.value || '';\n" +
+  "    const password = document.querySelector('.cloud-password')?.value || '';\n" +
+  "    setStatus(mode === 'login' ? 'Вхожу…' : 'Регистрирую…');\n" +
+  '    try {\n' +
+  '      const result = await api(`/api/auth/${mode}`, {\n' +
+  "        method: 'POST',\n" +
+  '        body: JSON.stringify({ email, password }),\n' +
+  '      });\n' +
+  '      state.user = result.user;\n' +
+  '      await loadProjects(false);\n' +
+  "      setStatus('Готово');\n" +
+  '      render();\n' +
+  '    } catch (error) {\n' +
+  '      setStatus(error.message);\n' +
+  '    }\n' +
+  '  }\n' +
+  '\n' +
+  '  async function logout() {\n' +
+  "    await api('/api/auth/logout', { method: 'POST', body: '{}' }).catch(() => {});\n" +
+  '    state.user = null;\n' +
+  '    state.projects = [];\n' +
+  '    localStorage.removeItem(CURRENT_PROJECT_ID_KEY);\n' +
+  '    localStorage.removeItem(CURRENT_PROJECT_TITLE_KEY);\n' +
+  '    render();\n' +
+  '  }\n' +
+  '\n' +
+  '  async function loadProjects(shouldRender = true) {\n' +
+  '    if (!state.user) return;\n' +
+  "    const result = await api('/api/projects');\n" +
+  '    state.projects = result.projects || [];\n' +
+  '    if (shouldRender) render();\n' +
+  '  }\n' +
+  '\n' +
+  '  async function saveCloud(options = {}) {\n' +
+  '    if (state.busy) return;\n' +
+  '    const forceCreate = options?.forceCreate === true;\n' +
+  "    if (!state.user) return setStatus('Сначала войди в аккаунт');\n" +
+  "    const requestedTitle = document.querySelector('.cloud-project-title')?.value || '';\n" +
+  "    let finalStatus = '';\n" +
+  '    state.busy = true;\n' +
+  "    setStatus('Сохраняю проект…');\n" +
+  '    render();\n' +
+  '\n' +
+  '    try {\n' +
+  '      const editorProject = await getEditorProject();\n' +
+  "      if (!editorProject?.data) throw new Error('Сначала сохрани проект локально');\n" +
+  '\n' +
+  "      if (editorProject.source === 'localStorage' && !window.__collageApp?.getProject) {\n" +
+  "        setStatus('Сохраняю последний локальный проект…');\n" +
+  '      }\n' +
+  '\n' +
+  "      const title = (requestedTitle || guessTitle(editorProject.data)).trim() || 'Без названия';\n" +
+  "      const existingId = forceCreate ? '' : localStorage.getItem(CURRENT_PROJECT_ID_KEY);\n" +
+  "      const url = existingId ? `/api/projects/${existingId}` : '/api/projects';\n" +
+  "      const method = existingId ? 'PUT' : 'POST';\n" +
+  '      const payload = JSON.stringify({ title, data: editorProject.data });\n' +
+  '      const payloadBytes = byteLength(payload);\n' +
+  '\n' +
+  '      if (payloadBytes > MAX_CLOUD_PROJECT_BYTES) {\n' +
+  '        throw new Error(`Проект слишком большой для облака: ${formatBytes(payloadBytes)}. Очисти лишние фото или скачай JSON.`);\n' +
+  '      }\n' +
+  '\n' +
+  '      const result = await api(url, {\n' +
+  '        method,\n' +
+  '        body: payload,\n' +
+  '      });\n' +
+  '\n' +
+  '      localStorage.setItem(CURRENT_PROJECT_ID_KEY, result.project.id);\n' +
+  '      localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, result.project.title);\n' +
+  '      await loadProjects(false);\n' +
+  "      finalStatus = editorProject.source === 'bridge' ? 'Сохранено в аккаунт' : 'Сохранено в аккаунт из локального сохранения';\n" +
+  '    } catch (error) {\n' +
+  '      finalStatus = error.message;\n' +
+  '    } finally {\n' +
+  '      state.busy = false;\n' +
+  '      render();\n' +
+  '      setStatus(finalStatus);\n' +
+  '    }\n' +
+  '  }\n' +
+  '\n' +
+  '  async function saveAsNew() {\n' +
+  '    await saveCloud({ forceCreate: true });\n' +
+  '  }\n' +
+  '\n' +
+  '  async function openProject(id) {\n' +
+  '    if (state.busy) return;\n' +
+  "    if (!confirm('Открыть проект из аккаунта? Текущий несохранённый макет заменится.')) return;\n" +
+  '    state.busy = true;\n' +
+  "    setStatus('Открываю проект…');\n" +
+  '    render();\n' +
+  '\n' +
+  '    try {\n' +
+  '      const result = await api(`/api/projects/${id}`);\n' +
+  '      const project = result.project;\n' +
+  "      if (!project?.data || typeof project.data !== 'object' || Array.isArray(project.data)) {\n" +
+  "        throw new Error('Проект повреждён или имеет неподдерживаемый формат.');\n" +
+  '      }\n' +
+  '\n' +
+  '      const bridge = window.__collageApp;\n' +
+  "      if (typeof bridge?.openProject === 'function') {\n" +
+  '        const opened = await bridge.openProject(project.data);\n' +
+  '        if (opened === false || opened?.ok === false) {\n' +
+  "          throw new Error('Редактор не смог открыть проект.');\n" +
+  '        }\n' +
+  '        localStorage.setItem(CURRENT_PROJECT_ID_KEY, project.id);\n' +
+  '        localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, project.title);\n' +
+  "        setStatus('Проект открыт');\n" +
+  '        return;\n' +
+  '      }\n' +
+  '\n' +
+  '      localStorage.setItem(CURRENT_STORAGE_KEY, JSON.stringify(project.data));\n' +
+  '      localStorage.setItem(CURRENT_PROJECT_ID_KEY, project.id);\n' +
+  '      localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, project.title);\n' +
+  '      location.reload();\n' +
+  '    } catch (error) {\n' +
+  '      setStatus(error.message);\n' +
+  '    } finally {\n' +
+  '      state.busy = false;\n' +
+  '      render();\n' +
+  '    }\n' +
+  '  }\n' +
+  '\n' +
+  '  async function deleteProject(id) {\n' +
+  "    if (!confirm('Удалить проект из аккаунта?')) return;\n" +
+  "    setStatus('Удаляю…');\n" +
+  '    try {\n' +
+  "      await api(`/api/projects/${id}`, { method: 'DELETE' });\n" +
+  '      if (localStorage.getItem(CURRENT_PROJECT_ID_KEY) === id) {\n' +
+  '        localStorage.removeItem(CURRENT_PROJECT_ID_KEY);\n' +
+  '        localStorage.removeItem(CURRENT_PROJECT_TITLE_KEY);\n' +
+  '      }\n' +
+  '      await loadProjects();\n' +
+  "      setStatus('Удалено');\n" +
+  '    } catch (error) {\n' +
+  '      setStatus(error.message);\n' +
+  '    }\n' +
+  '  }\n' +
+  '\n' +
+  '  function renderLoggedOut(body) {\n' +
+  '    body.append(\n' +
+  "      el('label', { class: 'cloud-auth-field' }, [\n" +
+  "        el('span', { text: 'Email' }),\n" +
+  "        el('input', { class: 'cloud-email', type: 'emai"... 3999 more characters
+
+    at file:///home/runner/work/collage/collage/public/cloud-auth.test.mjs:310:8 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: '(() => {\n' +
+    "  const CURRENT_STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';\n" +
+    "  const LEGACY_PREFIX = 'collage-creator-album';\n" +
+    "  const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';\n" +
+    "  const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';\n" +
+    '  const MAX_CLOUD_PROJECT_BYTES = 50 * 1024 * 1024;\n' +
+    '\n' +
+    '  const state = {\n' +
+    '    user: null,\n' +
+    '    projects: [],\n' +
+    "    collapsed: localStorage.getItem('collage-cloud-panel-collapsed') === '1',\n" +
+    '    busy: false,\n' +
+    '  };\n' +
+    '\n' +
+    '  window.__collageCloudAuth = {\n' +
+    '    isAuthenticated: () => Boolean(state.user),\n' +
+    '  };\n' +
+    '\n' +
+    '  function el(tag, attrs = {}, children = []) {\n' +
+    '    const node = document.createElement(tag);\n' +
+    '    Object.entries(attrs).forEach(([key, value]) => {\n' +
+    "      if (key === 'class') node.className = value;\n" +
+    "      else if (key === 'text') node.textContent = value;\n" +
+    "      else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2), value);\n" +
+    '      else if (value !== undefined && value !== null) node.setAttribute(key, value);\n' +
+    '    });\n' +
+    '    children.forEach((child) => node.append(child));\n' +
+    '    return node;\n' +
+    '  }\n' +
+    '\n' +
+    '  function friendlyApiError(payload) {\n' +
+    "    if (payload?.error === 'database_not_configured' || String(payload?.message || '').includes('DATABASE_URL')) {\n" +
+    "      return 'База не подключена: в Railway у сервиса нет DATABASE_URL. Добавь Postgres к этому проекту и сделай Redeploy.';\n" +
+    '    }\n' +
+    "    return payload?.message || payload?.error || 'Ошибка запроса';\n" +
+    '  }\n' +
+    '\n' +
+    '  function byteLength(text) {\n' +
+    "    return new Blob([String(text ?? '')]).size;\n" +
+    '  }\n' +
+    '\n' +
+    '  function formatBytes(bytes) {\n' +
+    "    if (!Number.isFinite(bytes)) return '';\n" +
+    '    if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} КБ`;\n' +
+    '    return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;\n' +
+    '  }\n' +
+    '\n' +
+    '  async function api(path, options = {}) {\n' +
+    '    const response = await fetch(path, {\n' +
+    "      credentials: 'include',\n" +
+    "      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },\n" +
+    '      ...options,\n' +
+    '    });\n' +
+    '    const payload = await response.json().catch(() => ({}));\n' +
+    '    if (!response.ok) throw new Error(friendlyApiError(payload));\n' +
+    '    return payload;\n' +
+    '  }\n' +
+    '\n' +
+    '  function setStatus(text) {\n' +
+    "    const status = document.querySelector('.cloud-auth-status');\n" +
+    "    if (status) status.textContent = text || '';\n" +
+    '  }\n' +
+    '\n' +
+    '  function formatDate(value) {\n' +
+    "    if (!value) return '';\n" +
+    '    try {\n' +
+    "      return new Date(value).toLocaleString('ru-RU', {\n" +
+    "        day: '2-digit',\n" +
+    "        month: '2-digit',\n" +
+    "        hour: '2-digit',\n" +
+    "        minute: '2-digit',\n" +
+    '      });\n' +
+    '    } catch {\n' +
+    "      return '';\n" +
+    '    }\n' +
+    '  }\n' +
+    '\n' +
+    '  function projectKeys() {\n' +
+    '    return Object.keys(localStorage).filter((key) => key.startsWith(LEGACY_PREFIX));\n' +
+    '  }\n' +
+    '\n' +
+    '  function getLatestLocalProject() {\n' +
+    '    const parsed = projectKeys()\n' +
+    '      .map((key) => {\n' +
+    '        try {\n' +
+    '          const data = JSON.parse(localStorage.getItem(key));\n' +
+    "          return { key, data, savedAt: Date.parse(data.savedAt || '') || 0 };\n" +
+    '        } catch {\n' +
+    '          return null;\n' +
+    '        }\n' +
+    '      })\n' +
+    '      .filter(Boolean)\n' +
+    '      .sort((a, b) => b.savedAt - a.savedAt);\n' +
+    '\n' +
+    '    const currentRaw = localStorage.getItem(CURRENT_STORAGE_KEY);\n' +
+    '    if (currentRaw) {\n' +
+    '      try {\n' +
+    '        const current = JSON.parse(currentRaw);\n' +
+    '        return { key: CURRENT_STORAGE_KEY, data: current };\n' +
+    '      } catch {\n' +
+    '        // fall through to latest parsed project\n' +
+    '      }\n' +
+    '    }\n' +
+    '\n' +
+    '    return parsed[0] || null;\n' +
+    '  }\n' +
+    '\n' +
+    '  async function getEditorProject() {\n' +
+    '    const bridge = window.__collageApp;\n' +
+    "    if (bridge && typeof bridge.getCloudProject === 'function') {\n" +
+    '      const data = await bridge.getCloudProject();\n' +
+    "      if (data && typeof data === 'object') return { source: 'bridge', data };\n" +
+    '    }\n' +
+    "    if (bridge && typeof bridge.getProject === 'function') {\n" +
+    '      const data = bridge.getProject();\n' +
+    "      if (data && typeof data === 'object') return { source: 'bridge', data };\n" +
+    '    }\n' +
+    '\n' +
+    '    const localProject = getLatestLocalProject();\n' +
+    '    if (localProject?.data) {\n' +
+    '      const requiresAssets = Array.isArray(localProject.data.library)\n' +
+    '        && localProject.data.library.some((photo) => photo?.assetId && !photo?.src);\n' +
+    "      if (requiresAssets) throw new Error('Редактор ещё загружается. Повтори сохранение через несколько секунд.');\n" +
+    "      return { source: 'localStorage', data: localProject.data };\n" +
+    '    }\n' +
+    '    return null;\n' +
+    '  }\n' +
+    '\n' +
+    '  function guessTitle(data) {\n' +
+    '    const savedTitle = localStorage.getItem(CURRENT_PROJECT_TITLE_KEY);\n' +
+    '    if (savedTitle) return savedTitle;\n' +
+    '    const pages = Array.isArray(data?.pages) ? data.pages.length : 0;\n' +
+    "    const date = new Date().toLocaleDateString('ru-RU');\n" +
+    '    return pages ? `Альбом ${date} · ${pages} стр.` : `Альбом ${date}`;\n' +
+    '  }\n' +
+    '\n' +
+    '  async function loadMe() {\n' +
+    '    try {\n' +
+    "      const result = await api('/api/me');\n" +
+    '      state.user = result.user || null;\n' +
+    '      if (state.user) await loadProjects(false);\n' +
+    '    } catch (error) {\n' +
+    '      state.user = null;\n' +
+    '      setTimeout(() => setStatus(error.message), 0);\n' +
+    '    }\n' +
+    '    render();\n' +
+    '  }\n' +
+    '\n' +
+    '  async function auth(mode) {\n' +
+    "    const email = document.querySelector('.cloud-email')?.value || '';\n" +
+    "    const password = document.querySelector('.cloud-password')?.value || '';\n" +
+    "    setStatus(mode === 'login' ? 'Вхожу…' : 'Регистрирую…');\n" +
+    '    try {\n' +
+    '      const result = await api(`/api/auth/${mode}`, {\n' +
+    "        method: 'POST',\n" +
+    '        body: JSON.stringify({ email, password }),\n' +
+    '      });\n' +
+    '      state.user = result.user;\n' +
+    '      await loadProjects(false);\n' +
+    "      setStatus('Готово');\n" +
+    '      render();\n' +
+    '    } catch (error) {\n' +
+    '      setStatus(error.message);\n' +
+    '    }\n' +
+    '  }\n' +
+    '\n' +
+    '  async function logout() {\n' +
+    "    await api('/api/auth/logout', { method: 'POST', body: '{}' }).catch(() => {});\n" +
+    '    state.user = null;\n' +
+    '    state.projects = [];\n' +
+    '    localStorage.removeItem(CURRENT_PROJECT_ID_KEY);\n' +
+    '    localStorage.removeItem(CURRENT_PROJECT_TITLE_KEY);\n' +
+    '    render();\n' +
+    '  }\n' +
+    '\n' +
+    '  async function loadProjects(shouldRender = true) {\n' +
+    '    if (!state.user) return;\n' +
+    "    const result = await api('/api/projects');\n" +
+    '    state.projects = result.projects || [];\n' +
+    '    if (shouldRender) render();\n' +
+    '  }\n' +
+    '\n' +
+    '  async function saveCloud(options = {}) {\n' +
+    '    if (state.busy) return;\n' +
+    '    const forceCreate = options?.forceCreate === true;\n' +
+    "    if (!state.user) return setStatus('Сначала войди в аккаунт');\n" +
+    "    const requestedTitle = document.querySelector('.cloud-project-title')?.value || '';\n" +
+    "    let finalStatus = '';\n" +
+    '    state.busy = true;\n' +
+    "    setStatus('Сохраняю проект…');\n" +
+    '    render();\n' +
+    '\n' +
+    '    try {\n' +
+    '      const editorProject = await getEditorProject();\n' +
+    "      if (!editorProject?.data) throw new Error('Сначала сохрани проект локально');\n" +
+    '\n' +
+    "      if (editorProject.source === 'localStorage' && !window.__collageApp?.getProject) {\n" +
+    "        setStatus('Сохраняю последний локальный проект…');\n" +
+    '      }\n' +
+    '\n' +
+    "      const title = (requestedTitle || guessTitle(editorProject.data)).trim() || 'Без названия';\n" +
+    "      const existingId = forceCreate ? '' : localStorage.getItem(CURRENT_PROJECT_ID_KEY);\n" +
+    "      const url = existingId ? `/api/projects/${existingId}` : '/api/projects';\n" +
+    "      const method = existingId ? 'PUT' : 'POST';\n" +
+    '      const payload = JSON.stringify({ title, data: editorProject.data });\n' +
+    '      const payloadBytes = byteLength(payload);\n' +
+    '\n' +
+    '      if (payloadBytes > MAX_CLOUD_PROJECT_BYTES) {\n' +
+    '        throw new Error(`Проект слишком большой для облака: ${formatBytes(payloadBytes)}. Очисти лишние фото или скачай JSON.`);\n' +
+    '      }\n' +
+    '\n' +
+    '      const result = await api(url, {\n' +
+    '        method,\n' +
+    '        body: payload,\n' +
+    '      });\n' +
+    '\n' +
+    '      localStorage.setItem(CURRENT_PROJECT_ID_KEY, result.project.id);\n' +
+    '      localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, result.project.title);\n' +
+    '      await loadProjects(false);\n' +
+    "      finalStatus = editorProject.source === 'bridge' ? 'Сохранено в аккаунт' : 'Сохранено в аккаунт из локального сохранения';\n" +
+    '    } catch (error) {\n' +
+    '      finalStatus = error.message;\n' +
+    '    } finally {\n' +
+    '      state.busy = false;\n' +
+    '      render();\n' +
+    '      setStatus(finalStatus);\n' +
+    '    }\n' +
+    '  }\n' +
+    '\n' +
+    '  async function saveAsNew() {\n' +
+    '    await saveCloud({ forceCreate: true });\n' +
+    '  }\n' +
+    '\n' +
+    '  async function openProject(id) {\n' +
+    '    if (state.busy) return;\n' +
+    "    if (!confirm('Открыть проект из аккаунта? Текущий несохранённый макет заменится.')) return;\n" +
+    '    state.busy = true;\n' +
+    "    setStatus('Открываю проект…');\n" +
+    '    render();\n' +
+    '\n' +
+    '    try {\n' +
+    '      const result = await api(`/api/projects/${id}`);\n' +
+    '      const project = result.project;\n' +
+    "      if (!project?.data || typeof project.data !== 'object' || Array.isArray(project.data)) {\n" +
+    "        throw new Error('Проект повреждён или имеет неподдерживаемый формат.');\n" +
+    '      }\n' +
+    '\n' +
+    '      const bridge = window.__collageApp;\n' +
+    "      if (typeof bridge?.openProject === 'function') {\n" +
+    '        const opened = await bridge.openProject(project.data);\n' +
+    '        if (opened === false || opened?.ok === false) {\n' +
+    "          throw new Error('Редактор не смог открыть проект.');\n" +
+    '        }\n' +
+    '        localStorage.setItem(CURRENT_PROJECT_ID_KEY, project.id);\n' +
+    '        localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, project.title);\n' +
+    "        setStatus('Проект открыт');\n" +
+    '        return;\n' +
+    '      }\n' +
+    '\n' +
+    '      localStorage.setItem(CURRENT_STORAGE_KEY, JSON.stringify(project.data));\n' +
+    '      localStorage.setItem(CURRENT_PROJECT_ID_KEY, project.id);\n' +
+    '      localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, project.title);\n' +
+    '      location.reload();\n' +
+    '    } catch (error) {\n' +
+    '      setStatus(error.message);\n' +
+    '    } finally {\n' +
+    '      state.busy = false;\n' +
+    '      render();\n' +
+    '    }\n' +
+    '  }\n' +
+    '\n' +
+    '  async function deleteProject(id) {\n' +
+    "    if (!confirm('Удалить проект из аккаунта?')) return;\n" +
+    "    setStatus('Удаляю…');\n" +
+    '    try {\n' +
+    "      await api(`/api/projects/${id}`, { method: 'DELETE' });\n" +
+    '      if (localStorage.getItem(CURRENT_PROJECT_ID_KEY) === id) {\n' +
+    '        localStorage.removeItem(CURRENT_PROJECT_ID_KEY);\n' +
+    '        localStorage.removeItem(CURRENT_PROJECT_TITLE_KEY);\n' +
+    '      }\n' +
+    '      await loadProjects();\n' +
+    "      setStatus('Удалено');\n" +
+    '    } catch (error) {\n' +
+    '      setStatus(error.message);\n' +
+    '    }\n' +
+    '  }\n' +
+    '\n' +
+    '  function renderLoggedOut(body) {\n' +
+    '    body.append(\n' +
+    "      el('label', { class: 'cloud-auth-field' }, [\n" +
+    "        el('span', { text: 'Email' }),\n" +
+    "        el('input', { class: 'cloud-email', type: 'emai"... 3999 more characters,
+  expected: /typeof bridge\.getPortableProject === 'function'/,
+  operator: 'match',
+  diff: 'simple'
+}
+
+Node.js v22.23.1
+exit=1
