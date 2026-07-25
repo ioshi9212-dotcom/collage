@@ -1,29 +1,50 @@
 import assert from 'node:assert/strict';
 import {
   COLLAGE_PRESET_CATALOG,
+  COLLAGE_PRESET_CATEGORIES,
   COLLAGE_PRESET_COUNTS,
   applyCollagePresetToPage,
   collagePresetById,
   collagePresetsFor,
 } from './collagePresetCatalog.js';
 
-assert.deepEqual(COLLAGE_PRESET_COUNTS, [3, 4, 5, 6]);
-assert.equal(COLLAGE_PRESET_CATALOG.length, 23);
-assert.equal(new Set(COLLAGE_PRESET_CATALOG.map((preset) => preset.id)).size, 23, 'preset ids must be unique');
-assert.equal(collagePresetsFor({ count: 3 }).length, 5);
-assert.equal(collagePresetsFor({ count: 4 }).length, 6);
-assert.equal(collagePresetsFor({ count: 5 }).length, 6);
-assert.equal(collagePresetsFor({ count: 6 }).length, 6);
+assert.deepEqual(COLLAGE_PRESET_COUNTS, [2, 3, 4, 5, 6, 7, 8, 9]);
+assert.equal(COLLAGE_PRESET_CATALOG.length, 60);
+assert.equal(new Set(COLLAGE_PRESET_CATALOG.map((preset) => preset.id)).size, 60, 'preset ids must be unique');
+assert.ok(COLLAGE_PRESET_CATEGORIES.some((item) => item.id === 'text' && item.label === 'С текстом'));
+
+const expectedCounts = new Map([
+  [2, 8],
+  [3, 6],
+  [4, 7],
+  [5, 7],
+  [6, 7],
+  [7, 8],
+  [8, 8],
+  [9, 9],
+]);
+
+for (const [count, expected] of expectedCounts) {
+  assert.equal(collagePresetsFor({ count }).length, expected, `${count}-photo preset count must stay stable`);
+}
+
 assert.equal(collagePresetsFor({ count: 5, category: 'overlay' }).length, 1);
+assert.equal(collagePresetsFor({ count: 2, category: 'text' }).length, 3);
+assert.equal(collagePresetsFor({ count: 9, category: 'text' }).length, 2);
+assert.equal(COLLAGE_PRESET_CATALOG.filter((preset) => preset.category === 'text').length, 11);
+
+function assertNormalizedBox(box, label) {
+  assert.ok(box.x >= 0 && box.y >= 0, `${label} origin must be inside the page`);
+  assert.ok(box.width > 0 && box.height > 0, `${label} size must be positive`);
+  assert.ok(box.x + box.width <= 1.000001, `${label} must fit horizontally`);
+  assert.ok(box.y + box.height <= 1.000001, `${label} must fit vertically`);
+}
 
 for (const preset of COLLAGE_PRESET_CATALOG) {
   assert.equal(preset.frames.length, preset.count, `${preset.id} must contain exactly ${preset.count} frames`);
-  for (const item of preset.frames) {
-    assert.ok(item.x >= 0 && item.y >= 0, `${preset.id} frame origin must be inside the page`);
-    assert.ok(item.width > 0 && item.height > 0, `${preset.id} frame size must be positive`);
-    assert.ok(item.x + item.width <= 1.000001, `${preset.id} frame must fit horizontally`);
-    assert.ok(item.y + item.height <= 1.000001, `${preset.id} frame must fit vertically`);
-  }
+  preset.frames.forEach((item, index) => assertNormalizedBox(item, `${preset.id} frame ${index + 1}`));
+  if (preset.textZone) assertNormalizedBox(preset.textZone, `${preset.id} text zone`);
+  if (preset.category === 'text') assert.ok(preset.textZone, `${preset.id} must describe its reserved text space`);
 }
 
 const photos = [
@@ -69,4 +90,12 @@ assert.ok(result.frames.slice(1).every((item) => item.zIndex > result.frames[0].
 assert.notEqual(result, sourcePage);
 assert.deepEqual(sourcePage.frames[0].photo, photos[0], 'source page must stay unchanged');
 
-console.log('mixed collage preset catalog checks passed');
+const textPreset = collagePresetById('two-grid-vertical-text');
+const textResult = applyCollagePresetToPage(sourcePage, textPreset, { width: 1480, height: 2100 }, () => `text-${++nextId}`);
+assert.equal(textResult.frameCount, 2);
+assert.equal(textResult.frames.length, 2);
+assert.equal(textResult.collagePresetId, textPreset.id);
+assert.deepEqual(textResult.frames.map((item) => item.photo), photos.slice(0, 2));
+assert.ok(textPreset.textZone, 'text layout metadata must remain available to the picker');
+
+console.log('extended mixed collage preset catalog checks passed');

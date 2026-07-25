@@ -1,0 +1,51 @@
+.collage-preset-preview-text-zone {
+  position: absolute;
+  z-index: 20;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 5px;
+  overflow: hidden;
+  border: 1px dashed rgba(103, 84, 72, 0.58);
+  border-radius: 4px;
+  background: rgba(255, 252, 248, 0.78);
+  color: #76675e;
+  pointer-events: none;
+}
+
+.collage-preset-preview-text-zone b {
+  overflow: hidden;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.collage-preset-preview-text-zone i {
+  display: block;
+  width: 100%;
+  height: 1px;
+  border-radius: 999px;
+  background: rgba(118, 103, 94, 0.45);
+}
+
+.collage-preset-preview-text-zone i:nth-of-type(2) {
+  width: 82%;
+}
+
+.collage-preset-preview-text-zone i:nth-of-type(3) {
+  width: 64%;
+}
+
+.collage-preset-text .collage-preset-preview {
+  background: linear-gradient(150deg, #fbf8f4, #efe8e1);
+}
+
+.collage-preset-text .collage-preset-preview-frame {
+  background: linear-gradient(145deg, #bca89a, #7e685b);
+}

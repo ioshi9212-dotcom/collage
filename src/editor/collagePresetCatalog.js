@@ -1,4 +1,5 @@
 import { MIN_FRAME, clamp } from './layout.js';
+import { EXTENDED_COLLAGE_PRESETS } from './collagePresetCatalogExtended.js';
 
 export const COLLAGE_PRESET_CATEGORIES = [
   { id: 'all', label: 'Все' },
@@ -7,15 +8,16 @@ export const COLLAGE_PRESET_CATEGORIES = [
   { id: 'overlay', label: 'Фото поверх' },
   { id: 'overlap', label: 'Внахлёст' },
   { id: 'magazine', label: 'Журнальные' },
+  { id: 'text', label: 'С текстом' },
 ];
 
-export const COLLAGE_PRESET_COUNTS = [3, 4, 5, 6];
+export const COLLAGE_PRESET_COUNTS = [2, 3, 4, 5, 6, 7, 8, 9];
 
 function frame(x, y, width, height, zIndex = 1) {
   return { x, y, width, height, zIndex };
 }
 
-export const COLLAGE_PRESET_CATALOG = [
+const BASE_COLLAGE_PRESET_CATALOG = [
   {
     id: 'three-main-right-stack',
     count: 3,
@@ -203,6 +205,11 @@ export const COLLAGE_PRESET_CATALOG = [
     description: 'Разные размеры собраны в спокойную редакционную композицию.',
     frames: [frame(0.05, 0.06, 0.53, 0.48, 2), frame(0.62, 0.06, 0.33, 0.29, 1), frame(0.62, 0.39, 0.33, 0.32, 4), frame(0.05, 0.58, 0.25, 0.36, 3), frame(0.33, 0.58, 0.25, 0.36, 5), frame(0.62, 0.75, 0.33, 0.19, 6)],
   },
+];
+
+export const COLLAGE_PRESET_CATALOG = [
+  ...BASE_COLLAGE_PRESET_CATALOG,
+  ...EXTENDED_COLLAGE_PRESETS,
 ];
 
 export function collagePresetsFor({ count, category = 'all' } = {}) {
