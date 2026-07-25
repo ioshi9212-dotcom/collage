@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import {
   buildPhotoObjectKey,
+  createPhotoAssetRequestHandler,
   createPresignedObjectUrl,
   isOwnedPhotoKey,
   normalizeImageType,
@@ -64,5 +65,35 @@ assert.deepEqual(
   { id: 7, email: 'user@example.com' },
 );
 assert.equal(verifySessionToken(`collage_session=${payload}.broken`, secret), null);
+
+function fakeResponse() {
+  return {
+    status: null,
+    body: '',
+    writeHead(status) { this.status = status; },
+    end(body = '') { this.body = String(body); },
+  };
+}
+
+const handler = createPhotoAssetRequestHandler({
+  env: {
+    AWS_ENDPOINT_URL: 'https://t3.storageapi.dev/',
+    AWS_DEFAULT_REGION: 'auto',
+    AWS_S3_BUCKET_NAME: 'collage-photos-test',
+    AWS_ACCESS_KEY_ID: 'test-access',
+    AWS_SECRET_ACCESS_KEY: 'test-secret',
+  },
+  sessionSecret: secret,
+});
+const response = fakeResponse();
+const handled = await handler({
+  method: 'GET',
+  url: '/api/photo-assets/unknown',
+  headers: { host: 'localhost', cookie: `collage_session=${payload}.${signature}` },
+  resume() {},
+}, response);
+assert.equal(handled, true);
+assert.equal(response.status, 404, 'direct handler must accept the main server session secret override');
+assert.match(response.body, /photo_api_not_found/);
 
 console.log('bucketGateway tests passed');
