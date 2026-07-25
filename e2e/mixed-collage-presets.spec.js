@@ -12,15 +12,20 @@ function currentPageState(page) {
   });
 }
 
-test('offers several mixed compositions per photo count and applies overlays', async ({ page }) => {
+async function openPresetPicker(page) {
   await openEditor(page);
   await page.locator('.editor-tool-button-v2[aria-label="Коллаж"]').click();
-
   const picker = page.locator('.collage-preset-picker');
   await expect(picker).toBeVisible();
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(6);
+  return picker;
+}
+
+test('keeps the original mixed compositions and applies overlays', async ({ page }) => {
+  const picker = await openPresetPicker(page);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(7);
   await expect(picker.locator('[data-preset-id="five-background-four-overlay"]')).toBeVisible();
   await expect(picker.locator('[data-preset-id="five-overlap-cascade"]')).toBeVisible();
+  await expect(picker.locator('[data-preset-id="five-text-side"]')).toBeVisible();
 
   await picker.locator('[data-preset-id="five-background-four-overlay"]').click();
   await expect.poll(() => currentPageState(page)).toMatchObject({
@@ -32,9 +37,35 @@ test('offers several mixed compositions per photo count and applies overlays', a
   expect(applied.page.frames).toHaveLength(5);
   expect(applied.page.frames[0]).toMatchObject({ x: 0, y: 0, width: 1480, height: 2100, zIndex: 0 });
   expect(applied.page.frames.slice(1).every((frame) => frame.zIndex > 0)).toBe(true);
+});
 
-  await picker.locator('.collage-preset-counts').getByRole('button', { name: '4', exact: true }).click();
-  await picker.locator('.collage-preset-categories').getByRole('button', { name: 'Фото поверх', exact: true }).click();
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(1);
-  await expect(picker.locator('[data-preset-id="four-background-three-overlay"]')).toBeVisible();
+test('offers 2 to 9 photos and previews reserved text space', async ({ page }) => {
+  const picker = await openPresetPicker(page);
+  const counts = picker.locator('.collage-preset-counts');
+  const categories = picker.locator('.collage-preset-categories');
+
+  await expect(counts.getByRole('button')).toHaveCount(8);
+  await counts.getByRole('button', { name: '2', exact: true }).click();
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(8);
+
+  await categories.getByRole('button', { name: 'С текстом', exact: true }).click();
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(3);
+  const textPreset = picker.locator('[data-preset-id="two-main-right-text"]');
+  await expect(textPreset.locator('.collage-preset-preview-text-zone')).toBeVisible();
+  await expect(textPreset.locator('.collage-preset-preview-text-zone')).toContainText('Текст');
+  await textPreset.click();
+
+  await expect.poll(() => currentPageState(page)).toMatchObject({
+    settings: { frameCount: 2, frameMode: 'free' },
+    page: { frameCount: 2, layout: null, collagePresetId: 'two-main-right-text' },
+  });
+
+  await counts.getByRole('button', { name: '9', exact: true }).click();
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(2);
+  await expect(picker.locator('[data-preset-id="nine-timeline-story"] .collage-preset-preview-text-zone')).toBeVisible();
+
+  await categories.getByRole('button', { name: 'Все', exact: true }).click();
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(9);
+  await expect(picker.locator('[data-preset-id="nine-background-overlay"]')).toBeVisible();
+  await expect(picker.locator('[data-preset-id="nine-overlap-editorial"]')).toBeVisible();
 });
