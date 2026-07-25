@@ -107,8 +107,8 @@
 
   async function getEditorProject() {
     const bridge = window.__collageApp;
-    if (bridge && typeof bridge.getPortableProject === 'function') {
-      const data = await bridge.getPortableProject();
+    if (bridge && typeof bridge.getCloudProject === 'function') {
+      const data = await bridge.getCloudProject();
       if (data && typeof data === 'object') return { source: 'bridge', data };
     }
     if (bridge && typeof bridge.getProject === 'function') {
@@ -299,7 +299,7 @@
         el('button', { class: 'cloud-auth-button primary', type: 'button', onclick: () => auth('login'), text: 'Войти' }),
         el('button', { class: 'cloud-auth-button', type: 'button', onclick: () => auth('register'), text: 'Регистрация' }),
       ]),
-      el('div', { class: 'cloud-auth-status', text: 'Проекты будут сохраняться в аккаунт.' })
+      el('div', { class: 'cloud-auth-status', text: 'Проекты сохраняются в аккаунт, фотографии — отдельно в защищённое хранилище.' })
     );
   }
 

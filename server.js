@@ -18,6 +18,7 @@ import {
 } from './server/projectQuotas.js';
 import { RequestBodyError, readJsonBody } from './server/requestBody.js';
 import { resolveStaticRequest } from './server/staticFiles.js';
+import { createPhotoAssetRequestHandler } from './server/bucketGateway.js';
 
 const { Pool } = pg;
 const port = Number(process.env.PORT || 3000);
@@ -43,6 +44,10 @@ if (isProduction && !configuredSessionSecret) {
 }
 
 const effectiveSessionSecret = configuredSessionSecret || (isProduction ? randomBytes(32).toString('hex') : 'collage-dev-secret-change-me');
+const handlePhotoAssetRequest = createPhotoAssetRequestHandler({
+  env: process.env,
+  sessionSecret: effectiveSessionSecret,
+});
 
 let pool = null;
 let dbReadyPromise = null;
@@ -403,6 +408,11 @@ async function handleApi(request, response) {
 
 const server = createServer(async (request, response) => {
   try {
+    if ((request.url || '').startsWith('/api/photo-assets/')) {
+      const handled = await handlePhotoAssetRequest(request, response);
+      if (handled) return;
+    }
+
     if ((request.url || '').startsWith('/api/')) {
       await handleApi(request, response);
       return;

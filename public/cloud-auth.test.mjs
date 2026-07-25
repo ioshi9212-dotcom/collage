@@ -307,7 +307,8 @@ assert.doesNotMatch(saveAsNewBody, /removeItem\(CURRENT_PROJECT_ID_KEY\)/);
 assert.match(saveAsNewBody, /saveCloud\(\{\s*forceCreate:\s*true\s*\}\)/);
 assert.match(source, /typeof bridge\?\.openProject === 'function'/);
 assert.match(source, /await bridge\.openProject\(project\.data\)/);
-assert.match(source, /typeof bridge\.getPortableProject === 'function'/);
-assert.match(source, /await bridge\.getPortableProject\(\)/);
+assert.match(source, /typeof bridge\.getCloudProject === 'function'/);
+assert.match(source, /await bridge\.getCloudProject\(\)/);
+assert.doesNotMatch(source, /typeof bridge\.getPortableProject === 'function'/);
 
 console.log('cloud save and direct-open checks passed');

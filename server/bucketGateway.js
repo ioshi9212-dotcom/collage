@@ -267,9 +267,9 @@ async function proxyDownload({ request, response, user, config, fetchImpl }) {
   Readable.fromWeb(upstream.body).pipe(response);
 }
 
-export function createPhotoAssetRequestHandler({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
+export function createPhotoAssetRequestHandler({ env = process.env, fetchImpl = globalThis.fetch, sessionSecret: sessionSecretOverride } = {}) {
   const config = resolveBucketConfig(env);
-  const sessionSecret = String(env.SESSION_SECRET || '');
+  const sessionSecret = String(sessionSecretOverride ?? env.SESSION_SECRET ?? '');
 
   return async function handlePhotoAssetRequest(request, response) {
     const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
