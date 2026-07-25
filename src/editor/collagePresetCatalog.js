@@ -112,7 +112,7 @@ export const COLLAGE_PRESET_CATALOG = [
     category: 'asymmetric',
     name: 'Большое слева + 4 справа',
     description: 'Главное вертикальное фото и компактная сетка 2×2.',
-    frames: [frame(0.05, 0.05, 0.55, 0.9), frame(0.64, 0.05, 0.31, 0.43), frame(0.64, 0.52, 0.31, 0.43), frame(0.64, 0.05, 0.14, 0.2, 2), frame(0.81, 0.76, 0.14, 0.19, 3)],
+    frames: [frame(0.05, 0.05, 0.55, 0.9), frame(0.64, 0.05, 0.145, 0.43), frame(0.805, 0.05, 0.145, 0.43), frame(0.64, 0.52, 0.145, 0.43), frame(0.805, 0.52, 0.145, 0.43)],
   },
   {
     id: 'five-top-main-bottom-four',
