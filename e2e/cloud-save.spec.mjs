@@ -1,12 +1,37 @@
 import { test, expect } from '@playwright/test';
 import { openEditor, uploadTinyPhoto } from './helpers.mjs';
 
-test('authenticated cloud save sends a portable photo while local state stays compact', async ({ page }) => {
+test('authenticated account save uploads a photo to Bucket while local state stays compact', async ({ page }) => {
+  let photoUploadCount = 0;
+
   await page.route('**/api/me', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ user: { id: 'e2e-user', email: 'e2e@example.com' } }),
+    });
+  });
+
+  await page.route('**/api/photo-assets/upload?**', async (route) => {
+    photoUploadCount += 1;
+    const request = route.request();
+    const body = request.postDataBuffer();
+    expect(request.method()).toBe('PUT');
+    expect(body?.length).toBeGreaterThan(0);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        asset: {
+          id: 'bucket-object-e2e',
+          name: 'cloud-photo.png',
+          type: 'image/png',
+          size: body.length,
+          cloudKey: 'users/e2e-user/photos/cloud-photo/original.png',
+          cloudSchema: 'railway-bucket-v1',
+          src: '/api/photo-assets/file?key=users%2Fe2e-user%2Fphotos%2Fcloud-photo%2Foriginal.png',
+        },
+      }),
     });
   });
 
@@ -54,13 +79,17 @@ test('authenticated cloud save sends a portable photo while local state stays co
   const payload = request.postDataJSON();
 
   expect(payload.title).toBe('E2E photo album');
-  expect(payload.data.version).toBe('live-24-portable-photo-data');
-  expect(payload.data.library[0].assetId).toBe(uploaded.assetId);
-  expect(payload.data.library[0].src).toMatch(/^data:image\/png;base64,/);
+  expect(payload.data.version).toBe('live-25-railway-bucket-photos');
+  expect(payload.data.library[0].id).toBe(uploaded.id);
+  expect(payload.data.library[0].cloudKey).toBe('users/e2e-user/photos/cloud-photo/original.png');
+  expect(payload.data.library[0].assetId).toBeUndefined();
+  expect(JSON.stringify(payload.data)).not.toContain('data:image/');
+  expect(photoUploadCount).toBe(1);
 
   const compact = await page.evaluate(() => window.__collageApp.getProject());
   expect(compact.version).toBe('live-24-indexeddb-photo-assets');
   expect(compact.library[0].assetId).toBe(uploaded.assetId);
+  expect(compact.library[0].cloudKey).toBe('users/e2e-user/photos/cloud-photo/original.png');
   expect(compact.library[0].src).toBeUndefined();
   expect(JSON.stringify(compact)).not.toContain('data:image/');
 
