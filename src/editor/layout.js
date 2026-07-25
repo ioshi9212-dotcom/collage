@@ -204,6 +204,10 @@ export function framesFromLayout(layout, previousFrames = []) {
         height: Math.round(row.height),
         photo: previous?.photo ?? null,
         zIndex: previous?.zIndex ?? 0,
+        ...(previous?.borderStyle !== undefined ? { borderStyle: previous.borderStyle } : {}),
+        ...(previous?.borderWidth !== undefined ? { borderWidth: previous.borderWidth } : {}),
+        ...(previous?.borderColor !== undefined ? { borderColor: previous.borderColor } : {}),
+        ...(previous?.cornerRadius !== undefined ? { cornerRadius: previous.cornerRadius } : {}),
       });
       x += column.width + layout.gap;
     });
