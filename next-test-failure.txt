@@ -1,0 +1,592 @@
+
+> collage-creator@0.1.0 test
+> node src/editor/layout.test.mjs && node src/editor/printGeometry.test.mjs && node src/editor/printFiles.test.mjs && node src/editor/printFilesIntegration.test.mjs && node src/editor/bookletPrint.test.mjs && node src/editor/bookletPrintIntegration.test.mjs && node src/editor/previewFit.test.mjs && node src/editor/previewFitIntegration.test.mjs && node src/editor/printGeometryIntegration.test.mjs && node src/editor/font-assets.test.mjs && node src/editor/photoStorage.test.mjs && node src/editor/photoAssets.test.mjs && node src/editor/photoAssetCleanup.test.mjs && node src/editor/project-storage.test.mjs && node src/editor/imageCache.test.mjs && node src/editor/photoThumbnails.test.mjs && node src/editor/photoMemoryIntegration.test.mjs && node src/editor/photoAssetIntegration.test.mjs && node src/editor/photoAssetCleanupIntegration.test.mjs && node src/editor/projectLoad.test.mjs && node src/editor/reliability.test.mjs && node src/editor/photoImportReport.test.mjs && node src/editor/heicSupport.test.mjs && node src/editor/localHeicUploadBridge.test.mjs && node src/editor/appIntegration.test.mjs && node src/editor/extraLayersSafety.test.mjs && node src/editor/templateRecords.test.mjs && node src/editor/layerSafetyIntegration.test.mjs && node server/auth.test.mjs && node server/projectQuotas.test.mjs && node server/requestBody.test.mjs && node server/staticFiles.test.mjs && node server/bucketGateway.test.mjs && node server/heicConversion.test.mjs && node public/cloud-auth.test.mjs && node public/cloud-auth-cloud-sync.test.mjs && node src/editor/cloudPhotoModel.test.mjs && node src/editor/cloudPhotoSync.test.mjs && node src/editor/extraLayers.test.mjs && node src/editor/pageModel.test.mjs && node src/editor/frameModel.test.mjs && node src/editor/freeFrameActions.test.mjs && node src/editor/frameSnapping.test.mjs && node src/editor/collagePresetCatalog.test.mjs
+
+layout boundary checks passed
+print geometry checks passed
+print PDF and PNG metadata checks passed
+print file editor integration checks passed
+booklet print tests passed
+A4 booklet editor integration checks passed
+larger stable preview fit and booklet pair checks passed
+stable responsive preview integration checks passed
+print geometry integration checks passed
+font asset checks passed: 19 fonts
+photo storage checks passed
+photo asset persistence checks passed
+photo asset cleanup checks passed
+project storage performance checks passed
+bounded image cache checks passed
+photo thumbnail checks passed
+photo memory integration checks passed
+photo asset integration checks passed
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /if \(outcome\.ok\) cleanupPhotoAssetsInBackground\(data\)/. Input:
+
+"import React, { useEffect, useMemo, useRef, useState } from 'react';\n" +
+  "import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';\n" +
+  'import {\n' +
+  '  MIN_FRAME,\n' +
+  '  buildGridLayout,\n' +
+  '  clamp,\n' +
+  '  ensureLayout,\n' +
+  '  framesFromLayout,\n' +
+  '  getColumnHandles,\n' +
+  '  getRowHandles,\n' +
+  '  resizeColumn,\n' +
+  '  resizeRow,\n' +
+  "} from './editor/layout';\n" +
+  'import {\n' +
+  '  BOOKLET_SIDE_BACK,\n' +
+  '  BOOKLET_SIDE_FRONT,\n' +
+  '  DEFAULT_SHEETS_PER_BLOCK,\n' +
+  '  buildBookletPlan,\n' +
+  '  clampBookletSheetsPerBlock,\n' +
+  '  findBookletSideForPage,\n' +
+  '  getAdjacentBookletSide,\n' +
+  '  getBookletSide,\n' +
+  "} from './editor/booklet';\n" +
+  "import { saveCloudProject } from './editor/cloudProjects';\n" +
+  'import {\n' +
+  '  createCloudPhotoProject,\n' +
+  '  mergeCloudMetadataIntoLibrary,\n' +
+  '  mergeCloudPhotoMetadata,\n' +
+  "} from './editor/cloudPhotoSync';\n" +
+  "import PhotoLibraryThumbnail from './editor/PhotoLibraryThumbnail';\n" +
+  "import PhotoImportReport from './editor/PhotoImportReport';\n" +
+  "import CollagePresetPicker from './editor/CollagePresetPicker';\n" +
+  'import {\n' +
+  '  createLocalPhotoProject,\n' +
+  '  createPortablePhotoProject,\n' +
+  '  hydratePhotoProject,\n' +
+  '  persistPhotoFiles,\n' +
+  '  releaseAllPhotoRuntimeUrls,\n' +
+  '  releaseUnusedPhotoRuntimeUrls,\n' +
+  "} from './editor/photoAssets';\n" +
+  "import { cleanupOrphanedPhotoAssets } from './editor/photoAssetCleanup';\n" +
+  "import { prepareLocalPhotoFiles } from './editor/localHeicUploadBridge';\n" +
+  "import { buildPhotoImportReport } from './editor/photoImportReport';\n" +
+  "import { loadCachedImage as loadImage } from './editor/imageCache';\n" +
+  "import { prepareEditorProject } from './editor/projectLoad';\n" +
+  'import {\n' +
+  '  MAX_LIBRARY_PHOTOS,\n' +
+  '  createPreparedProjectSnapshot,\n' +
+  '  describeSaveResult,\n' +
+  '  filterDuplicatePhotoUploads,\n' +
+  '  projectJsonFileError,\n' +
+  '  selectPhotoUploads,\n' +
+  "} from './editor/reliability';\n" +
+  'import {\n' +
+  '  clonePageForDuplicate,\n' +
+  '  createBlankPage,\n' +
+  '  createInitialAlbum,\n' +
+  '  createPage,\n' +
+  '  createPageFromTemplate,\n' +
+  '  normalizeProjectPages,\n' +
+  '  resolvePageFrameCount,\n' +
+  '  settingsForPage,\n' +
+  "} from './editor/pageModel';\n" +
+  'import {\n' +
+  '  applyPhotoToFrames,\n' +
+  '  bringFrameToFront,\n' +
+  '  buildFrameTransformPatch,\n' +
+  '  clampFramePosition,\n' +
+  '  clampPhotoPosition,\n' +
+  '  clearAllFramePhotos,\n' +
+  '  clearFramePhoto,\n' +
+  '  coverPhotoRect,\n' +
+  '  findFrameAtPoint,\n' +
+  '  photoOffsetFromPosition,\n' +
+  '  removeFrameById,\n' +
+  '  updateFrameGeometry,\n' +
+  '  updateFramePhoto,\n' +
+  '  validateFrameTransformBox,\n' +
+  "} from './editor/frameModel';\n" +
+  "import { addFreeFrameToPage, removeFreeFrameFromPage } from './editor/freeFrameActions';\n" +
+  "import { applyCollagePresetToPage } from './editor/collagePresetCatalog';\n" +
+  "import { hasFrameSnapGuides, snapFramePosition, snapFrameTransformBox } from './editor/frameSnapping';\n" +
+  'import {\n' +
+  '  ALBUM_LAYERS_KEY,\n' +
+  '  ALBUM_MODE_KEY,\n' +
+  '  cloneExtraLayerPage,\n' +
+  '  createPageLayerDraft,\n' +
+  '  deleteExtraLayerPage,\n' +
+  '  drawingLayersForPage,\n' +
+  '  insertExtraLayerPage,\n' +
+  '  normalizeAlbumEditorMode,\n' +
+  '  normalizeExtraLayers,\n' +
+  '  pruneExtraLayerPages,\n' +
+  '  reorderExtraLayerPages,\n' +
+  '  sanitizeExtraLayers,\n' +
+  '  textLayersForPage,\n' +
+  "} from './editor/extraLayers';\n" +
+  'import {\n' +
+  '  MAX_TEMPLATE_RECORDS,\n' +
+  '  sanitizeTemplateRecord,\n' +
+  '  sanitizeTemplateRecords,\n' +
+  '  templateJsonFileError,\n' +
+  "} from './editor/templateRecords';\n" +
+  'import {\n' +
+  '  DEFAULT_BLEED_MM,\n' +
+  '  DEFAULT_PRINT_DPI,\n' +
+  '  DEFAULT_SAFE_MM,\n' +
+  '  PRINT_ONLY_SETTING_KEYS,\n' +
+  '  PRINT_PRESETS,\n' +
+  '  composePrintRaster,\n' +
+  '  estimateEffectiveDpi,\n' +
+  '  formatPrintSummary,\n' +
+  '  getBookletPixelRatio,\n' +
+  '  getPrintGuideGeometry,\n' +
+  '  getPrintPixelGeometry,\n' +
+  '  normalizePrintSettings,\n' +
+  '  settingsForPrintPreset,\n' +
+  "} from './editor/printGeometry';\n" +
+  'import {\n' +
+  '  addPngDensityMetadata,\n' +
+  '  buildRasterPrintPdf,\n' +
+  '  pngDataUrlToJpegPage,\n' +
+  "} from './editor/printFiles';\n" +
+  'import {\n' +
+  '  BOOKLET_BACK_ORDER_REVERSE,\n' +
+  '  BOOKLET_BACK_ORDER_SAME,\n' +
+  '  buildBookletPrintInstructions,\n' +
+  '  buildManualDuplexBookletOrder,\n' +
+  '  estimateFoldedBlockThicknessMm,\n' +
+  '  getA4BookletPrintGeometry,\n' +
+  '  normalizeHomeBookletPrintSettings,\n' +
+  '  rotateRasterDataUrl180,\n' +
+  '  shouldRotateBookletSide,\n' +
+  "} from './editor/bookletPrint';\n" +
+  'import {\n' +
+  '  getBookletVisiblePageNumbers,\n' +
+  '  getPreviewScale,\n' +
+  '  getStablePreviewViewport,\n' +
+  "} from './editor/previewFit';\n" +
+  '\n' +
+  "const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';\n" +
+  'const LEGACY_KEYS = [\n' +
+  "  'collage-creator-album-live-v10-layer-move-photo',\n" +
+  "  'collage-creator-album-live-v9-photo-usage-highlight',\n" +
+  "  'collage-creator-album-live-v8-delete-frame',\n" +
+  "  'collage-creator-album-live-v7-frame-drag-bounds',\n" +
+  "  'collage-creator-album-live-v6-page-frame-count',\n" +
+  "  'collage-creator-album-live-v5-sharp-preview',\n" +
+  "  'collage-creator-album-live-v4-grid-layout',\n" +
+  "  'collage-creator-album-live-v3',\n" +
+  "  'collage-creator-album-live-v2',\n" +
+  "  'collage-creator-album-live-v1',\n" +
+  "  'collage-creator-album-v11',\n" +
+  "  'collage-creator-album-v10',\n" +
+  "  'collage-creator-album-v9',\n" +
+  "  'collage-creator-album-v8',\n" +
+  "  'collage-creator-album-v7',\n" +
+  "  'collage-creator-album-v6',\n" +
+  "  'collage-creator-album-v5',\n" +
+  "  'collage-creator-album-v4',\n" +
+  '];\n' +
+  '\n' +
+  'const SPREAD_GAP = 90;\n' +
+  'const HANDLE = 28;\n' +
+  'const MAX_PDF_JPEG_BYTES = 350 * 1024 * 1024;\n' +
+  'const DEFAULT_CANVAS = { width: 1480, height: 2100 };\n' +
+  'const DEFAULT_SETTINGS = {\n' +
+  "  presetId: 'a5-portrait',\n" +
+  '  frameCount: 5,\n' +
+  '  padding: 70,\n' +
+  '  gap: 28,\n' +
+  '  borderWidth: 0,\n' +
+  "  borderColor: '#ffffff',\n" +
+  '  showGuides: true,\n' +
+  '  smartSnap: true,\n' +
+  "  frameMode: 'free',\n" +
+  '  printDpi: DEFAULT_PRINT_DPI,\n' +
+  '  bleedMm: DEFAULT_BLEED_MM,\n' +
+  '  safeMm: DEFAULT_SAFE_MM,\n' +
+  '};\n' +
+  '\n' +
+  'const DEFAULT_BOOKLET_PRINT_SETTINGS = {\n' +
+  '  showFoldLine: false,\n' +
+  '  showCropMarks: false,\n' +
+  '  gap: 0,\n' +
+  '  margin: 0,\n' +
+  '  backOrder: BOOKLET_BACK_ORDER_REVERSE,\n' +
+  '  rotateBack180: false,\n' +
+  '  paperThicknessMm: 0.12,\n' +
+  '};\n' +
+  '\n' +
+  'const MAX_BOOKLET_PRINT_GAP = 300;\n' +
+  'const MAX_BOOKLET_PRINT_MARGIN = 300;\n' +
+  'const CROP_MARK_LENGTH = 56;\n' +
+  'const CROP_MARK_OFFSET = 18;\n' +
+  '\n' +
+  '\n' +
+  'const PRESETS = PRINT_PRESETS;\n' +
+  '\n' +
+  "const TEMPLATE_STORAGE_KEY = 'collage-user-template-packages-v2-react';\n" +
+  '\n' +
+  'const TEXT_FONTS = [\n' +
+  "  { id: 'system', label: 'Обычный системный', family: 'Arial, sans-serif' },\n" +
+  `  { id: 'onest', label: 'Onest — обычный', family: "'Collage Onest', Arial, sans-serif" },\n` +
+  `  { id: 'lato-light', label: 'Lato Light — лёгкий', family: "'Collage Lato Light', Arial, sans-serif" },\n` +
+  `  { id: 'montserrat-alt', label: 'Montserrat Alternates', family: "'Collage Montserrat Alternates', Arial, sans-serif" },\n` +
+  `  { id: 'bebas', label: 'Bebas Neue — заголовок', family: "'Collage Bebas Neue', Arial, sans-serif" },\n` +
+  `  { id: 'new-standard', label: 'New Standard Old — книжный', family: "'Collage New Standard Old', Georgia, serif" },\n` +
+  `  { id: 'caslon', label: 'Caslon Becker — классика', family: "'Collage Caslon Becker', Georgia, serif" },\n` +
+  `  { id: 'agreverence', label: 'AGReverence — элегантный', family: "'Collage AGReverence', Georgia, serif" },\n` +
+  `  { id: 'good-vibes', label: 'Good Vibes Pro — рукописный', family: "'Collage Good Vibes', cursive" },\n` +
+  `  { id: 'chopin', label: 'ChopinScript — подпись', family: "'Collage Chopin Script', cursive" },\n` +
+  `  { id: 'thin-pen', label: 'Script Thin Pen — тонкий', family: "'Collage Script Thin Pen', cursive" },\n` +
+  `  { id: 'shelley', label: 'Shelley Volante', family: "'Collage Shelley Volante', cursive" },\n` +
+  `  { id: 'calligraphia', label: 'Calligraphia One', family: "'Collage Calligraphia One', cursive" },\n` +
+  `  { id: 'czizh', label: 'Czizh', family: "'Collage Czizh', serif" },\n` +
+  `  { id: 'karsten', label: 'Karsten', family: "'Collage Karsten', serif" },\n` +
+  `  { id: 'patefon', label: 'Patefon', family: "'Collage Patefon', serif" },\n` +
+  `  { id: 'romand', label: 'RomanD', family: "'Collage RomanD', serif" },\n` +
+  `  { id: 'web-serveroff', label: 'Web Serveroff', family: "'Collage Web Serveroff', sans-serif" },\n` +
+  `  { id: 'zector', label: 'Zector', family: "'Collage Zector', sans-serif" },\n` +
+  `  { id: 'zeferino', label: 'Zeferino Two', family: "'Collage Zeferino Two', serif" },\n` +
+  '];\n' +
+  '\n' +
+  "const DEFAULT_FONT_ID = 'onest';\n" +
+  "const DEFAULT_TEXT_PRESET_ID = 'body';\n" +
+  '\n' +
+  'const TEXT_PRESETS = [\n' +
+  "  { id: 'body', label: 'Обычный', text: 'Новый текст', fontId: 'onest', fontSize: 56, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.18, color: '#1f2723' },\n" +
+  "  { id: 'title', label: 'Заголовок', text: 'Заголовок', fontId: 'caslon', fontSize: 96, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.05, color: '#1f2723' },\n" +
+  "  { id: 'soft-title', label: 'Нежный', text: 'Нежный заголовок', fontId: 'agreverence', fontSize: 92, fontWeight: 600, fontStyle: 'normal', lineHeight: 1.06, color: '#2a312e' },\n" +
+  "  { id: 'strict', label: 'Строгий', text: 'Строгий текст', fontId: 'bebas', fontSize: 72, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.08, color: '#1f2723' },\n" +
+  "  { id: 'script', label: 'Рукописный', text: 'Рукописная подпись', fontId: 'good-vibes', fontSize: 88, fontWeight: 400, fontStyle: 'normal', lineHeight: 1.1, color: '#1f2723' },\n" +
+  "  { id: 'signature', label: 'Подпись', text: 'Тёплая подпись', fontId: 'chopin', fontSize: 92, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.0, color: '#1f2723' },\n" +
+  '];\n' +
+  '\n' +
+  'function fontById(id) {\n' +
+  '  return TEXT_FONTS.find((font) => font.id === id) || TEXT_FONTS.find((font) => font.id === DEFAULT_FONT_ID) || TEXT_FONTS[0];\n' +
+  '}\n' +
+  '\n' +
+  'function presetById(id) {\n' +
+  '  return TEXT_PRESETS.find((preset) => preset.id === id) || TEXT_PRESETS.find((preset) => preset.id === DEFAULT_TEXT_PRESET_ID) || TEXT_PRESETS[0];\n' +
+  '}\n' +
+  '\n' +
+  'function cloneDeep(value) {\n' +
+  '  try {\n' +
+  '    return JSON.parse(JSON.stringify(value ?? null));\n' +
+  '  } catch {\n' +
+  '    return value;\n' +
+  '  }\n' +
+  '}\n' +
+  '\n' +
+  '\n' +
+  'function formatNumberDraft(value, fallback = 0) {\n' +
+  '  const number = Number(value);\n' +
+  '  if (!Number.isFinite(number)) return String(fallback);\n' +
+  '  return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(3)));\n' +
+  '}\n' +
+  '\n' +
+  'function softClampNumber(value, min, max) {\n' +
+  '  const number = Number(value);\n' +
+  '  if (!Number.isFinite(number)) return Number.isFinite(Number(min)) ? Number(min) : 0;\n' +
+  '  let next = number;\n' +
+  '  if (Number.isFinite(Number(min))) next = Math.max(Number(min), next);\n' +
+  '  if (Number.isFinite(Number(max))) next = Math.min(Number(max), next);\n' +
+  '  return next;\n' +
+  '}\n' +
+  '\n' +
+  'function isSoftNumberDraft(value) {\n' +
+  "  return value === '' || value === '-' || value === '.' || value === '-.' || value === '+.' || value === '+';\n" +
+  '}\n' +
+  '\n' +
+  'function SoftNumberInput({ value, onValue, min, max, step = 1, disabled = false, fallback = 0 }) {\n' +
+  '  const [draft, setDraft] = useState(() => formatNumberDraft(value, fallback));\n' +
+  '  const [editing, setEdi'... 157647 more characters
+
+    at file:///home/runner/work/collage/collage/src/editor/photoAssetCleanupIntegration.test.mjs:13:8
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: "import React, { useEffect, useMemo, useRef, useState } from 'react';\n" +
+    "import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';\n" +
+    'import {\n' +
+    '  MIN_FRAME,\n' +
+    '  buildGridLayout,\n' +
+    '  clamp,\n' +
+    '  ensureLayout,\n' +
+    '  framesFromLayout,\n' +
+    '  getColumnHandles,\n' +
+    '  getRowHandles,\n' +
+    '  resizeColumn,\n' +
+    '  resizeRow,\n' +
+    "} from './editor/layout';\n" +
+    'import {\n' +
+    '  BOOKLET_SIDE_BACK,\n' +
+    '  BOOKLET_SIDE_FRONT,\n' +
+    '  DEFAULT_SHEETS_PER_BLOCK,\n' +
+    '  buildBookletPlan,\n' +
+    '  clampBookletSheetsPerBlock,\n' +
+    '  findBookletSideForPage,\n' +
+    '  getAdjacentBookletSide,\n' +
+    '  getBookletSide,\n' +
+    "} from './editor/booklet';\n" +
+    "import { saveCloudProject } from './editor/cloudProjects';\n" +
+    'import {\n' +
+    '  createCloudPhotoProject,\n' +
+    '  mergeCloudMetadataIntoLibrary,\n' +
+    '  mergeCloudPhotoMetadata,\n' +
+    "} from './editor/cloudPhotoSync';\n" +
+    "import PhotoLibraryThumbnail from './editor/PhotoLibraryThumbnail';\n" +
+    "import PhotoImportReport from './editor/PhotoImportReport';\n" +
+    "import CollagePresetPicker from './editor/CollagePresetPicker';\n" +
+    'import {\n' +
+    '  createLocalPhotoProject,\n' +
+    '  createPortablePhotoProject,\n' +
+    '  hydratePhotoProject,\n' +
+    '  persistPhotoFiles,\n' +
+    '  releaseAllPhotoRuntimeUrls,\n' +
+    '  releaseUnusedPhotoRuntimeUrls,\n' +
+    "} from './editor/photoAssets';\n" +
+    "import { cleanupOrphanedPhotoAssets } from './editor/photoAssetCleanup';\n" +
+    "import { prepareLocalPhotoFiles } from './editor/localHeicUploadBridge';\n" +
+    "import { buildPhotoImportReport } from './editor/photoImportReport';\n" +
+    "import { loadCachedImage as loadImage } from './editor/imageCache';\n" +
+    "import { prepareEditorProject } from './editor/projectLoad';\n" +
+    'import {\n' +
+    '  MAX_LIBRARY_PHOTOS,\n' +
+    '  createPreparedProjectSnapshot,\n' +
+    '  describeSaveResult,\n' +
+    '  filterDuplicatePhotoUploads,\n' +
+    '  projectJsonFileError,\n' +
+    '  selectPhotoUploads,\n' +
+    "} from './editor/reliability';\n" +
+    'import {\n' +
+    '  clonePageForDuplicate,\n' +
+    '  createBlankPage,\n' +
+    '  createInitialAlbum,\n' +
+    '  createPage,\n' +
+    '  createPageFromTemplate,\n' +
+    '  normalizeProjectPages,\n' +
+    '  resolvePageFrameCount,\n' +
+    '  settingsForPage,\n' +
+    "} from './editor/pageModel';\n" +
+    'import {\n' +
+    '  applyPhotoToFrames,\n' +
+    '  bringFrameToFront,\n' +
+    '  buildFrameTransformPatch,\n' +
+    '  clampFramePosition,\n' +
+    '  clampPhotoPosition,\n' +
+    '  clearAllFramePhotos,\n' +
+    '  clearFramePhoto,\n' +
+    '  coverPhotoRect,\n' +
+    '  findFrameAtPoint,\n' +
+    '  photoOffsetFromPosition,\n' +
+    '  removeFrameById,\n' +
+    '  updateFrameGeometry,\n' +
+    '  updateFramePhoto,\n' +
+    '  validateFrameTransformBox,\n' +
+    "} from './editor/frameModel';\n" +
+    "import { addFreeFrameToPage, removeFreeFrameFromPage } from './editor/freeFrameActions';\n" +
+    "import { applyCollagePresetToPage } from './editor/collagePresetCatalog';\n" +
+    "import { hasFrameSnapGuides, snapFramePosition, snapFrameTransformBox } from './editor/frameSnapping';\n" +
+    'import {\n' +
+    '  ALBUM_LAYERS_KEY,\n' +
+    '  ALBUM_MODE_KEY,\n' +
+    '  cloneExtraLayerPage,\n' +
+    '  createPageLayerDraft,\n' +
+    '  deleteExtraLayerPage,\n' +
+    '  drawingLayersForPage,\n' +
+    '  insertExtraLayerPage,\n' +
+    '  normalizeAlbumEditorMode,\n' +
+    '  normalizeExtraLayers,\n' +
+    '  pruneExtraLayerPages,\n' +
+    '  reorderExtraLayerPages,\n' +
+    '  sanitizeExtraLayers,\n' +
+    '  textLayersForPage,\n' +
+    "} from './editor/extraLayers';\n" +
+    'import {\n' +
+    '  MAX_TEMPLATE_RECORDS,\n' +
+    '  sanitizeTemplateRecord,\n' +
+    '  sanitizeTemplateRecords,\n' +
+    '  templateJsonFileError,\n' +
+    "} from './editor/templateRecords';\n" +
+    'import {\n' +
+    '  DEFAULT_BLEED_MM,\n' +
+    '  DEFAULT_PRINT_DPI,\n' +
+    '  DEFAULT_SAFE_MM,\n' +
+    '  PRINT_ONLY_SETTING_KEYS,\n' +
+    '  PRINT_PRESETS,\n' +
+    '  composePrintRaster,\n' +
+    '  estimateEffectiveDpi,\n' +
+    '  formatPrintSummary,\n' +
+    '  getBookletPixelRatio,\n' +
+    '  getPrintGuideGeometry,\n' +
+    '  getPrintPixelGeometry,\n' +
+    '  normalizePrintSettings,\n' +
+    '  settingsForPrintPreset,\n' +
+    "} from './editor/printGeometry';\n" +
+    'import {\n' +
+    '  addPngDensityMetadata,\n' +
+    '  buildRasterPrintPdf,\n' +
+    '  pngDataUrlToJpegPage,\n' +
+    "} from './editor/printFiles';\n" +
+    'import {\n' +
+    '  BOOKLET_BACK_ORDER_REVERSE,\n' +
+    '  BOOKLET_BACK_ORDER_SAME,\n' +
+    '  buildBookletPrintInstructions,\n' +
+    '  buildManualDuplexBookletOrder,\n' +
+    '  estimateFoldedBlockThicknessMm,\n' +
+    '  getA4BookletPrintGeometry,\n' +
+    '  normalizeHomeBookletPrintSettings,\n' +
+    '  rotateRasterDataUrl180,\n' +
+    '  shouldRotateBookletSide,\n' +
+    "} from './editor/bookletPrint';\n" +
+    'import {\n' +
+    '  getBookletVisiblePageNumbers,\n' +
+    '  getPreviewScale,\n' +
+    '  getStablePreviewViewport,\n' +
+    "} from './editor/previewFit';\n" +
+    '\n' +
+    "const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';\n" +
+    'const LEGACY_KEYS = [\n' +
+    "  'collage-creator-album-live-v10-layer-move-photo',\n" +
+    "  'collage-creator-album-live-v9-photo-usage-highlight',\n" +
+    "  'collage-creator-album-live-v8-delete-frame',\n" +
+    "  'collage-creator-album-live-v7-frame-drag-bounds',\n" +
+    "  'collage-creator-album-live-v6-page-frame-count',\n" +
+    "  'collage-creator-album-live-v5-sharp-preview',\n" +
+    "  'collage-creator-album-live-v4-grid-layout',\n" +
+    "  'collage-creator-album-live-v3',\n" +
+    "  'collage-creator-album-live-v2',\n" +
+    "  'collage-creator-album-live-v1',\n" +
+    "  'collage-creator-album-v11',\n" +
+    "  'collage-creator-album-v10',\n" +
+    "  'collage-creator-album-v9',\n" +
+    "  'collage-creator-album-v8',\n" +
+    "  'collage-creator-album-v7',\n" +
+    "  'collage-creator-album-v6',\n" +
+    "  'collage-creator-album-v5',\n" +
+    "  'collage-creator-album-v4',\n" +
+    '];\n' +
+    '\n' +
+    'const SPREAD_GAP = 90;\n' +
+    'const HANDLE = 28;\n' +
+    'const MAX_PDF_JPEG_BYTES = 350 * 1024 * 1024;\n' +
+    'const DEFAULT_CANVAS = { width: 1480, height: 2100 };\n' +
+    'const DEFAULT_SETTINGS = {\n' +
+    "  presetId: 'a5-portrait',\n" +
+    '  frameCount: 5,\n' +
+    '  padding: 70,\n' +
+    '  gap: 28,\n' +
+    '  borderWidth: 0,\n' +
+    "  borderColor: '#ffffff',\n" +
+    '  showGuides: true,\n' +
+    '  smartSnap: true,\n' +
+    "  frameMode: 'free',\n" +
+    '  printDpi: DEFAULT_PRINT_DPI,\n' +
+    '  bleedMm: DEFAULT_BLEED_MM,\n' +
+    '  safeMm: DEFAULT_SAFE_MM,\n' +
+    '};\n' +
+    '\n' +
+    'const DEFAULT_BOOKLET_PRINT_SETTINGS = {\n' +
+    '  showFoldLine: false,\n' +
+    '  showCropMarks: false,\n' +
+    '  gap: 0,\n' +
+    '  margin: 0,\n' +
+    '  backOrder: BOOKLET_BACK_ORDER_REVERSE,\n' +
+    '  rotateBack180: false,\n' +
+    '  paperThicknessMm: 0.12,\n' +
+    '};\n' +
+    '\n' +
+    'const MAX_BOOKLET_PRINT_GAP = 300;\n' +
+    'const MAX_BOOKLET_PRINT_MARGIN = 300;\n' +
+    'const CROP_MARK_LENGTH = 56;\n' +
+    'const CROP_MARK_OFFSET = 18;\n' +
+    '\n' +
+    '\n' +
+    'const PRESETS = PRINT_PRESETS;\n' +
+    '\n' +
+    "const TEMPLATE_STORAGE_KEY = 'collage-user-template-packages-v2-react';\n" +
+    '\n' +
+    'const TEXT_FONTS = [\n' +
+    "  { id: 'system', label: 'Обычный системный', family: 'Arial, sans-serif' },\n" +
+    `  { id: 'onest', label: 'Onest — обычный', family: "'Collage Onest', Arial, sans-serif" },\n` +
+    `  { id: 'lato-light', label: 'Lato Light — лёгкий', family: "'Collage Lato Light', Arial, sans-serif" },\n` +
+    `  { id: 'montserrat-alt', label: 'Montserrat Alternates', family: "'Collage Montserrat Alternates', Arial, sans-serif" },\n` +
+    `  { id: 'bebas', label: 'Bebas Neue — заголовок', family: "'Collage Bebas Neue', Arial, sans-serif" },\n` +
+    `  { id: 'new-standard', label: 'New Standard Old — книжный', family: "'Collage New Standard Old', Georgia, serif" },\n` +
+    `  { id: 'caslon', label: 'Caslon Becker — классика', family: "'Collage Caslon Becker', Georgia, serif" },\n` +
+    `  { id: 'agreverence', label: 'AGReverence — элегантный', family: "'Collage AGReverence', Georgia, serif" },\n` +
+    `  { id: 'good-vibes', label: 'Good Vibes Pro — рукописный', family: "'Collage Good Vibes', cursive" },\n` +
+    `  { id: 'chopin', label: 'ChopinScript — подпись', family: "'Collage Chopin Script', cursive" },\n` +
+    `  { id: 'thin-pen', label: 'Script Thin Pen — тонкий', family: "'Collage Script Thin Pen', cursive" },\n` +
+    `  { id: 'shelley', label: 'Shelley Volante', family: "'Collage Shelley Volante', cursive" },\n` +
+    `  { id: 'calligraphia', label: 'Calligraphia One', family: "'Collage Calligraphia One', cursive" },\n` +
+    `  { id: 'czizh', label: 'Czizh', family: "'Collage Czizh', serif" },\n` +
+    `  { id: 'karsten', label: 'Karsten', family: "'Collage Karsten', serif" },\n` +
+    `  { id: 'patefon', label: 'Patefon', family: "'Collage Patefon', serif" },\n` +
+    `  { id: 'romand', label: 'RomanD', family: "'Collage RomanD', serif" },\n` +
+    `  { id: 'web-serveroff', label: 'Web Serveroff', family: "'Collage Web Serveroff', sans-serif" },\n` +
+    `  { id: 'zector', label: 'Zector', family: "'Collage Zector', sans-serif" },\n` +
+    `  { id: 'zeferino', label: 'Zeferino Two', family: "'Collage Zeferino Two', serif" },\n` +
+    '];\n' +
+    '\n' +
+    "const DEFAULT_FONT_ID = 'onest';\n" +
+    "const DEFAULT_TEXT_PRESET_ID = 'body';\n" +
+    '\n' +
+    'const TEXT_PRESETS = [\n' +
+    "  { id: 'body', label: 'Обычный', text: 'Новый текст', fontId: 'onest', fontSize: 56, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.18, color: '#1f2723' },\n" +
+    "  { id: 'title', label: 'Заголовок', text: 'Заголовок', fontId: 'caslon', fontSize: 96, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.05, color: '#1f2723' },\n" +
+    "  { id: 'soft-title', label: 'Нежный', text: 'Нежный заголовок', fontId: 'agreverence', fontSize: 92, fontWeight: 600, fontStyle: 'normal', lineHeight: 1.06, color: '#2a312e' },\n" +
+    "  { id: 'strict', label: 'Строгий', text: 'Строгий текст', fontId: 'bebas', fontSize: 72, fontWeight: 500, fontStyle: 'normal', lineHeight: 1.08, color: '#1f2723' },\n" +
+    "  { id: 'script', label: 'Рукописный', text: 'Рукописная подпись', fontId: 'good-vibes', fontSize: 88, fontWeight: 400, fontStyle: 'normal', lineHeight: 1.1, color: '#1f2723' },\n" +
+    "  { id: 'signature', label: 'Подпись', text: 'Тёплая подпись', fontId: 'chopin', fontSize: 92, fontWeight: 700, fontStyle: 'normal', lineHeight: 1.0, color: '#1f2723' },\n" +
+    '];\n' +
+    '\n' +
+    'function fontById(id) {\n' +
+    '  return TEXT_FONTS.find((font) => font.id === id) || TEXT_FONTS.find((font) => font.id === DEFAULT_FONT_ID) || TEXT_FONTS[0];\n' +
+    '}\n' +
+    '\n' +
+    'function presetById(id) {\n' +
+    '  return TEXT_PRESETS.find((preset) => preset.id === id) || TEXT_PRESETS.find((preset) => preset.id === DEFAULT_TEXT_PRESET_ID) || TEXT_PRESETS[0];\n' +
+    '}\n' +
+    '\n' +
+    'function cloneDeep(value) {\n' +
+    '  try {\n' +
+    '    return JSON.parse(JSON.stringify(value ?? null));\n' +
+    '  } catch {\n' +
+    '    return value;\n' +
+    '  }\n' +
+    '}\n' +
+    '\n' +
+    '\n' +
+    'function formatNumberDraft(value, fallback = 0) {\n' +
+    '  const number = Number(value);\n' +
+    '  if (!Number.isFinite(number)) return String(fallback);\n' +
+    '  return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(3)));\n' +
+    '}\n' +
+    '\n' +
+    'function softClampNumber(value, min, max) {\n' +
+    '  const number = Number(value);\n' +
+    '  if (!Number.isFinite(number)) return Number.isFinite(Number(min)) ? Number(min) : 0;\n' +
+    '  let next = number;\n' +
+    '  if (Number.isFinite(Number(min))) next = Math.max(Number(min), next);\n' +
+    '  if (Number.isFinite(Number(max))) next = Math.min(Number(max), next);\n' +
+    '  return next;\n' +
+    '}\n' +
+    '\n' +
+    'function isSoftNumberDraft(value) {\n' +
+    "  return value === '' || value === '-' || value === '.' || value === '-.' || value === '+.' || value === '+';\n" +
+    '}\n' +
+    '\n' +
+    'function SoftNumberInput({ value, onValue, min, max, step = 1, disabled = false, fallback = 0 }) {\n' +
+    '  const [draft, setDraft] = useState(() => formatNumberDraft(value, fallback));\n' +
+    '  const [editing, setEdi'... 157647 more characters,
+  expected: /if \(outcome\.ok\) cleanupPhotoAssetsInBackground\(data\)/,
+  operator: 'match',
+  diff: 'simple'
+}
+
+Node.js v22.23.1
+exit=1
