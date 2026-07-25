@@ -31,7 +31,7 @@ const cloudProject = await createCloudPhotoProject(localProject, {
     assert.equal(blob, localBlob);
     assert.equal(name, 'A.jpg');
     return {
-      id: 'photo-a',
+      id: 'bucket-object-id',
       name,
       type: blob.type,
       size: blob.size,
@@ -46,6 +46,7 @@ const cloudProject = await createCloudPhotoProject(localProject, {
 assert.equal(uploadCount, 1, 'already uploaded photos must not be uploaded again');
 assert.equal(cloudProject.version, 'live-25-railway-bucket-photos');
 assert.equal(cloudProject.library.length, 2);
+assert.equal(cloudProject.library[0].id, 'photo-a', 'bucket object ids must not replace editor photo ids');
 assert.equal(cloudProject.library[0].cloudKey, 'users/7/photos/new/original.jpg');
 assert.equal(cloudProject.library[1].cloudKey, 'users/7/photos/existing/original.jpg');
 assert.ok(cloudProject.library.every((photo) => !String(photo.src || '').startsWith('data:')), 'cloud project must not contain Base64 photos');
