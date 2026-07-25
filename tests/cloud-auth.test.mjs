@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-const SOURCE_PATH = new URL('./cloud-auth.js', import.meta.url);
+const SOURCE_PATH = new URL('../public/cloud-auth.js', import.meta.url);
 const CURRENT_STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
 const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';

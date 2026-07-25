@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   createCloudPhotoProject,
+  deleteCloudPhotoAssets,
   mergeCloudMetadataIntoLibrary,
   mergeCloudPhotoMetadata,
 } from './cloudPhotoSync.js';
@@ -22,6 +23,7 @@ const localProject = {
 };
 
 let uploadCount = 0;
+const uploaded = [];
 const progress = [];
 const cloudProject = await createCloudPhotoProject(localProject, {
   maxConcurrent: 1,
@@ -40,6 +42,7 @@ const cloudProject = await createCloudPhotoProject(localProject, {
       src: '/api/photo-assets/file?key=users%2F7%2Fphotos%2Fnew%2Foriginal.jpg',
     };
   },
+  onUploaded: (asset) => uploaded.push(asset.cloudKey),
   onProgress: (event) => progress.push(event),
 });
 
@@ -54,6 +57,7 @@ assert.ok(JSON.stringify(cloudProject).length < 10_000, 'cloud payload should re
 assert.equal(cloudProject.pages[0].frames[0].photo.cloudKey, 'users/7/photos/new/original.jpg');
 assert.equal(cloudProject.pages[0].frames[0].photo.src, undefined, 'frame references should not duplicate photo URLs');
 assert.ok(progress.some((event) => event.reused === true), 'reused cloud assets should report progress');
+assert.deepEqual(uploaded, ['users/7/photos/new/original.jpg']);
 
 const merged = mergeCloudPhotoMetadata(localProject, cloudProject);
 assert.equal(merged.library[0].assetId, 'asset-a', 'local IndexedDB reference must be preserved');
@@ -68,5 +72,35 @@ const mergedRuntime = mergeCloudMetadataIntoLibrary(runtimeLibrary, cloudProject
 assert.equal(mergedRuntime[0].src, 'blob:local-a', 'active local Blob URL must remain in use');
 assert.equal(mergedRuntime[0].assetId, 'asset-a');
 assert.equal(mergedRuntime[0].cloudKey, 'users/7/photos/new/original.jpg');
+
+const deletedRequests = [];
+const deletion = await deleteCloudPhotoAssets(['one', 'one', 'two'], {
+  fetchImpl: async (url, options) => {
+    deletedRequests.push({ url, options });
+    return {
+      ok: !url.includes('two'),
+      status: url.includes('two') ? 409 : 200,
+      json: async () => url.includes('two') ? { message: 'Фотография используется' } : { ok: true },
+    };
+  },
+});
+assert.equal(deletedRequests.length, 2, 'duplicate cleanup keys must be removed once');
+assert.equal(deletion.deleted.length, 1);
+assert.equal(deletion.failed.length, 1);
+
+let activeDeletions = 0;
+let maximumActiveDeletions = 0;
+const boundedDeletion = await deleteCloudPhotoAssets(['a', 'b', 'c', 'd', 'e'], {
+  maxConcurrent: 2,
+  fetchImpl: async () => {
+    activeDeletions += 1;
+    maximumActiveDeletions = Math.max(maximumActiveDeletions, activeDeletions);
+    await new Promise((resolve) => setImmediate(resolve));
+    activeDeletions -= 1;
+    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+  },
+});
+assert.equal(boundedDeletion.deleted.length, 5);
+assert.equal(maximumActiveDeletions, 2, 'cleanup requests must use bounded concurrency');
 
 console.log('cloud photo sync checks passed');

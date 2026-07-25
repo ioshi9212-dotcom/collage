@@ -22,7 +22,7 @@ async function openPresetPicker(page) {
 
 test('keeps the original mixed compositions and applies overlays', async ({ page }) => {
   const picker = await openPresetPicker(page);
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(7);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(12);
   await expect(picker.locator('[data-preset-id="five-background-four-overlay"]')).toBeVisible();
   await expect(picker.locator('[data-preset-id="five-overlap-cascade"]')).toBeVisible();
   await expect(picker.locator('[data-preset-id="five-text-side"]')).toBeVisible();
@@ -46,10 +46,10 @@ test('offers 2 to 9 photos and previews reserved text space', async ({ page }) =
 
   await expect(counts.getByRole('button')).toHaveCount(8);
   await counts.getByRole('button', { name: '2', exact: true }).click();
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(8);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(12);
 
   await categories.getByRole('button', { name: 'С текстом', exact: true }).click();
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(3);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(4);
   const textPreset = picker.locator('[data-preset-id="two-main-right-text"]');
   await expect(textPreset.locator('.collage-preset-preview-text-zone')).toBeVisible();
   await expect(textPreset.locator('.collage-preset-preview-text-zone')).toContainText('Текст');
@@ -61,11 +61,28 @@ test('offers 2 to 9 photos and previews reserved text space', async ({ page }) =
   });
 
   await counts.getByRole('button', { name: '9', exact: true }).click();
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(2);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(3);
   await expect(picker.locator('[data-preset-id="nine-timeline-story"] .collage-preset-preview-text-zone')).toBeVisible();
 
   await categories.getByRole('button', { name: 'Все', exact: true }).click();
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(9);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(12);
   await expect(picker.locator('[data-preset-id="nine-background-overlay"]')).toBeVisible();
   await expect(picker.locator('[data-preset-id="nine-overlap-editorial"]')).toBeVisible();
+  await expect(picker.locator('[data-preset-id="nine-main-right-eight"]')).toBeVisible();
+});
+
+test('keeps all 12 presets reachable and applicable on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const picker = await openPresetPicker(page);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(12);
+
+  const newPreset = picker.locator('[data-preset-id="five-main-right-grid"]');
+  await newPreset.scrollIntoViewIfNeeded();
+  await expect(newPreset).toBeVisible();
+  await newPreset.click();
+
+  await expect.poll(() => currentPageState(page)).toMatchObject({
+    settings: { frameCount: 5, frameMode: 'free' },
+    page: { frameCount: 5, layout: null, collagePresetId: 'five-main-right-grid' },
+  });
 });

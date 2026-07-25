@@ -72,7 +72,11 @@ test('normal cloud saves upload photo blobs once and keep Base64 out of project 
   }, { dataUrl: ONE_PIXEL_PNG });
 
   const saveButton = page.locator('.primary-save-v2');
-  await saveButton.click();
+  await page.evaluate(() => {
+    const button = document.querySelector('.primary-save-v2');
+    button.click();
+    button.click();
+  });
   await expect.poll(() => savedPayloads.length).toBe(1);
 
   const firstJson = JSON.stringify(savedPayloads[0]);

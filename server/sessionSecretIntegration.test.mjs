@@ -8,7 +8,8 @@ assert.match(serverSource, /from '\.\/server\/sessionSecret\.js'/, 'server must 
 assert.match(serverSource, /const sessionSecretState = await resolveSessionSecret\(\{[\s\S]{0,180}configuredSecret:[\s\S]{0,180}pool,[\s\S]{0,180}isProduction/, 'session key must be resolved after the PostgreSQL pool exists');
 assert.match(serverSource, /const effectiveSessionSecret = sessionSecretState\.secret/);
 assert.match(serverSource, /createHmac\('sha256', effectiveSessionSecret\)/, 'login cookies must use the resolved persistent secret');
-assert.match(serverSource, /createPhotoAssetRequestHandler\(\{[\s\S]{0,140}sessionSecret: effectiveSessionSecret/, 'Bucket authorization must use the same persistent secret');
+assert.match(serverSource, /createPhotoAssetGateway\(\{[\s\S]{0,180}sessionSecret: effectiveSessionSecret/, 'Bucket authorization must use the same persistent secret');
+assert.match(serverSource, /createHeicConversionHandler\(\{[\s\S]{0,180}sessionSecret: effectiveSessionSecret/, 'HEIC authorization must use the same persistent secret');
 assert.doesNotMatch(serverSource, /randomBytes\([^)]*\).*effectiveSessionSecret/, 'server must not create a new signing key on every production boot');
 assert.match(serverSource, /sessionPersistent: sessionSecretState\.persistent/);
 assert.match(serverSource, /sessionSecretSource: sessionSecretState\.source/);

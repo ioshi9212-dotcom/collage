@@ -24,6 +24,7 @@ import {
 import { saveCloudProject } from './editor/cloudProjects';
 import {
   createCloudPhotoProject,
+  deleteCloudPhotoAssets,
   mergeCloudMetadataIntoLibrary,
   mergeCloudPhotoMetadata,
 } from './editor/cloudPhotoSync';
@@ -1244,6 +1245,8 @@ export default function App() {
   const canvasAreaRef = useRef(null);
   const photoUploadInFlightRef = useRef(false);
   const photoProgressTimerRef = useRef(null);
+  const saveInFlightRef = useRef(null);
+  const exportInFlightRef = useRef(false);
 
   const [album, setAlbum] = useState(() => createInitialAlbum(DEFAULT_CANVAS, DEFAULT_SETTINGS));
   const [library, setLibrary] = useState([]);
@@ -1271,6 +1274,8 @@ export default function App() {
   const [printBookletSideId, setPrintBookletSideId] = useState(null);
   const [printAlbumPageIndex, setPrintAlbumPageIndex] = useState(null);
   const [pdfExporting, setPdfExporting] = useState(false);
+  const [exportStagesActive, setExportStagesActive] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [albumMode, setAlbumMode] = useState(() => localStorage.getItem(ALBUM_MODE_KEY) || 'collage');
   const [extraLayers, setExtraLayers] = useState(() => normalizeExtraLayers(null));
@@ -2362,13 +2367,15 @@ export default function App() {
     return createPortablePhotoProject(liveProject());
   }
 
-  async function cloudProject(data = project()) {
+  async function cloudProject(data = project(), options = {}) {
     return createCloudPhotoProject(data, {
       maxConcurrent: 2,
+      ...options,
       onProgress: ({ finished, total, name, reused }) => {
         if (!total) return;
         const current = reused ? finished : Math.min(total, finished + 1);
         show(`Фото в облако: ${current} из ${total} · ${name || 'Фото'}`);
+        options.onProgress?.({ finished, total, name, reused });
       },
     });
   }
@@ -2416,7 +2423,7 @@ export default function App() {
     }
   }
 
-  async function save() {
+  async function performSave() {
     const data = project();
     let savedData = data;
     let local = saveLocalProject({ silent: true, data });
@@ -2434,14 +2441,24 @@ export default function App() {
     let cloudError = null;
     const canSaveCloud = window.__collageCloudAuth?.isAuthenticated?.() === true;
     if (canSaveCloud) {
+      const uploadedKeys = [];
+      let cloudData = null;
       try {
-        const cloudData = await cloudProject(data);
-        cloud = await saveCloudProject(cloudData);
+        cloudData = await cloudProject(data, {
+          onUploaded: (asset) => {
+            if (asset?.cloudKey) uploadedKeys.push(asset.cloudKey);
+          },
+        });
         const remembered = await rememberCloudPhotoMetadata(data, cloudData, { storeSnapshot });
         savedData = remembered.data;
         local = remembered.local;
         indexedDb = remembered.indexedDb;
+        cloud = await saveCloudProject(cloudData);
       } catch (error) {
+        if (!cloudData && uploadedKeys.length) {
+          const cleanup = await deleteCloudPhotoAssets(uploadedKeys);
+          if (cleanup.failed.length) console.warn('Partial cloud upload cleanup failed', cleanup.failed);
+        }
         cloudError = error;
         console.warn('Cloud project save failed', error);
       }
@@ -2453,15 +2470,41 @@ export default function App() {
     return { ok: outcome.ok, local, indexedDb, cloud, cloudError, data: savedData };
   }
 
+  async function save() {
+    if (saveInFlightRef.current) return saveInFlightRef.current;
+    setSaving(true);
+    const operation = performSave();
+    saveInFlightRef.current = operation;
+    try {
+      return await operation;
+    } finally {
+      if (saveInFlightRef.current === operation) saveInFlightRef.current = null;
+      setSaving(false);
+    }
+  }
+
   useEffect(() => {
     window.__collageApp = {
       getProject: () => project(),
       getPortableProject: () => portableProject(),
       getCloudProject: async () => {
         const data = project();
-        const cloudData = await cloudProject(data);
-        await rememberCloudPhotoMetadata(data, cloudData, { source: 'account-cloud-photo-sync' });
-        return cloudData;
+        const uploadedKeys = [];
+        try {
+          const cloudData = await cloudProject(data, {
+            onUploaded: (asset) => {
+              if (asset?.cloudKey) uploadedKeys.push(asset.cloudKey);
+            },
+          });
+          await rememberCloudPhotoMetadata(data, cloudData, { source: 'account-cloud-photo-sync' });
+          return cloudData;
+        } catch (error) {
+          if (uploadedKeys.length) {
+            const cleanup = await deleteCloudPhotoAssets(uploadedKeys);
+            if (cleanup.failed.length) console.warn('Partial account upload cleanup failed', cleanup.failed);
+          }
+          throw error;
+        }
       },
       saveLocal: () => saveLocalProject({ silent: true }),
       openProject: async (data) => {
@@ -2597,6 +2640,9 @@ export default function App() {
   }
 
   function exportPng(stageRefToExport, filename, message, geometry) {
+    if (exportInFlightRef.current) return;
+    exportInFlightRef.current = true;
+    setExportStagesActive(true);
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
     requestAnimationFrame(() => requestAnimationFrame(async () => {
@@ -2608,6 +2654,9 @@ export default function App() {
       } catch (error) {
         console.warn('Print PNG export failed', error);
         show(error?.message || 'Не получилось собрать печатный PNG');
+      } finally {
+        exportInFlightRef.current = false;
+        setExportStagesActive(false);
       }
     }));
   }
@@ -2630,7 +2679,9 @@ export default function App() {
   }
 
   async function exportPdf(stageRefToExport, filename, label, geometry) {
-    if (pdfExporting) return;
+    if (pdfExporting || exportInFlightRef.current) return;
+    exportInFlightRef.current = true;
+    setExportStagesActive(true);
     setPdfExporting(true);
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
@@ -2647,6 +2698,8 @@ export default function App() {
       show(error?.message || 'Не получилось собрать печатный PDF');
     } finally {
       setPdfExporting(false);
+      exportInFlightRef.current = false;
+      setExportStagesActive(false);
     }
   }
 
@@ -2664,7 +2717,9 @@ export default function App() {
   }
 
   async function exportAlbumPdf() {
-    if (pdfExporting) return;
+    if (pdfExporting || exportInFlightRef.current) return;
+    exportInFlightRef.current = true;
+    setExportStagesActive(true);
     setPdfExporting(true);
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
@@ -2700,6 +2755,8 @@ export default function App() {
     } finally {
       setPrintAlbumPageIndex(null);
       setPdfExporting(false);
+      exportInFlightRef.current = false;
+      setExportStagesActive(false);
     }
   }
 
@@ -2768,9 +2825,11 @@ export default function App() {
 
   async function exportBookletPdf(kind = 'combined') {
     const label = bookletPdfLabel(kind);
-    if (pdfExporting || !ensureBookletReadyForExport(label)) return;
+    if (pdfExporting || exportInFlightRef.current || !ensureBookletReadyForExport(label)) return;
     const sequence = bookletPdfSequence(kind);
     if (!sequence.length) return show('Нет листов для PDF брошюры');
+    exportInFlightRef.current = true;
+    setExportStagesActive(true);
     setPdfExporting(true);
     setSelectedFrameId(null);
     setMoveFrameWithPhotoId(null);
@@ -2798,6 +2857,8 @@ export default function App() {
       setPrintBookletSideId(currentBookletSide?.id ?? null);
       setPrintAlbumPageIndex(null);
       setPdfExporting(false);
+      exportInFlightRef.current = false;
+      setExportStagesActive(false);
     }
   }
 
@@ -2809,87 +2870,109 @@ export default function App() {
 
   async function exportBookletSide(sideData = currentBookletSide) {
     if (!sideData) return show('Нет стороны брошюры для экспорта');
-    setSelectedFrameId(null);
-    setMoveFrameWithPhotoId(null);
-    setPrintBookletSideId(sideData.id);
-    await nextPaint();
-    const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
-    if (!uri) return show('Не получилось собрать PNG брошюры');
-    downloadDataUrl(bookletSideFilename(sideData), uri);
-    show(`Скачана сторона: ${sideData.title}`);
-  }
-
-  async function exportBookletAll() {
-    if (!ensureBookletReadyForExport('PNG всех сторон')) return;
-
-    setSelectedFrameId(null);
-    setMoveFrameWithPhotoId(null);
-    show(`Готовлю PNG брошюры: ${bookletPlan.sides.length} сторон`);
-
-    for (const sideData of bookletPlan.sides) {
+    if (exportInFlightRef.current) return;
+    exportInFlightRef.current = true;
+    setExportStagesActive(true);
+    try {
+      setSelectedFrameId(null);
+      setMoveFrameWithPhotoId(null);
       setPrintBookletSideId(sideData.id);
       await nextPaint();
       const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
-      if (!uri) {
-        show(`Не получилось собрать: ${sideData.title}`);
-        return;
-      }
+      if (!uri) return show('Не получилось собрать PNG брошюры');
       downloadDataUrl(bookletSideFilename(sideData), uri);
-      await new Promise((resolve) => window.setTimeout(resolve, 180));
+      show(`Скачана сторона: ${sideData.title}`);
+    } finally {
+      exportInFlightRef.current = false;
+      setExportStagesActive(false);
     }
+  }
 
-    setPrintBookletSideId(currentBookletSide?.id ?? null);
-    show(`Скачаны PNG брошюры: ${bookletPlan.sides.length} сторон`);
+  async function exportBookletAll() {
+    if (exportInFlightRef.current || !ensureBookletReadyForExport('PNG всех сторон')) return;
+    exportInFlightRef.current = true;
+    setExportStagesActive(true);
+
+    try {
+      setSelectedFrameId(null);
+      setMoveFrameWithPhotoId(null);
+      show(`Готовлю PNG брошюры: ${bookletPlan.sides.length} сторон`);
+
+      for (const sideData of bookletPlan.sides) {
+        setPrintBookletSideId(sideData.id);
+        await nextPaint();
+        const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
+        if (!uri) {
+          show(`Не получилось собрать: ${sideData.title}`);
+          return;
+        }
+        downloadDataUrl(bookletSideFilename(sideData), uri);
+        await new Promise((resolve) => window.setTimeout(resolve, 180));
+      }
+
+      setPrintBookletSideId(currentBookletSide?.id ?? null);
+      show(`Скачаны PNG брошюры: ${bookletPlan.sides.length} сторон`);
+    } finally {
+      exportInFlightRef.current = false;
+      setExportStagesActive(false);
+    }
   }
 
 
   async function exportBookletZip() {
-    if (!ensureBookletReadyForExport('ZIP-пакета печати')) return;
+    if (exportInFlightRef.current || !ensureBookletReadyForExport('ZIP-пакета печати')) return;
+    exportInFlightRef.current = true;
+    setExportStagesActive(true);
 
-    setSelectedFrameId(null);
-    setMoveFrameWithPhotoId(null);
-    show(`Готовлю ZIP брошюры: ${bookletPlan.sides.length} сторон`);
+    try {
+      setSelectedFrameId(null);
+      setMoveFrameWithPhotoId(null);
+      show(`Готовлю ZIP брошюры: ${bookletPlan.sides.length} сторон`);
 
-    const files = [];
-    const imageEntries = [];
+      const files = [];
+      const imageEntries = [];
 
-    for (const sideData of bookletPlan.sides) {
-      setPrintBookletSideId(sideData.id);
-      await nextPaint();
-      const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
-      if (!uri) {
-        show(`Не получилось собрать: ${sideData.title}`);
-        return;
+      for (const sideData of bookletPlan.sides) {
+        setPrintBookletSideId(sideData.id);
+        await nextPaint();
+        const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
+        if (!uri) {
+          show(`Не получилось собрать: ${sideData.title}`);
+          return;
+        }
+
+        const name = `block-${pad(sideData.blockNumber)}/${bookletSideFilename(sideData)}`;
+        imageEntries.push({ name, sideData });
+        files.push({
+          name,
+          bytes: dataUrlToBytes(uri),
+        });
       }
 
-      const name = `block-${pad(sideData.blockNumber)}/${bookletSideFilename(sideData)}`;
-      imageEntries.push({ name, sideData });
-      files.push({
-        name,
-        bytes: dataUrlToBytes(uri),
-      });
+      const packageData = {
+        plan: bookletPlan,
+        canvas,
+        sheetsPerBlock: bookletSheetsPerBlock,
+        printSettings: normalizedBookletPrintSettings,
+        exportRatio: bookletPixelRatio,
+        imageEntries,
+      };
+
+      files.unshift(
+        { name: 'README_PRINT_ORDER.txt', bytes: textToBytes(buildBookletReadme(packageData)) },
+        { name: 'print-order.csv', bytes: textToBytes(buildBookletCsv(imageEntries)) },
+        { name: 'booklet-manifest.json', bytes: textToBytes(buildBookletManifestJson(packageData)) },
+        { name: 'print-preview.html', bytes: textToBytes(buildBookletPreviewHtml(packageData)) },
+      );
+
+      setPrintBookletSideId(currentBookletSide?.id ?? null);
+      const zip = createZipBlob(files);
+      downloadBlob(`booklet-print-package-${pages.length}-pages-${bookletSheetsPerBlock}-sheets.zip`, zip);
+      show(`Скачан ZIP: ${imageEntries.length} PNG + схема печати`);
+    } finally {
+      exportInFlightRef.current = false;
+      setExportStagesActive(false);
     }
-
-    const packageData = {
-      plan: bookletPlan,
-      canvas,
-      sheetsPerBlock: bookletSheetsPerBlock,
-      printSettings: normalizedBookletPrintSettings,
-      exportRatio: bookletPixelRatio,
-      imageEntries,
-    };
-
-    files.unshift(
-      { name: 'README_PRINT_ORDER.txt', bytes: textToBytes(buildBookletReadme(packageData)) },
-      { name: 'print-order.csv', bytes: textToBytes(buildBookletCsv(imageEntries)) },
-      { name: 'booklet-manifest.json', bytes: textToBytes(buildBookletManifestJson(packageData)) },
-      { name: 'print-preview.html', bytes: textToBytes(buildBookletPreviewHtml(packageData)) },
-    );
-
-    setPrintBookletSideId(currentBookletSide?.id ?? null);
-    const zip = createZipBlob(files);
-    downloadBlob(`booklet-print-package-${pages.length}-pages-${bookletSheetsPerBlock}-sheets.zip`, zip);
-    show(`Скачан ZIP: ${imageEntries.length} PNG + схема печати`);
   }
 
   const renderEntries = entries.map((entry, entryIndex) => (
@@ -3269,9 +3352,9 @@ export default function App() {
 
         <div className="app-view-switch-v2">
           <div className="segmented-v2" aria-label="Режим просмотра">
-            <button type="button" className={viewMode === 'single' ? 'active' : ''} onClick={() => setViewMode('single')}>Страница</button>
-            <button type="button" className={viewMode === 'spread' ? 'active' : ''} onClick={() => setViewMode('spread')}>Разворот</button>
-            <button type="button" className={isBooklet ? 'active' : ''} onClick={enterBookletMode}>Брошюра</button>
+            <button type="button" aria-pressed={viewMode === 'single'} className={viewMode === 'single' ? 'active' : ''} onClick={() => setViewMode('single')}>Страница</button>
+            <button type="button" aria-pressed={viewMode === 'spread'} className={viewMode === 'spread' ? 'active' : ''} onClick={() => setViewMode('spread')}>Разворот</button>
+            <button type="button" aria-pressed={isBooklet} className={isBooklet ? 'active' : ''} onClick={enterBookletMode}>Брошюра</button>
           </div>
         </div>
 
@@ -3293,7 +3376,7 @@ export default function App() {
               </div>
             )}
           </div>
-          <button className="button primary-save-v2" type="button" onClick={save}>Сохранить</button>
+          <button className="button primary-save-v2" type="button" disabled={saving} onClick={save}>{saving ? 'Сохраняю…' : 'Сохранить'}</button>
           <button className="button" type="button" onClick={() => document.querySelector('.cloud-auth-toggle')?.click()}>Аккаунт</button>
           <input className="hidden-input project-storage-json-input" type="file" accept="application/json" onChange={importJson} />
         </div>
@@ -3304,12 +3387,12 @@ export default function App() {
 
       <section className="workspace editor-workspace-v2">
         <nav className="editor-tool-rail-v2" aria-label="Инструменты редактора">
-          <button type="button" aria-label="Фото" className={`editor-tool-button-v2 ${leftPanel === 'photos' ? 'active' : ''}`} onClick={() => { setLeftPanel('photos'); setMode('collage'); }}><b>▧</b><span>Фото</span></button>
-          <button type="button" aria-label="Страницы" className={`editor-tool-button-v2 ${leftPanel === 'pages' ? 'active' : ''}`} onClick={() => { setLeftPanel('pages'); setMode('collage'); }}><b>▤</b><span>Страницы</span></button>
-          <button type="button" aria-label="Коллаж" className={`editor-tool-button-v2 ${leftPanel === 'collage' ? 'active' : ''}`} onClick={() => { setLeftPanel('collage'); setMode('collage'); }}><b>▦</b><span>Коллаж</span></button>
-          <button type="button" aria-label="Текст" className={`editor-tool-button-v2 ${leftPanel === 'text' ? 'active' : ''}`} onClick={() => { setLeftPanel('text'); setMode('text'); }}><b>T</b><span>Текст</span></button>
-          <button type="button" aria-label="Рисунки" className={`editor-tool-button-v2 ${leftPanel === 'drawings' ? 'active' : ''}`} onClick={() => { setLeftPanel('drawings'); setMode('drawings'); }}><b>╱</b><span>Рисунки</span></button>
-          <button type="button" aria-label="Шаблоны" className={`editor-tool-button-v2 ${leftPanel === 'templates' ? 'active' : ''}`} onClick={() => { setLeftPanel('templates'); setMode('templates'); }}><b>◇</b><span>Шаблоны</span></button>
+          <button type="button" aria-label="Фото" aria-pressed={leftPanel === 'photos'} className={`editor-tool-button-v2 ${leftPanel === 'photos' ? 'active' : ''}`} onClick={() => { setLeftPanel('photos'); setMode('collage'); }}><b>▧</b><span>Фото</span></button>
+          <button type="button" aria-label="Страницы" aria-pressed={leftPanel === 'pages'} className={`editor-tool-button-v2 ${leftPanel === 'pages' ? 'active' : ''}`} onClick={() => { setLeftPanel('pages'); setMode('collage'); }}><b>▤</b><span>Страницы</span></button>
+          <button type="button" aria-label="Коллаж" aria-pressed={leftPanel === 'collage'} className={`editor-tool-button-v2 ${leftPanel === 'collage' ? 'active' : ''}`} onClick={() => { setLeftPanel('collage'); setMode('collage'); }}><b>▦</b><span>Коллаж</span></button>
+          <button type="button" aria-label="Текст" aria-pressed={leftPanel === 'text'} className={`editor-tool-button-v2 ${leftPanel === 'text' ? 'active' : ''}`} onClick={() => { setLeftPanel('text'); setMode('text'); }}><b>T</b><span>Текст</span></button>
+          <button type="button" aria-label="Рисунки" aria-pressed={leftPanel === 'drawings'} className={`editor-tool-button-v2 ${leftPanel === 'drawings' ? 'active' : ''}`} onClick={() => { setLeftPanel('drawings'); setMode('drawings'); }}><b>╱</b><span>Рисунки</span></button>
+          <button type="button" aria-label="Шаблоны" aria-pressed={leftPanel === 'templates'} className={`editor-tool-button-v2 ${leftPanel === 'templates' ? 'active' : ''}`} onClick={() => { setLeftPanel('templates'); setMode('templates'); }}><b>◇</b><span>Шаблоны</span></button>
         </nav>
         <aside className="sidebar editor-left-panel-v2">
           {leftPanel === 'photos' && (
@@ -3617,7 +3700,7 @@ export default function App() {
         </aside>
       </section>
 
-      <div className="export-stage-holder" aria-hidden="true">
+      {exportStagesActive && <div className="export-stage-holder" aria-hidden="true">
         <Stage ref={printPageRef} width={canvas.width} height={canvas.height}>
           <Layer>
             <PageLayer page={exportPage} pageIndex={exportPageIndex} x={0} {...commonPageLayerProps} />
@@ -3654,7 +3737,7 @@ export default function App() {
             <BookletPrintGuides canvas={canvas} printSettings={bookletExportPrintSettings} />
           </Layer>
         </Stage>
-      </div>
+      </div>}
     </main>
   );
 }

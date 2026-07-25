@@ -1,7 +1,6 @@
-import http from 'node:http';
 import { createHmac, createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { syncBuiltinESMExports } from 'node:module';
 import { Readable } from 'node:stream';
+import { createFixedWindowRateLimiter } from './rateLimit.js';
 
 export const CLOUD_PHOTO_SCHEMA = 'railway-bucket-v1';
 export const DEFAULT_MAX_PHOTO_BYTES = 25 * 1024 * 1024;
@@ -25,6 +24,11 @@ const EXTENSION_BY_TYPE = {
   'image/heic': 'heic',
   'image/heif': 'heif',
 };
+
+function positiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+}
 
 function base64urlDecode(value) {
   return Buffer.from(value, 'base64url').toString('utf8');
@@ -85,7 +89,7 @@ export function resolveBucketConfig(env = process.env) {
   const urlStyle = requestedUrlStyle === 'path' || requestedUrlStyle === 'virtual'
     ? requestedUrlStyle
     : 'virtual';
-  const maxPhotoBytes = Math.max(1, Number(env.MAX_PHOTO_FILE_BYTES || DEFAULT_MAX_PHOTO_BYTES));
+  const maxPhotoBytes = positiveInteger(env.MAX_PHOTO_FILE_BYTES, DEFAULT_MAX_PHOTO_BYTES);
   const configured = Boolean(endpoint && bucket && accessKeyId && secretAccessKey);
   return { endpoint, region, bucket, accessKeyId, secretAccessKey, urlStyle, maxPhotoBytes, configured };
 }
@@ -170,20 +174,47 @@ export function createPresignedObjectUrl({
   return `${endpoint.origin}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
 }
 
-function sendJson(response, status, payload) {
+function sendJson(response, status, payload, headers = {}) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    ...headers,
   });
   response.end(JSON.stringify(payload));
 }
 
-function sendBucketError(response, status, error, message) {
-  sendJson(response, status, { error, message });
+function sendBucketError(response, status, error, message, options = {}) {
+  sendJson(
+    response,
+    status,
+    {
+      error,
+      message,
+      ...(options.details ? { quota: options.details } : {}),
+    },
+    options.headers,
+  );
 }
 
-async function proxyUpload({ request, response, user, config, fetchImpl }) {
+async function deleteBucketObject({ config, key, fetchImpl }) {
+  const deleteUrl = createPresignedObjectUrl({ config, method: 'DELETE', key });
+  const upstream = await fetchImpl(deleteUrl, { method: 'DELETE' });
+  if (!upstream.ok && upstream.status !== 404) {
+    const detail = (await upstream.text().catch(() => '')).slice(0, 500);
+    throw new Error(`Bucket delete failed: ${upstream.status} ${detail}`.trim());
+  }
+}
+
+async function proxyUpload({
+  request,
+  response,
+  user,
+  config,
+  fetchImpl,
+  assetStore,
+  uploadLimiter,
+}) {
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   const type = normalizeImageType(request.headers['content-type']);
   const size = Number(request.headers['content-length']);
@@ -204,23 +235,71 @@ async function proxyUpload({ request, response, user, config, fetchImpl }) {
     return;
   }
 
+  const rateLimit = uploadLimiter?.consume(`user:${user.id}`);
+  if (rateLimit && !rateLimit.allowed) {
+    request.resume?.();
+    sendBucketError(
+      response,
+      429,
+      'photo_upload_rate_limited',
+      'Слишком много загрузок подряд. Подожди немного и повтори.',
+      { headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } },
+    );
+    return;
+  }
+
   const id = randomUUID();
   const key = buildPhotoObjectKey(user.id, type, id);
-  const uploadUrl = createPresignedObjectUrl({ config, method: 'PUT', key });
-  const upstream = await fetchImpl(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': type,
-      'Content-Length': String(size),
-      'Cache-Control': 'private, max-age=31536000, immutable',
-    },
-    body: request,
-    duplex: 'half',
-  });
+  let reserved = false;
+  let uploaded = false;
 
-  if (!upstream.ok) {
-    const detail = (await upstream.text().catch(() => '')).slice(0, 500);
-    throw new Error(`Bucket upload failed: ${upstream.status} ${detail}`.trim());
+  try {
+    if (assetStore) {
+      await assetStore.reserve({
+        id,
+        userId: user.id,
+        key,
+        name,
+        type,
+        size,
+      });
+      reserved = true;
+    }
+
+    const uploadUrl = createPresignedObjectUrl({ config, method: 'PUT', key });
+    const upstream = await fetchImpl(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': type,
+        'Content-Length': String(size),
+        'Cache-Control': 'private, max-age=31536000, immutable',
+      },
+      body: request,
+      duplex: 'half',
+    });
+
+    if (!upstream.ok) {
+      const detail = (await upstream.text().catch(() => '')).slice(0, 500);
+      throw new Error(`Bucket upload failed: ${upstream.status} ${detail}`.trim());
+    }
+
+    uploaded = true;
+    if (assetStore) await assetStore.markReady({ id, userId: user.id });
+  } catch (error) {
+    let rollbackDeleted = !uploaded;
+    if (uploaded) {
+      try {
+        await deleteBucketObject({ config, key, fetchImpl });
+        rollbackDeleted = true;
+      } catch (cleanupError) {
+        console.error('Bucket rollback failed', cleanupError);
+      }
+    }
+    if (reserved && rollbackDeleted) {
+      await assetStore.release({ id, userId: user.id })
+        .catch((cleanupError) => console.error('Photo reservation rollback failed', cleanupError));
+    }
+    throw error;
   }
 
   const src = `/api/photo-assets/file?key=${encodeURIComponent(key)}`;
@@ -237,7 +316,7 @@ async function proxyUpload({ request, response, user, config, fetchImpl }) {
   });
 }
 
-async function proxyDownload({ request, response, user, config, fetchImpl }) {
+async function proxyDownload({ request, response, user, config, fetchImpl, assetStore }) {
   const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   const key = String(requestUrl.searchParams.get('key') || '');
   if (!isOwnedPhotoKey(user.id, key)) {
@@ -263,26 +342,121 @@ async function proxyDownload({ request, response, user, config, fetchImpl }) {
   if (contentLength) headers['Content-Length'] = contentLength;
   if (etag) headers.ETag = etag;
   if (lastModified) headers['Last-Modified'] = lastModified;
+
+  if (assetStore) {
+    await assetStore.registerLegacy({
+      userId: user.id,
+      key,
+      name: 'Фото',
+      type: headers['Content-Type'],
+      size: contentLength,
+    }).catch((error) => console.warn('Legacy photo accounting skipped', error));
+  }
+
   response.writeHead(200, headers);
-  Readable.fromWeb(upstream.body).pipe(response);
+  const bodyStream = Readable.fromWeb(upstream.body);
+  bodyStream.on('error', (error) => {
+    console.error('Bucket download stream failed', error);
+    response.destroy?.(error);
+  });
+  response.once?.('close', () => {
+    if (!response.writableEnded) bodyStream.destroy();
+  });
+  bodyStream.pipe(response);
 }
 
-export function createPhotoAssetRequestHandler({ env = process.env, fetchImpl = globalThis.fetch, sessionSecret: sessionSecretOverride } = {}) {
+export function createPhotoAssetGateway({
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  sessionSecret: sessionSecretOverride,
+  assetStore = null,
+  requireAssetStore = false,
+} = {}) {
   const config = resolveBucketConfig(env);
   const sessionSecret = String(sessionSecretOverride ?? env.SESSION_SECRET ?? '');
+  const uploadLimiter = createFixedWindowRateLimiter({
+    windowMs: positiveInteger(env.PHOTO_UPLOAD_WINDOW_MS, 60 * 60 * 1000),
+    maxRequests: positiveInteger(env.PHOTO_UPLOAD_MAX_REQUESTS, 240),
+    maxTrackedKeys: positiveInteger(env.PHOTO_UPLOAD_MAX_TRACKED_USERS, 10_000),
+  });
+  const deleteConcurrency = positiveInteger(env.PHOTO_DELETE_MAX_CONCURRENT, 4);
 
-  return async function handlePhotoAssetRequest(request, response) {
+  async function deleteOwnedPhoto(userId, key, { requireUnreferenced = true } = {}) {
+    if (!isOwnedPhotoKey(userId, key)) {
+      return { deleted: false, reason: 'not_owned' };
+    }
+    if (!assetStore) {
+      return { deleted: false, reason: 'accounting_unavailable' };
+    }
+    if (requireUnreferenced && await assetStore.isReferenced({ userId, key })) {
+      return { deleted: false, reason: 'referenced' };
+    }
+
+    await deleteBucketObject({ config, key, fetchImpl });
+    await assetStore.remove({ userId, key });
+    return { deleted: true };
+  }
+
+  async function cleanupUnreferenced({ userId, keys }) {
+    const uniqueKeys = [...new Set(keys || [])].filter((key) => isOwnedPhotoKey(userId, key));
+    const result = { checked: uniqueKeys.length, deleted: 0, retained: 0, failed: 0 };
+    let nextIndex = 0;
+
+    async function worker() {
+      while (nextIndex < uniqueKeys.length) {
+        const key = uniqueKeys[nextIndex];
+        nextIndex += 1;
+        try {
+          const deletion = await deleteOwnedPhoto(userId, key);
+          if (deletion.deleted) result.deleted += 1;
+          else result.retained += 1;
+        } catch (error) {
+          result.failed += 1;
+          console.error('Unreferenced photo cleanup failed', { key, error });
+        }
+      }
+    }
+
+    await Promise.all(
+      Array.from(
+        { length: Math.min(uniqueKeys.length, deleteConcurrency) },
+        () => worker(),
+      ),
+    );
+    return result;
+  }
+
+  async function handle(request, response) {
     const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
     if (!requestUrl.pathname.startsWith('/api/photo-assets/')) return false;
 
     if (request.method === 'GET' && requestUrl.pathname === '/api/photo-assets/status') {
-      sendJson(response, 200, { configured: config.configured });
+      sendJson(response, 200, {
+        configured: config.configured,
+        quotaEnforced: Boolean(assetStore),
+        ...(assetStore?.limits ? { quota: assetStore.limits } : {}),
+      });
       return true;
     }
 
     if (!config.configured) {
       request.resume?.();
       sendBucketError(response, 503, 'bucket_not_configured', 'Облачное хранилище фотографий не подключено.');
+      return true;
+    }
+
+    if (
+      requireAssetStore
+      && !assetStore
+      && (request.method === 'PUT' || request.method === 'DELETE')
+    ) {
+      request.resume?.();
+      sendBucketError(
+        response,
+        503,
+        'photo_accounting_unavailable',
+        'Учёт фотографий временно недоступен.',
+      );
       return true;
     }
 
@@ -294,46 +468,69 @@ export function createPhotoAssetRequestHandler({ env = process.env, fetchImpl = 
     }
 
     if (request.method === 'PUT' && requestUrl.pathname === '/api/photo-assets/upload') {
-      await proxyUpload({ request, response, user, config, fetchImpl });
+      try {
+        await proxyUpload({
+          request,
+          response,
+          user,
+          config,
+          fetchImpl,
+          assetStore,
+          uploadLimiter,
+        });
+      } catch (error) {
+        if (error?.name === 'PhotoAssetQuotaError') {
+          request.resume?.();
+          sendBucketError(
+            response,
+            Number(error.status) || 409,
+            error.code,
+            error.message,
+            { details: error.details },
+          );
+          return true;
+        }
+        throw error;
+      }
       return true;
     }
 
     if (request.method === 'GET' && requestUrl.pathname === '/api/photo-assets/file') {
-      await proxyDownload({ request, response, user, config, fetchImpl });
+      await proxyDownload({ request, response, user, config, fetchImpl, assetStore });
+      return true;
+    }
+
+    if (request.method === 'DELETE' && requestUrl.pathname === '/api/photo-assets/file') {
+      const key = String(requestUrl.searchParams.get('key') || '');
+      if (!isOwnedPhotoKey(user.id, key)) {
+        sendBucketError(response, 403, 'photo_access_denied', 'Нет доступа к этой фотографии.');
+        return true;
+      }
+      if (!assetStore) {
+        sendBucketError(response, 503, 'photo_accounting_unavailable', 'Учёт фотографий временно недоступен.');
+        return true;
+      }
+
+      const deletion = await deleteOwnedPhoto(user.id, key);
+      if (deletion.reason === 'referenced') {
+        sendBucketError(response, 409, 'photo_in_use', 'Фотография используется в облачном проекте.');
+        return true;
+      }
+      sendJson(response, 200, { ok: deletion.deleted });
       return true;
     }
 
     sendBucketError(response, 404, 'photo_api_not_found', 'Маршрут фотографий не найден.');
     return true;
+  }
+
+  return {
+    handle,
+    cleanupUnreferenced,
+    config,
   };
 }
 
-export function installPhotoAssetServerPreload(options = {}) {
-  const originalCreateServer = http.createServer;
-  const handlePhotoAssetRequest = createPhotoAssetRequestHandler(options);
-
-  http.createServer = function createServerWithPhotoAssets(...args) {
-    const listenerIndex = typeof args[0] === 'function' ? 0 : 1;
-    const originalListener = args[listenerIndex];
-    if (typeof originalListener !== 'function') return originalCreateServer.apply(this, args);
-
-    args[listenerIndex] = function wrappedRequestListener(request, response) {
-      Promise.resolve(handlePhotoAssetRequest(request, response))
-        .then((handled) => {
-          if (!handled) originalListener(request, response);
-        })
-        .catch((error) => {
-          console.error('Photo asset route failed', error);
-          if (!response.headersSent) {
-            sendBucketError(response, 500, 'photo_storage_error', 'Не удалось обработать фотографию.');
-          } else {
-            response.destroy(error);
-          }
-        });
-    };
-
-    return originalCreateServer.apply(this, args);
-  };
-
-  syncBuiltinESMExports();
+export function createPhotoAssetRequestHandler(options = {}) {
+  return createPhotoAssetGateway(options).handle;
 }

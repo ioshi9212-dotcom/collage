@@ -109,6 +109,9 @@ test.describe('mobile phone editor shell', () => {
     const metrics = await page.evaluate(() => ({
       devicePixelRatio: window.devicePixelRatio,
       performance: window.__collageCanvasPerformance,
+      exportStageCount: document.querySelectorAll('.export-stage-holder').length,
+      canvasBackingBytes: [...document.querySelectorAll('.konvajs-content canvas')]
+        .reduce((total, canvas) => total + (canvas.width * canvas.height * 4), 0),
       canvasRatios: [...document.querySelectorAll('.konvajs-content canvas')].map((canvas) => {
         const cssWidth = Number.parseFloat(canvas.style.width) || canvas.width;
         const cssHeight = Number.parseFloat(canvas.style.height) || canvas.height;
@@ -121,7 +124,9 @@ test.describe('mobile phone editor shell', () => {
 
     expect(metrics.devicePixelRatio).toBe(3);
     expect(metrics.performance).toMatchObject({ mobileViewport: true, previewPixelRatio: 1 });
-    expect(metrics.canvasRatios.length).toBeGreaterThanOrEqual(2);
+    expect(metrics.exportStageCount).toBe(0);
+    expect(metrics.canvasBackingBytes).toBeLessThanOrEqual(16 * 1024 * 1024);
+    expect(metrics.canvasRatios.length).toBeGreaterThanOrEqual(1);
     expect(metrics.canvasRatios.every((ratio) => ratio.width <= 1.01 && ratio.height <= 1.01)).toBe(true);
   });
 
@@ -186,12 +191,23 @@ test.describe('mobile phone editor shell', () => {
         const rect = node.getBoundingClientRect();
         return { width: rect.width, height: rect.height };
       }),
+      headerButtons: [...document.querySelectorAll('.app-header-v2 button')]
+        .filter((node) => {
+          const rect = node.getBoundingClientRect();
+          const style = getComputedStyle(node);
+          return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+        })
+        .map((node) => {
+          const rect = node.getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        }),
       headerHeight: document.querySelector('.app-header-v2')?.getBoundingClientRect().height ?? 0,
       canvasHeight: document.querySelector('.canvas-area')?.getBoundingClientRect().height ?? 0,
     }));
 
     expect(metrics.tools.length).toBe(7);
     expect(metrics.tools.every((item) => item.width >= 44 && item.height >= 44)).toBe(true);
+    expect(metrics.headerButtons.every((item) => item.width >= 44 && item.height >= 44)).toBe(true);
     expect(metrics.headerHeight).toBeLessThanOrEqual(64);
     expect(metrics.canvasHeight).toBeGreaterThan(110);
 
