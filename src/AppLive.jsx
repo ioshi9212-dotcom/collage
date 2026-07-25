@@ -24,6 +24,7 @@ import {
 import { saveCloudProject } from './editor/cloudProjects';
 import PhotoLibraryThumbnail from './editor/PhotoLibraryThumbnail';
 import PhotoImportReport from './editor/PhotoImportReport';
+import CollagePresetPicker from './editor/CollagePresetPicker';
 import {
   createLocalPhotoProject,
   createPortablePhotoProject,
@@ -72,6 +73,7 @@ import {
   validateFrameTransformBox,
 } from './editor/frameModel';
 import { addFreeFrameToPage, removeFreeFrameFromPage } from './editor/freeFrameActions';
+import { applyCollagePresetToPage } from './editor/collagePresetCatalog';
 import { hasFrameSnapGuides, snapFramePosition, snapFrameTransformBox } from './editor/frameSnapping';
 import {
   ALBUM_LAYERS_KEY,
@@ -2078,6 +2080,29 @@ export default function App() {
 
 
 
+  function applyCollagePreset(preset) {
+    if (!currentPage || currentPage.isBlankPage) return show('На пустую страницу нельзя применить композицию');
+    const filledBefore = Array.isArray(currentPage.frames)
+      ? currentPage.frames.filter((frame) => frame?.photo).length
+      : 0;
+    const nextPage = applyCollagePresetToPage(currentPage, preset, canvas, makeId);
+    const nextSettings = { ...settings, frameCount: preset.count, frameMode: 'free' };
+    const removedFromPage = Math.max(0, filledBefore - preset.count);
+
+    setSettings(nextSettings);
+    setAlbum((current) => ({
+      ...current,
+      pages: current.pages.map((page) => (page.id === currentPage.id ? nextPage : page)),
+    }));
+    setSelectedFrameId(nextPage.frames[0]?.id ?? null);
+    setMoveFrameWithPhotoId(null);
+    setFrameSnapGuides(null);
+    setInspectorTab('object');
+    show(removedFromPage
+      ? `Композиция «${preset.name}» применена. Лишние фото остались в библиотеке: ${removedFromPage}`
+      : `Композиция «${preset.name}» применена`);
+  }
+
   function addFreeFrame() {
     if (!currentPage || currentPage.isBlankPage) return show('На пустую страницу нельзя добавить фото-окно');
     const existingFrames = Array.isArray(currentPage.frames) ? currentPage.frames : [];
@@ -3302,6 +3327,7 @@ export default function App() {
             <>
               <div className="panel-title compact"><div><h2>Коллаж</h2><p>Сетка и размеры фото-окон текущей страницы.</p></div></div>
               <label className="field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count === 0 ? 'нет' : count}</option>)}</select></label>
+              <CollagePresetPicker activeCount={currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onApply={applyCollagePreset} />
               <button className="button full accent" onClick={addFreeFrame} disabled={Boolean(currentPage?.isBlankPage) || currentPageFrameCount >= 9}>+ Добавить окно</button>
               <p className="hint">Добавление и удаление в свободном режиме не меняют положение и размеры остальных окон.</p>
               <label className="field"><span>Зазор</span><SoftNumberInput min={0} max={200} value={settings.gap} onValue={(value) => updateSetting('gap', value)} /></label>
