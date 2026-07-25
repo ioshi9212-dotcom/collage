@@ -9,19 +9,19 @@ import {
 } from './collagePresetCatalog.js';
 
 assert.deepEqual(COLLAGE_PRESET_COUNTS, [2, 3, 4, 5, 6, 7, 8, 9]);
-assert.equal(COLLAGE_PRESET_CATALOG.length, 60);
-assert.equal(new Set(COLLAGE_PRESET_CATALOG.map((preset) => preset.id)).size, 60, 'preset ids must be unique');
+assert.equal(COLLAGE_PRESET_CATALOG.length, 96);
+assert.equal(new Set(COLLAGE_PRESET_CATALOG.map((preset) => preset.id)).size, 96, 'preset ids must be unique');
 assert.ok(COLLAGE_PRESET_CATEGORIES.some((item) => item.id === 'text' && item.label === 'С текстом'));
 
 const expectedCounts = new Map([
-  [2, 8],
-  [3, 6],
-  [4, 7],
-  [5, 7],
-  [6, 7],
-  [7, 8],
-  [8, 8],
-  [9, 9],
+  [2, 12],
+  [3, 12],
+  [4, 12],
+  [5, 12],
+  [6, 12],
+  [7, 12],
+  [8, 12],
+  [9, 12],
 ]);
 
 for (const [count, expected] of expectedCounts) {
@@ -29,9 +29,9 @@ for (const [count, expected] of expectedCounts) {
 }
 
 assert.equal(collagePresetsFor({ count: 5, category: 'overlay' }).length, 1);
-assert.equal(collagePresetsFor({ count: 2, category: 'text' }).length, 3);
-assert.equal(collagePresetsFor({ count: 9, category: 'text' }).length, 2);
-assert.equal(COLLAGE_PRESET_CATALOG.filter((preset) => preset.category === 'text').length, 11);
+assert.equal(collagePresetsFor({ count: 2, category: 'text' }).length, 4);
+assert.equal(collagePresetsFor({ count: 9, category: 'text' }).length, 3);
+assert.equal(COLLAGE_PRESET_CATALOG.filter((preset) => preset.category === 'text').length, 19);
 
 function assertNormalizedBox(box, label) {
   assert.ok(box.x >= 0 && box.y >= 0, `${label} origin must be inside the page`);

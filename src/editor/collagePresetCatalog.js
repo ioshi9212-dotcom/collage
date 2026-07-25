@@ -1,5 +1,6 @@
 import { MIN_FRAME, clamp } from './layout.js';
 import { EXTENDED_COLLAGE_PRESETS } from './collagePresetCatalogExtended.js';
+import { MORE_COLLAGE_PRESETS } from './collagePresetCatalogMore.js';
 
 export const COLLAGE_PRESET_CATEGORIES = [
   { id: 'all', label: 'Все' },
@@ -210,6 +211,7 @@ const BASE_COLLAGE_PRESET_CATALOG = [
 export const COLLAGE_PRESET_CATALOG = [
   ...BASE_COLLAGE_PRESET_CATALOG,
   ...EXTENDED_COLLAGE_PRESETS,
+  ...MORE_COLLAGE_PRESETS,
 ];
 
 export function collagePresetsFor({ count, category = 'all' } = {}) {
