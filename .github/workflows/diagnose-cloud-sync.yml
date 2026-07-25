@@ -1,0 +1,25 @@
+name: Diagnose cloud sync
+
+on:
+  push:
+    branches: [agent/cloud-photo-sync-no-base64]
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cloud-photo-sync-no-base64
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Cloud photo sync model
+        run: node src/editor/cloudPhotoSync.test.mjs
+      - name: Bucket gateway
+        run: node server/bucketGateway.test.mjs
+      - name: Account cloud source
+        run: node public/cloud-auth-cloud-sync.test.mjs
+      - name: Existing account tests
+        run: node public/cloud-auth.test.mjs
