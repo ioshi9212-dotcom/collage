@@ -106,6 +106,25 @@ assert.equal(frameOnlyAsset.library[0].size, 12345);
 assert.equal(frameOnlyAsset.pages[0].frames[0].photo.assetId, 'asset-original-1');
 assert.equal(frameOnlyAsset.pages[0].frames[0].photo.src, undefined);
 
+const frameOnlyCloud = compactProjectPhotos([], [{
+  id: 'cloud-page',
+  frames: [{
+    id: 'cloud-frame',
+    photo: {
+      id: 'cloud-photo',
+      name: 'kept-in-cloud.jpg',
+      src: '/api/photo-assets/file?key=users%2F7%2Fphotos%2Fcloud%2Foriginal.jpg',
+      cloudKey: 'users/7/photos/cloud/original.jpg',
+      cloudSchema: 'railway-bucket-v1',
+      zoom: 1.25,
+    },
+  }],
+}]);
+assert.equal(frameOnlyCloud.library.length, 1, 'a cloud photo left only in a frame must rebuild its library reference');
+assert.equal(frameOnlyCloud.library[0].cloudKey, 'users/7/photos/cloud/original.jpg');
+assert.equal(frameOnlyCloud.library[0].cloudSchema, 'railway-bucket-v1');
+assert.equal(frameOnlyCloud.pages[0].frames[0].photo.cloudKey, 'users/7/photos/cloud/original.jpg');
+
 const duplicateLibrary = compactProjectPhotos([
   { id: 'duplicate-photo', name: '', src: '' },
   { id: 'duplicate-photo', name: 'kept.jpg', src: source },
@@ -113,6 +132,21 @@ const duplicateLibrary = compactProjectPhotos([
 assert.equal(duplicateLibrary.library.length, 1, 'duplicate library IDs must collapse to one record');
 assert.equal(duplicateLibrary.library[0].name, 'kept.jpg');
 assert.equal(duplicateLibrary.library[0].src, source);
+
+const duplicateCloudLibrary = compactProjectPhotos([
+  { id: 'duplicate-cloud-photo', name: 'cloud.jpg', src: '' },
+  {
+    id: 'duplicate-cloud-photo',
+    name: 'cloud.jpg',
+    cloudKey: 'users/7/photos/duplicate/original.jpg',
+    cloudSchema: 'railway-bucket-v1',
+  },
+], []);
+assert.equal(
+  duplicateCloudLibrary.library[0].cloudKey,
+  'users/7/photos/duplicate/original.jpg',
+  'deduplicating library records must preserve cloud recovery metadata',
+);
 
 const malformed = hydrateProjectPhotos(
   [{ id: 'malformed-photo', name: 'malformed.jpg', src: source }],
