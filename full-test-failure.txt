@@ -15,12 +15,19 @@ font asset checks passed: 19 fonts
 photo storage checks passed
 photo asset persistence checks passed
 photo asset cleanup checks passed
+project storage performance checks passed
+bounded image cache checks passed
+photo thumbnail checks passed
+photo memory integration checks passed
 node:internal/modules/run_main:123
     triggerUncaughtException(
     ^
 
-AssertionError [ERR_ASSERTION]: cloud save must materialize a separate portable snapshot
-    at file:///home/runner/work/collage/collage/src/editor/project-storage.test.mjs:153:8 {
+AssertionError [ERR_ASSERTION]: local save must not materialize Base64 while logged out
+    at file:///home/runner/work/collage/collage/src/editor/photoAssetIntegration.test.mjs:26:8
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {
   generatedMessage: false,
   code: 'ERR_ASSERTION',
   actual: "import React, { useEffect, useMemo, useRef, useState } from 'react';\n" +
@@ -298,7 +305,7 @@ AssertionError [ERR_ASSERTION]: cloud save must materialize a separate portable 
     'function SoftNumberInput({ value, onValue, min, max, step = 1, disabled = false, fallback = 0 }) {\n' +
     '  const [draft, setDraft] = useState(() => formatNumberDraft(value, fallback));\n' +
     '  const [editing, setEdi'... 157647 more characters,
-  expected: /saveCloudProject\(await portableProject\(\)\)/,
+  expected: /if \(canSaveCloud\) \{[\s\S]{0,240}saveCloudProject\(await portableProject\(\)\)/,
   operator: 'match',
   diff: 'simple'
 }
