@@ -2373,6 +2373,24 @@ export default function App() {
     });
   }
 
+  async function rememberCloudPhotoMetadata(data, cloudData, {
+    source = 'cloud-photo-sync',
+    storeSnapshot = window.__collageProjectStorage?.storeSnapshot,
+  } = {}) {
+    const syncedData = mergeCloudPhotoMetadata(data, cloudData);
+    const local = saveLocalProject({ silent: true, data: syncedData });
+    setLibrary((current) => mergeCloudMetadataIntoLibrary(current, cloudData));
+    const indexedDb = typeof storeSnapshot === 'function'
+      ? await Promise.resolve(storeSnapshot(syncedData, { source }))
+          .then(() => ({ ok: true }))
+          .catch((error) => {
+            console.warn('IndexedDB cloud metadata save failed', error);
+            return { ok: false, error };
+          })
+      : { ok: false, skipped: true };
+    return { data: syncedData, local, indexedDb };
+  }
+
   async function downloadProjectJson() {
     show('Собираю переносимый JSON…');
     try {
@@ -2419,17 +2437,10 @@ export default function App() {
       try {
         const cloudData = await cloudProject(data);
         cloud = await saveCloudProject(cloudData);
-        savedData = mergeCloudPhotoMetadata(data, cloudData);
-        local = saveLocalProject({ silent: true, data: savedData });
-        setLibrary((current) => mergeCloudMetadataIntoLibrary(current, cloudData));
-        if (typeof storeSnapshot === 'function') {
-          indexedDb = await Promise.resolve(storeSnapshot(savedData, { source: 'cloud-photo-sync' }))
-            .then(() => ({ ok: true }))
-            .catch((error) => {
-              console.warn('IndexedDB cloud metadata save failed', error);
-              return { ok: false, error };
-            });
-        }
+        const remembered = await rememberCloudPhotoMetadata(data, cloudData, { storeSnapshot });
+        savedData = remembered.data;
+        local = remembered.local;
+        indexedDb = remembered.indexedDb;
       } catch (error) {
         cloudError = error;
         console.warn('Cloud project save failed', error);
@@ -2446,7 +2457,12 @@ export default function App() {
     window.__collageApp = {
       getProject: () => project(),
       getPortableProject: () => portableProject(),
-      getCloudProject: () => cloudProject(),
+      getCloudProject: async () => {
+        const data = project();
+        const cloudData = await cloudProject(data);
+        await rememberCloudPhotoMetadata(data, cloudData, { source: 'account-cloud-photo-sync' });
+        return cloudData;
+      },
       saveLocal: () => saveLocalProject({ silent: true }),
       openProject: async (data) => {
         const prepared = await applyProjectData(data, 'Проект открыт из аккаунта');
