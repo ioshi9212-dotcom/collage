@@ -23,9 +23,11 @@ assert.match(appSource, /describeSaveResult\(\{ local, indexedDb, cloud, cloudEr
 assert.match(appSource, /createPreparedProjectSnapshot\(prepared\)/, 'opened cloud projects must persist the validated normalized snapshot');
 assert.match(appSource, /await waitForPrintPhotos\(printPageRef,[\s\S]*?await renderPrintPng\(printPageRef/, 'album PDF export must wait for page photos before rasterizing');
 assert.match(appSource, /await waitForPrintPhotos\(printBookletRef,[\s\S]*?printBookletRef\.current\?\.toDataURL/, 'booklet PDF export must wait for both page photos before rasterizing');
-assert.match(appSource, /readyPhotos\.length === references\.length/, 'print export must verify every expected photo instead of relying on animation frames');
 assert.match(appSource, /PDF не создан/, 'missing or late print photos must abort export instead of producing empty windows');
 assert.match(appSource, /collectAlbumResolutionWarnings\(sourcePageIndexesForBookletSides\(sequence\)\)/, 'partial booklet PDF exports must only block on photos included in the selected sides');
+assert.match(appSource, /loadedPhoto\.src === photoSource \? loadedPhoto\.image : null/, 'a reused frame must never render the previous page photo while its new source loads');
+assert.match(appSource, /printPhotoNodesReady\(references, renderedPhotoState\)/, 'print export must verify photo identity and source, not only rendered node count');
+assert.match(appSource, /key=\{`print-page-\$\{exportPage\?\.id/, 'the hidden album stage must remount when the exported page changes');
 
 const loadSavedBody = appSource.match(/function loadSaved\(\) \{([\s\S]*?)\n {2}\}/)?.[1] || '';
 assert.match(loadSavedBody, /applyProjectData\(data, 'Альбом загружен'\)/);

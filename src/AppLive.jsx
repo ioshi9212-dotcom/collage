@@ -128,6 +128,11 @@ import {
   pngDataUrlToJpegPage,
 } from './editor/printFiles';
 import {
+  buildPrintPhotoReferences,
+  printPhotoIdentity,
+  printPhotoNodesReady,
+} from './editor/printPhotoReadiness';
+import {
   BOOKLET_BACK_ORDER_REVERSE,
   BOOKLET_BACK_ORDER_SAME,
   buildBookletPrintInstructions,
@@ -748,12 +753,14 @@ function BookletPrintGuides({ canvas, printSettings, preview = false }) {
 }
 
 
-function PhotoImage({ frame, selected, image, rect, printMode, onSelect, onPhotoMove }) {
+function PhotoImage({ frame, selected, image, imageSource, photoIdentity, rect, printMode, onSelect, onPhotoMove }) {
   if (!frame.photo || !rect) return null;
   return (
     <KonvaImage
       name="print-photo"
       photoName={frame.photo?.name || 'Фото'}
+      photoIdentity={photoIdentity}
+      photoSource={imageSource}
       image={image}
       x={rect.x}
       y={rect.y}
@@ -868,8 +875,10 @@ function FrameBorder({ frame, style }) {
   );
 }
 
-function CollageFrame({ frame, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, snapFrames = [], smartSnap = true, collagePreviewOnly = false, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onSnapGuidesChange = () => {} }) {
-  const [image, setImage] = useState(null);
+function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, snapFrames = [], smartSnap = true, collagePreviewOnly = false, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onSnapGuidesChange = () => {} }) {
+  const photoSource = frame.photo?.src || '';
+  const [loadedPhoto, setLoadedPhoto] = useState({ src: '', image: null });
+  const image = loadedPhoto.src === photoSource ? loadedPhoto.image : null;
   const groupRef = useRef(null);
   const frameRectRef = useRef(null);
   const transformerRef = useRef(null);
@@ -879,15 +888,15 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
 
   useEffect(() => {
     let active = true;
-    if (!frame.photo?.src) {
-      setImage(null);
+    setLoadedPhoto({ src: photoSource, image: null });
+    if (!photoSource) {
       return () => { active = false; };
     }
-    loadImage(frame.photo.src)
-      .then((loaded) => { if (active) setImage(loaded); })
-      .catch(() => { if (active) setImage(null); });
+    loadImage(photoSource)
+      .then((loaded) => { if (active) setLoadedPhoto({ src: photoSource, image: loaded }); })
+      .catch(() => { if (active) setLoadedPhoto({ src: photoSource, image: null }); });
     return () => { active = false; };
-  }, [frame.photo?.src]);
+  }, [photoSource]);
 
   useEffect(() => {
     const transformer = transformerRef.current;
@@ -999,7 +1008,7 @@ function CollageFrame({ frame, selected, locked, borderWidth, borderColor, print
             strokeScaleEnabled={false}
             onTransformEnd={commitTransform}
           />
-          <PhotoImage frame={frame} selected={selected} image={image} rect={rect} printMode={printMode} onSelect={onSelect} onPhotoMove={onPhotoMove} />
+          <PhotoImage frame={frame} selected={selected} image={image} imageSource={loadedPhoto.src} photoIdentity={photoIdentity} rect={rect} printMode={printMode} onSelect={onSelect} onPhotoMove={onPhotoMove} />
           <FrameBorder frame={frame} style={frameStyle} />
           {moveFrameWithPhoto && !printMode && selected && !locked && (
             <Rect x={0} y={0} width={frame.width} height={frame.height} fill="rgba(47, 125, 82, 0.01)" stroke="#2f7d52" strokeWidth={6} strokeScaleEnabled={false} dash={[18, 12]} />
@@ -1184,6 +1193,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
         <CollageFrame
           key={frame.id}
           frame={frame}
+          photoIdentity={printPhotoIdentity(page, frame)}
           selected={!collagePreviewOnly && !printMode && page.id === activePageId && frame.id === selectedFrameId}
           locked={locked}
           borderWidth={settings.borderWidth}
@@ -2825,7 +2835,7 @@ export default function App() {
     for (const index of pageIndexes) {
       setPrintAlbumPageIndex(index);
       await nextPaint();
-      await waitForPrintPhotos(printPageRef, photoReferencesForPage(pages[index]), `странице ${index + 1}`);
+      await waitForPrintPhotos(printPageRef, buildPrintPhotoReferences(pages[index]), `странице ${index + 1}`);
       warnings.push(...lowResolutionWarnings(printPageRef, pagePrintGeometry.renderPixelRatio).map((item) => ({
         ...item,
         name: `Стр. ${index + 1} · ${item.name}`,
@@ -2852,7 +2862,7 @@ export default function App() {
         setPrintAlbumPageIndex(index);
         await nextPaint();
         show(`Готовлю PDF альбома: ${index + 1}/${pages.length}`);
-        await waitForPrintPhotos(printPageRef, photoReferencesForPage(pages[index]), `странице ${index + 1}`);
+        await waitForPrintPhotos(printPageRef, buildPrintPhotoReferences(pages[index]), `странице ${index + 1}`);
         const pngDataUrl = await renderPrintPng(printPageRef, pagePrintGeometry, { checkResolution: false });
         const pdfPage = await pngDataUrlToJpegPage(pngDataUrl, pagePrintGeometry, { quality: 0.96 });
         sourceBytes += pdfPage.jpegBytes.length;
@@ -2886,18 +2896,9 @@ export default function App() {
     })));
   }
 
-  function photoReferencesForPage(page) {
-    return (page?.frames ?? [])
-      .filter((frame) => frame?.photo)
-      .map((frame) => ({
-        name: frame.photo?.name || 'Фото',
-        src: frame.photo?.src || '',
-      }));
-  }
-
   function photoReferencesForBookletSide(sideData) {
     return (sideData?.slots ?? []).flatMap((slot) => (
-      slot?.sourcePageIndex == null ? [] : photoReferencesForPage(pages[slot.sourcePageIndex])
+      slot?.sourcePageIndex == null ? [] : buildPrintPhotoReferences(pages[slot.sourcePageIndex])
     ));
   }
 
@@ -2920,11 +2921,15 @@ export default function App() {
     while (Date.now() < deadline) {
       await nextPaint();
       const renderedPhotos = stageRefToExport.current?.find?.('.print-photo') ?? [];
-      const readyPhotos = renderedPhotos.filter((node) => {
+      const renderedPhotoState = renderedPhotos.map((node) => {
         const image = node.image?.();
-        return image && (image.naturalWidth || image.width) > 0 && (image.naturalHeight || image.height) > 0;
+        return {
+          identity: node.getAttr?.('photoIdentity') || '',
+          src: node.getAttr?.('photoSource') || '',
+          ready: Boolean(image && (image.naturalWidth || image.width) > 0 && (image.naturalHeight || image.height) > 0),
+        };
       });
-      if (readyPhotos.length === references.length) return;
+      if (printPhotoNodesReady(references, renderedPhotoState)) return;
     }
 
     throw new Error(`Фотографии на ${label} не успели подготовиться. PDF не создан — попробуй экспорт ещё раз.`);
@@ -3902,7 +3907,7 @@ export default function App() {
       {exportStagesActive && <div className="export-stage-holder" aria-hidden="true">
         <Stage ref={printPageRef} width={canvas.width} height={canvas.height}>
           <Layer>
-            <PageLayer page={exportPage} pageIndex={exportPageIndex} x={0} {...commonPageLayerProps} />
+            <PageLayer key={`print-page-${exportPage?.id ?? exportPageIndex}`} page={exportPage} pageIndex={exportPageIndex} x={0} {...commonPageLayerProps} />
             <ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} x={0} y={0} printMode />
           </Layer>
         </Stage>

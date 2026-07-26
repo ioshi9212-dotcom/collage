@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import sharp from 'sharp';
 
 async function waitForEditor(page) {
   await page.addInitScript(() => {
@@ -86,15 +87,43 @@ async function capturePng(page, buttonName) {
   }, before);
 }
 
-async function capturePdf(page, buttonName) {
+async function capturePdf(page, buttonName, { includePageColors = false } = {}) {
   const before = await page.evaluate(() => window.__capturedPdfDownloads.length);
   await openExportMenu(page);
   await page.getByRole('button', { name: buttonName }).click();
   await expect.poll(() => page.evaluate(() => window.__capturedPdfDownloads.length), { timeout: 120_000 }).toBe(before + 1);
-  return page.evaluate(async (index) => {
+  return page.evaluate(async ({ index, includePageColors }) => {
     const item = window.__capturedPdfDownloads[index];
     const bytes = new Uint8Array(await item.blob.arrayBuffer());
     const text = new TextDecoder('latin1').decode(bytes);
+    const pageColors = [];
+    if (includePageColors) {
+      for (let start = 0; start < bytes.length - 1; start += 1) {
+        if (bytes[start] !== 0xff || bytes[start + 1] !== 0xd8) continue;
+        let end = start + 2;
+        while (end < bytes.length - 1 && (bytes[end] !== 0xff || bytes[end + 1] !== 0xd9)) end += 1;
+        if (end >= bytes.length - 1) break;
+        const bitmap = await createImageBitmap(new Blob([bytes.slice(start, end + 2)], { type: 'image/jpeg' }));
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        context.drawImage(
+          bitmap,
+          Math.floor(bitmap.width / 2),
+          Math.floor(bitmap.height / 2),
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+        );
+        pageColors.push([...context.getImageData(0, 0, 1, 1).data.slice(0, 3)]);
+        bitmap.close();
+        start = end + 1;
+      }
+    }
     return {
       filename: item.filename,
       size: bytes.length,
@@ -108,12 +137,13 @@ async function capturePdf(page, buttonName) {
       xmpBleed: text.match(/<collage:BleedMM>([^<]+)<\/collage:BleedMM>/)?.[1] || null,
       xmpPageCount: text.match(/<collage:PageCount>([^<]+)<\/collage:PageCount>/)?.[1] || null,
       xmpColorSpace: text.match(/<collage:ColorSpace>([^<]+)<\/collage:ColorSpace>/)?.[1] || null,
+      pageColors,
       startXrefValid: (() => {
         const match = text.match(/startxref\n(\d+)\n%%EOF/);
         return Boolean(match && text.slice(Number(match[1]), Number(match[1]) + 4) === 'xref');
       })(),
     };
-  }, before);
+  }, { index: before, includePageColors });
 }
 
 test.describe('physical print export', () => {
@@ -170,6 +200,80 @@ test.describe('physical print export', () => {
     expect(albumPdf.trimBoxes).toHaveLength(expectedPages);
     expect(albumPdf.xmpPageCount).toBe(String(expectedPages));
     expect(albumPdf.startXrefValid).toBe(true);
+  });
+
+  test('album PDF never reuses a photo from the previous page while the next source loads', async ({ page }) => {
+    test.setTimeout(180_000);
+    const redPng = await sharp({
+      create: { width: 2400, height: 3400, channels: 3, background: { r: 245, g: 20, b: 20 } },
+    }).png().toBuffer();
+    const greenPng = await sharp({
+      create: { width: 2400, height: 3400, channels: 3, background: { r: 20, g: 220, b: 30 } },
+    }).png().toBuffer();
+
+    await page.route('**/e2e-photo-red.png', (route) => route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: redPng,
+    }));
+    await page.route('**/e2e-photo-green.png', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        body: greenPng,
+      });
+    });
+
+    await waitForEditor(page);
+    await page.evaluate(async () => {
+      const base = window.__collageApp.getProject();
+      const makePhoto = (id, name, src) => ({ id, name, src, type: 'image/png', size: 100 });
+      const red = makePhoto('photo-red', 'red.png', '/e2e-photo-red.png');
+      const green = makePhoto('photo-green', 'green.png', '/e2e-photo-green.png');
+      const makePage = (id, title, photo) => ({
+        id,
+        title,
+        frameCount: 1,
+        layout: null,
+        frames: [{
+          id: 'frame_1',
+          x: 0,
+          y: 0,
+          width: base.canvas.width,
+          height: base.canvas.height,
+          zIndex: 0,
+          photo: { ...photo, zoom: 1, offsetX: 0, offsetY: 0 },
+        }],
+      });
+
+      await window.__collageApp.openProject({
+        ...base,
+        settings: {
+          ...base.settings,
+          frameMode: 'free',
+          frameCount: 1,
+          padding: 0,
+          gap: 0,
+          borderWidth: 0,
+          borderColor: '#ffffff',
+        },
+        viewMode: 'single',
+        library: [red, green],
+        pages: [
+          makePage('page-red', 'Страница 1', red),
+          makePage('page-green', 'Страница 2', green),
+        ],
+        currentPageId: 'page-red',
+      });
+    });
+
+    const albumPdf = await capturePdf(page, 'PDF альбома', { includePageColors: true });
+    expect(albumPdf.pageColors).toHaveLength(2);
+    expect(albumPdf.pageColors[0][0]).toBeGreaterThan(200);
+    expect(albumPdf.pageColors[0][1]).toBeLessThan(60);
+    expect(albumPdf.pageColors[1][0]).toBeLessThan(60);
+    expect(albumPdf.pageColors[1][1]).toBeGreaterThan(180);
   });
 
   test('physical settings update print pixels without rebuilding frames', async ({ page }) => {
