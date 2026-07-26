@@ -101,6 +101,20 @@ export function buildManualDuplexBookletOrder(plan, settings = {}) {
   };
 }
 
+export function sourcePageIndexesForBookletSides(sides = []) {
+  const indexes = [];
+  const seen = new Set();
+  for (const side of Array.isArray(sides) ? sides : []) {
+    for (const slot of side?.slots ?? []) {
+      const index = slot?.sourcePageIndex;
+      if (!Number.isInteger(index) || index < 0 || seen.has(index)) continue;
+      seen.add(index);
+      indexes.push(index);
+    }
+  }
+  return indexes;
+}
+
 export function shouldRotateBookletSide(sideData, settings = {}) {
   const normalized = normalizeHomeBookletPrintSettings(settings);
   return Boolean(sideData?.side === 'back' && normalized.rotateBack180);
