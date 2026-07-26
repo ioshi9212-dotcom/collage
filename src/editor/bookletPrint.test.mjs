@@ -10,6 +10,7 @@ import {
   getA4BookletPrintGeometry,
   normalizeHomeBookletPrintSettings,
   shouldRotateBookletSide,
+  sourcePageIndexesForBookletSides,
 } from './bookletPrint.js';
 
 const geometry = getA4BookletPrintGeometry({
@@ -45,6 +46,13 @@ assert.deepEqual(reverseOrder.combined.map((side) => side.id), [
   plan.blocks[0].sheets[1].back.id,
 ]);
 assert.equal(reverseOrder.test.length, 2);
+assert.deepEqual(sourcePageIndexesForBookletSides(reverseOrder.test), [7, 0, 1, 6]);
+assert.deepEqual(
+  sourcePageIndexesForBookletSides([reverseOrder.fronts[0], reverseOrder.fronts[0]]),
+  [7, 0],
+  'selected booklet pages must be deduplicated',
+);
+assert.deepEqual(sourcePageIndexesForBookletSides(null), []);
 
 const sameOrder = buildManualDuplexBookletOrder(plan, {
   backOrder: BOOKLET_BACK_ORDER_SAME,

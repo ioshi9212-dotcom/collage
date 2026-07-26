@@ -137,6 +137,7 @@ import {
   normalizeHomeBookletPrintSettings,
   rotateRasterDataUrl180,
   shouldRotateBookletSide,
+  sourcePageIndexesForBookletSides,
 } from './editor/bookletPrint';
 import {
   getBookletVisiblePageNumbers,
@@ -2819,9 +2820,9 @@ export default function App() {
     }
   }
 
-  async function collectAlbumResolutionWarnings() {
+  async function collectAlbumResolutionWarnings(pageIndexes = pages.map((_, index) => index)) {
     const warnings = [];
-    for (let index = 0; index < pages.length; index += 1) {
+    for (const index of pageIndexes) {
       setPrintAlbumPageIndex(index);
       await nextPaint();
       await waitForPrintPhotos(printPageRef, photoReferencesForPage(pages[index]), `странице ${index + 1}`);
@@ -2998,7 +2999,7 @@ export default function App() {
     setMoveFrameWithPhotoId(null);
     try {
       show(`Проверяю фотографии для ${label}`);
-      const warnings = await collectAlbumResolutionWarnings();
+      const warnings = await collectAlbumResolutionWarnings(sourcePageIndexesForBookletSides(sequence));
       if (!confirmResolutionWarnings(warnings)) return;
       const pdfPages = [];
       let sourceBytes = 0;
