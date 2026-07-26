@@ -21,6 +21,10 @@ assert.match(appSource, /Загружено: \{library\.length\} · исполь
 assert.match(appSource, /projectJsonFileError\(file\)/, 'project imports must enforce the JSON file limit');
 assert.match(appSource, /describeSaveResult\(\{ local, indexedDb, cloud, cloudError \}\)/, 'save feedback must be based on confirmed storage outcomes');
 assert.match(appSource, /createPreparedProjectSnapshot\(prepared\)/, 'opened cloud projects must persist the validated normalized snapshot');
+assert.match(appSource, /await waitForPrintPhotos\(printPageRef,[\s\S]*?await renderPrintPng\(printPageRef/, 'album PDF export must wait for page photos before rasterizing');
+assert.match(appSource, /await waitForPrintPhotos\(printBookletRef,[\s\S]*?printBookletRef\.current\?\.toDataURL/, 'booklet PDF export must wait for both page photos before rasterizing');
+assert.match(appSource, /readyPhotos\.length === references\.length/, 'print export must verify every expected photo instead of relying on animation frames');
+assert.match(appSource, /PDF не создан/, 'missing or late print photos must abort export instead of producing empty windows');
 
 const loadSavedBody = appSource.match(/function loadSaved\(\) \{([\s\S]*?)\n {2}\}/)?.[1] || '';
 assert.match(loadSavedBody, /applyProjectData\(data, 'Альбом загружен'\)/);

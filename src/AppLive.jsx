@@ -2824,6 +2824,7 @@ export default function App() {
     for (let index = 0; index < pages.length; index += 1) {
       setPrintAlbumPageIndex(index);
       await nextPaint();
+      await waitForPrintPhotos(printPageRef, photoReferencesForPage(pages[index]), `странице ${index + 1}`);
       warnings.push(...lowResolutionWarnings(printPageRef, pagePrintGeometry.renderPixelRatio).map((item) => ({
         ...item,
         name: `Стр. ${index + 1} · ${item.name}`,
@@ -2850,6 +2851,7 @@ export default function App() {
         setPrintAlbumPageIndex(index);
         await nextPaint();
         show(`Готовлю PDF альбома: ${index + 1}/${pages.length}`);
+        await waitForPrintPhotos(printPageRef, photoReferencesForPage(pages[index]), `странице ${index + 1}`);
         const pngDataUrl = await renderPrintPng(printPageRef, pagePrintGeometry, { checkResolution: false });
         const pdfPage = await pngDataUrlToJpegPage(pngDataUrl, pagePrintGeometry, { quality: 0.96 });
         sourceBytes += pdfPage.jpegBytes.length;
@@ -2883,6 +2885,50 @@ export default function App() {
     })));
   }
 
+  function photoReferencesForPage(page) {
+    return (page?.frames ?? [])
+      .filter((frame) => frame?.photo)
+      .map((frame) => ({
+        name: frame.photo?.name || 'Фото',
+        src: frame.photo?.src || '',
+      }));
+  }
+
+  function photoReferencesForBookletSide(sideData) {
+    return (sideData?.slots ?? []).flatMap((slot) => (
+      slot?.sourcePageIndex == null ? [] : photoReferencesForPage(pages[slot.sourcePageIndex])
+    ));
+  }
+
+  async function waitForPrintPhotos(stageRefToExport, photoReferences, label) {
+    const references = Array.isArray(photoReferences) ? photoReferences : [];
+    const missing = references.find((item) => !item.src);
+    if (missing) {
+      throw new Error(`Не найден источник фотографии «${missing.name}» на ${label}. PDF не создан.`);
+    }
+    if (!references.length) return;
+
+    const uniqueSources = [...new Set(references.map((item) => item.src))];
+    try {
+      await Promise.all(uniqueSources.map((src) => loadImage(src)));
+    } catch {
+      throw new Error(`Не удалось загрузить все фотографии на ${label}. PDF не создан.`);
+    }
+
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      await nextPaint();
+      const renderedPhotos = stageRefToExport.current?.find?.('.print-photo') ?? [];
+      const readyPhotos = renderedPhotos.filter((node) => {
+        const image = node.image?.();
+        return image && (image.naturalWidth || image.width) > 0 && (image.naturalHeight || image.height) > 0;
+      });
+      if (readyPhotos.length === references.length) return;
+    }
+
+    throw new Error(`Фотографии на ${label} не успели подготовиться. PDF не создан — попробуй экспорт ещё раз.`);
+  }
+
   function bookletSideFilename(sideData) {
     if (!sideData) return 'booklet-side.png';
     return `booklet-block-${pad(sideData.blockNumber)}-sheet-${pad(sideData.sheetNumber)}-${sideData.side}.png`;
@@ -2909,6 +2955,7 @@ export default function App() {
     if (!sideData) throw new Error('Нет стороны брошюры для экспорта');
     setPrintBookletSideId(sideData.id);
     await nextPaint();
+    await waitForPrintPhotos(printBookletRef, photoReferencesForBookletSide(sideData), `листе ${sideData.title || sideData.id}`);
     if (checkResolution && !confirmPrintResolution(printBookletRef, bookletA4Geometry.renderPixelRatio)) return null;
     const raw = printBookletRef.current?.toDataURL({ pixelRatio: bookletA4Geometry.renderPixelRatio, mimeType: 'image/png' });
     if (!raw) throw new Error('Не получилось собрать сторону брошюры');
