@@ -3950,7 +3950,7 @@ export default function App() {
                 <label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label>
                 <label className="field"><span>Обводка внутри окна</span><SoftNumberInput min={0} max={80} value={settings.borderWidth} onValue={(value) => updateSetting('borderWidth', value)} /></label>
               </div>}
-              {!isBooklet && <details className="print-settings-details-v2 page-numbering-settings">
+              {!isBooklet && <details className="page-numbering-settings">
                 <summary>Нумерация страниц</summary>
                 <div className="document-grid">
                   <label className="toggle-row-v3 wide-field"><input type="checkbox" checked={pageNumbering.enabled} onChange={(event) => updatePageNumbering('enabled', event.target.checked)} /><span>Показывать номера в альбоме и PDF</span></label>

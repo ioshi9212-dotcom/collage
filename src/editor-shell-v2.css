@@ -391,12 +391,14 @@ body[data-album-mode='templates'] .workspace > .album-mode-inspector {
   box-shadow: none;
 }
 
-.print-settings-details-v2 {
+.print-settings-details-v2,
+.page-numbering-settings {
   border-top: 1px solid var(--shell-line);
   padding-top: 8px;
 }
 
-.print-settings-details-v2 > summary {
+.print-settings-details-v2 > summary,
+.page-numbering-settings > summary {
   cursor: pointer;
   color: var(--shell-text);
   font-size: 12px;
@@ -404,11 +406,15 @@ body[data-album-mode='templates'] .workspace > .album-mode-inspector {
   list-style: none;
 }
 
-.print-settings-details-v2 > summary::-webkit-details-marker { display: none; }
-.print-settings-details-v2 > summary::after { content: '▾'; float: right; color: var(--shell-muted); }
-.print-settings-details-v2[open] > summary::after { content: '▴'; }
+.print-settings-details-v2 > summary::-webkit-details-marker,
+.page-numbering-settings > summary::-webkit-details-marker { display: none; }
+.print-settings-details-v2 > summary::after,
+.page-numbering-settings > summary::after { content: '▾'; float: right; color: var(--shell-muted); }
+.print-settings-details-v2[open] > summary::after,
+.page-numbering-settings[open] > summary::after { content: '▴'; }
 
-.print-settings-details-v2 .document-grid {
+.print-settings-details-v2 .document-grid,
+.page-numbering-settings .document-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
@@ -416,7 +422,8 @@ body[data-album-mode='templates'] .workspace > .album-mode-inspector {
 }
 
 .print-settings-details-v2 .wide-field,
-.print-settings-details-v2 .print-summary {
+.print-settings-details-v2 .print-summary,
+.page-numbering-settings .wide-field {
   grid-column: 1 / -1;
 }
 

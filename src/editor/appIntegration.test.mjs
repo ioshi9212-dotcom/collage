@@ -35,6 +35,8 @@ assert.match(appSource, /printPhotoNodesReady\(references, renderedPhotoState\)/
 assert.match(appSource, /key=\{`print-page-\$\{exportPage\?\.id/, 'the hidden album stage must remount when the exported page changes');
 assert.match(appSource, /hideGuidePageLabel=\{isBooklet\}/, 'booklet preview must not stack the generic page label under its side label');
 assert.match(appSource, /<PageNumberLayer[\s\S]*?settings=\{pageNumbering\}/, 'user page numbering must render as a dedicated export layer');
+assert.match(appSource, /<details className="page-numbering-settings">/, 'page numbering must have a dedicated inspector selector');
+assert.doesNotMatch(appSource, /<details className="print-settings-details-v2 page-numbering-settings">/, 'page numbering must not make the physical print settings selector ambiguous');
 
 const loadSavedBody = appSource.match(/function loadSaved\(\) \{([\s\S]*?)\n {2}\}/)?.[1] || '';
 assert.match(loadSavedBody, /applyProjectData\(data, 'Альбом загружен'\)/);
