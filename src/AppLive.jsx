@@ -149,6 +149,12 @@ import {
   getPreviewScale,
   getStablePreviewViewport,
 } from './editor/previewFit';
+import {
+  DEFAULT_PAGE_NUMBERING,
+  normalizePageNumbering,
+  pageNumberPlacement,
+  pageNumberValue,
+} from './editor/pageNumbering';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const LEGACY_KEYS = [
@@ -189,6 +195,7 @@ const DEFAULT_SETTINGS = {
   printDpi: DEFAULT_PRINT_DPI,
   bleedMm: DEFAULT_BLEED_MM,
   safeMm: DEFAULT_SAFE_MM,
+  pageNumbering: DEFAULT_PAGE_NUMBERING,
 };
 const DEFAULT_FRAME_STYLE = {
   borderStyle: 'none',
@@ -1093,7 +1100,7 @@ function GridHandles({ layout, onColumnResize, onRowResize, onActivate }) {
 }
 
 
-function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, active }) {
+function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, active, showPageLabel = true }) {
   const pageColor = locked ? '#2f7d52' : '#c27b4f';
   const centerColor = '#2f7d52';
   const quarters = [0.25, 0.75];
@@ -1146,7 +1153,7 @@ function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, 
       ))}
       <Line points={[canvas.width / 2, 0, canvas.width / 2, canvas.height]} stroke={centerColor} strokeWidth={1.5} strokeScaleEnabled={false} opacity={0.22} listening={false} />
       <Line points={[0, canvas.height / 2, canvas.width, canvas.height / 2]} stroke={centerColor} strokeWidth={1.5} strokeScaleEnabled={false} opacity={0.22} listening={false} />
-      <Text
+      {showPageLabel && <Text
         x={28}
         y={24}
         text={`Стр. ${pageIndex + 1}`}
@@ -1155,7 +1162,7 @@ function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, 
         fontStyle="bold"
         opacity={0.82}
         listening={false}
-      />
+      />}
       <Text
         x={28}
         y={canvas.height - 54}
@@ -1169,7 +1176,7 @@ function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, 
   );
 }
 
-function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, snapGuides = null, smartSnap = true, printMode = false, collagePreviewOnly = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onSnapGuidesChange, onColumnResize, onRowResize, onActivatePage }) {
+function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, snapGuides = null, smartSnap = true, printMode = false, collagePreviewOnly = false, hideGuidePageLabel = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onSnapGuidesChange, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const layoutInset = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
   const printGuide = getPrintGuideGeometry(canvas, settings);
@@ -1177,7 +1184,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
     return (
       <Group x={x} y={y}>
         <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
-        {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} layoutInset={layoutInset} printGuide={printGuide} locked={locked} pageIndex={pageIndex} active={page?.id === activePageId} />}
+        {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} layoutInset={layoutInset} printGuide={printGuide} locked={locked} pageIndex={pageIndex} active={page?.id === activePageId} showPageLabel={!hideGuidePageLabel} />}
         {page?.isBlankPage && !printMode && !collagePreviewOnly && (
           <Text x={42} y={78} text="Пустая страница" fontSize={34} fill="#b49a87" fontStyle="bold" opacity={0.62} listening={false} />
         )}
@@ -1188,7 +1195,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
   return (
     <Group x={x} y={y}>
       <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
-      {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} layoutInset={layoutInset} printGuide={printGuide} locked={locked} pageIndex={pageIndex} active={page.id === activePageId} />}
+      {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} layoutInset={layoutInset} printGuide={printGuide} locked={locked} pageIndex={pageIndex} active={page.id === activePageId} showPageLabel={!hideGuidePageLabel} />}
       {orderedFrames.map((frame) => (
         <CollageFrame
           key={frame.id}
@@ -1319,6 +1326,40 @@ function ExtraPageLayers({
           />
         );
       })}
+    </Group>
+  );
+}
+
+function PageNumberLayer({ pageIndex, x = 0, y = 0, canvas, settings }) {
+  const value = pageNumberValue(pageIndex, settings);
+  if (value == null || pageIndex < 0) return null;
+  const placement = pageNumberPlacement(pageIndex, canvas, settings);
+  const size = Math.max(placement.fontSize * 2.15, 58);
+  const left = x + placement.x - size / 2;
+  const top = y + placement.y - size / 2;
+  const center = size / 2;
+  const strokeWidth = Math.max(1.2, placement.fontSize / 18);
+  const shapeInset = Math.max(4, size * 0.12);
+
+  return (
+    <Group x={left} y={top} width={size} height={size} opacity={placement.opacity} listening={false}>
+      {placement.style === 'circle' && <Rect x={shapeInset} y={shapeInset} width={size - shapeInset * 2} height={size - shapeInset * 2} cornerRadius={size} stroke={placement.color} strokeWidth={strokeWidth} listening={false} />}
+      {placement.style === 'square' && <Rect x={shapeInset} y={shapeInset} width={size - shapeInset * 2} height={size - shapeInset * 2} stroke={placement.color} strokeWidth={strokeWidth} listening={false} />}
+      {placement.style === 'heart' && <Text x={0} y={-size * 0.18} width={size} height={size * 1.25} text="♡" align="center" verticalAlign="middle" fontFamily="Arial, sans-serif" fontSize={size * 1.18} fill={placement.color} listening={false} />}
+      {placement.style === 'line' && <Line points={[size * 0.2, size * 0.78, size * 0.8, size * 0.78]} stroke={placement.color} strokeWidth={strokeWidth} listening={false} />}
+      <Text
+        x={0}
+        y={center - placement.fontSize * 0.66}
+        width={size}
+        height={placement.fontSize * 1.45}
+        text={String(value)}
+        align="center"
+        verticalAlign="middle"
+        fontFamily={placement.fontFamily}
+        fontSize={placement.fontSize}
+        fill={placement.color}
+        listening={false}
+      />
     </Group>
   );
 }
@@ -1520,6 +1561,10 @@ export default function App() {
   const normalizedPrintSettings = useMemo(
     () => normalizePrintSettings(settings, canvas),
     [settings, canvas],
+  );
+  const pageNumbering = useMemo(
+    () => normalizePageNumbering(settings.pageNumbering),
+    [settings.pageNumbering],
   );
   const pagePrintGeometry = useMemo(
     () => getPrintPixelGeometry({ canvas, settings, kind: 'page' }),
@@ -1853,6 +1898,16 @@ export default function App() {
     }
 
     rebuildAll(canvas, next);
+  }
+
+  function updatePageNumbering(key, value) {
+    setSettings((current) => ({
+      ...current,
+      pageNumbering: normalizePageNumbering({
+        ...current.pageNumbering,
+        [key]: value,
+      }),
+    }));
   }
 
 
@@ -2766,7 +2821,7 @@ export default function App() {
     return addPngDensityMetadata(raster, geometry.printDpi);
   }
 
-  function exportPng(stageRefToExport, filename, message, geometry) {
+  function exportPng(stageRefToExport, filename, message, geometry, photoReferences = []) {
     if (exportInFlightRef.current) return;
     exportInFlightRef.current = true;
     setExportStagesActive(true);
@@ -2774,6 +2829,7 @@ export default function App() {
     setMoveFrameWithPhotoId(null);
     requestAnimationFrame(() => requestAnimationFrame(async () => {
       try {
+        await waitForPrintPhotos(stageRefToExport, photoReferences, message.toLocaleLowerCase());
         const uri = await renderPrintPng(stageRefToExport, geometry);
         if (!uri) return;
         downloadDataUrl(filename, uri);
@@ -2805,7 +2861,7 @@ export default function App() {
     downloadBlob(filename, new Blob([bytes], { type: 'application/pdf' }));
   }
 
-  async function exportPdf(stageRefToExport, filename, label, geometry) {
+  async function exportPdf(stageRefToExport, filename, label, geometry, photoReferences = []) {
     if (pdfExporting || exportInFlightRef.current) return;
     exportInFlightRef.current = true;
     setExportStagesActive(true);
@@ -2815,6 +2871,7 @@ export default function App() {
     try {
       show(`Готовлю ${label}`);
       await nextPaint();
+      await waitForPrintPhotos(stageRefToExport, photoReferences, label.toLocaleLowerCase());
       const pngDataUrl = await renderPrintPng(stageRefToExport, geometry);
       if (!pngDataUrl) return;
       const pdfPage = await pngDataUrlToJpegPage(pngDataUrl, geometry, { quality: 0.97 });
@@ -3045,13 +3102,15 @@ export default function App() {
     try {
       setSelectedFrameId(null);
       setMoveFrameWithPhotoId(null);
-      setPrintBookletSideId(sideData.id);
-      await nextPaint();
-      const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
-      if (!uri) return show('Не получилось собрать PNG брошюры');
+      const uri = await renderBookletSidePng(sideData);
+      if (!uri) return;
       downloadDataUrl(bookletSideFilename(sideData), uri);
       show(`Скачана сторона: ${sideData.title}`);
+    } catch (error) {
+      console.warn('Booklet side PNG export failed', error);
+      show(error?.message || 'Не получилось собрать PNG брошюры');
     } finally {
+      setPrintBookletSideId(currentBookletSide?.id ?? null);
       exportInFlightRef.current = false;
       setExportStagesActive(false);
     }
@@ -3068,20 +3127,19 @@ export default function App() {
       show(`Готовлю PNG брошюры: ${bookletPlan.sides.length} сторон`);
 
       for (const sideData of bookletPlan.sides) {
-        setPrintBookletSideId(sideData.id);
-        await nextPaint();
-        const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
-        if (!uri) {
-          show(`Не получилось собрать: ${sideData.title}`);
-          return;
-        }
+        const uri = await renderBookletSidePng(sideData, { checkResolution: false });
+        if (!uri) return;
         downloadDataUrl(bookletSideFilename(sideData), uri);
         await new Promise((resolve) => window.setTimeout(resolve, 180));
       }
 
       setPrintBookletSideId(currentBookletSide?.id ?? null);
       show(`Скачаны PNG брошюры: ${bookletPlan.sides.length} сторон`);
+    } catch (error) {
+      console.warn('All booklet PNG export failed', error);
+      show(error?.message || 'Не получилось собрать PNG всех сторон');
     } finally {
+      setPrintBookletSideId(currentBookletSide?.id ?? null);
       exportInFlightRef.current = false;
       setExportStagesActive(false);
     }
@@ -3102,13 +3160,8 @@ export default function App() {
       const imageEntries = [];
 
       for (const sideData of bookletPlan.sides) {
-        setPrintBookletSideId(sideData.id);
-        await nextPaint();
-        const uri = printBookletRef.current?.toDataURL({ pixelRatio: bookletPixelRatio, mimeType: 'image/png' });
-        if (!uri) {
-          show(`Не получилось собрать: ${sideData.title}`);
-          return;
-        }
+        const uri = await renderBookletSidePng(sideData, { checkResolution: false });
+        if (!uri) return;
 
         const name = `block-${pad(sideData.blockNumber)}/${bookletSideFilename(sideData)}`;
         imageEntries.push({ name, sideData });
@@ -3138,7 +3191,11 @@ export default function App() {
       const zip = createZipBlob(files);
       downloadBlob(`booklet-print-package-${pages.length}-pages-${bookletSheetsPerBlock}-sheets.zip`, zip);
       show(`Скачан ZIP: ${imageEntries.length} PNG + схема печати`);
+    } catch (error) {
+      console.warn('Booklet ZIP export failed', error);
+      show(error?.message || 'Не получилось собрать ZIP-пакет печати');
     } finally {
+      setPrintBookletSideId(currentBookletSide?.id ?? null);
       exportInFlightRef.current = false;
       setExportStagesActive(false);
     }
@@ -3155,6 +3212,7 @@ export default function App() {
         settings={settings}
         activePageId={isBooklet ? entry.page?.id ?? null : album.currentPageId}
         collagePreviewOnly={collagePreviewOnly || isBooklet}
+        hideGuidePageLabel={isBooklet}
         selectedFrameId={selectedFrameId}
         moveFrameWithPhotoId={moveFrameWithPhotoId}
         snapGuides={frameSnapGuides?.pageId === entry.page?.id ? frameSnapGuides : null}
@@ -3180,6 +3238,13 @@ export default function App() {
         onSelectDrawing={(id) => { setSelectedDrawingId(id); setSelectedTextId(null); setSelectedFrameId(null); }}
         onTextDragEnd={updateText}
         onDrawingDragEnd={updateDrawing}
+      />
+      <PageNumberLayer
+        pageIndex={entry.pageIndex}
+        x={entry.x}
+        y={entry.y ?? 0}
+        canvas={canvas}
+        settings={pageNumbering}
       />
     </React.Fragment>
   ));
@@ -3533,10 +3598,10 @@ export default function App() {
             <button className="button" type="button" aria-expanded={exportMenuOpen} onClick={() => setExportMenuOpen((open) => !open)}>Экспорт ▾</button>
             {exportMenuOpen && (
               <div className="export-popover-v2" role="menu">
-                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPng(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.png`, 'Скачана страница', pagePrintGeometry); }}>PNG страницы</button>
-                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPng(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.png`, 'Скачан разворот', spreadPrintGeometry); }}>PNG разворота</button>
-                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPdf(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.pdf`, 'PDF страницы', pagePrintGeometry); }}>PDF страницы</button>
-                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPdf(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.pdf`, 'PDF разворота', spreadPrintGeometry); }}>PDF разворота</button>
+                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPng(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.png`, 'Скачана страница', pagePrintGeometry, buildPrintPhotoReferences(currentPage)); }}>PNG страницы</button>
+                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPng(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.png`, 'Скачан разворот', spreadPrintGeometry, [pages[spreadStart], pages[spreadStart + 1]].flatMap(buildPrintPhotoReferences)); }}>PNG разворота</button>
+                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPdf(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.pdf`, 'PDF страницы', pagePrintGeometry, buildPrintPhotoReferences(currentPage)); }}>PDF страницы</button>
+                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPdf(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.pdf`, 'PDF разворота', spreadPrintGeometry, [pages[spreadStart], pages[spreadStart + 1]].flatMap(buildPrintPhotoReferences)); }}>PDF разворота</button>
                 <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportAlbumPdf(); }}>{pdfExporting ? 'Готовлю PDF…' : 'PDF альбома'}</button>
                 <div className="menu-section-v2">Проект</div>
                 <button className="button" type="button" onClick={() => { setExportMenuOpen(false); downloadProjectJson(); }}>Скачать JSON</button>
@@ -3885,6 +3950,22 @@ export default function App() {
                 <label className="field color-field"><span>Цвет фона / рамки</span><input type="color" value={settings.borderColor} onChange={(event) => updateSetting('borderColor', event.target.value)} /></label>
                 <label className="field"><span>Обводка внутри окна</span><SoftNumberInput min={0} max={80} value={settings.borderWidth} onValue={(value) => updateSetting('borderWidth', value)} /></label>
               </div>}
+              {!isBooklet && <details className="page-numbering-settings">
+                <summary>Нумерация страниц</summary>
+                <div className="document-grid">
+                  <label className="toggle-row-v3 wide-field"><input type="checkbox" checked={pageNumbering.enabled} onChange={(event) => updatePageNumbering('enabled', event.target.checked)} /><span>Показывать номера в альбоме и PDF</span></label>
+                  <label className="field"><span>Оформление</span><select value={pageNumbering.style} onChange={(event) => updatePageNumbering('style', event.target.value)}><option value="plain">Только цифра</option><option value="line">Цифра с линией</option><option value="circle">В круге</option><option value="square">В квадрате</option><option value="heart">В сердечке</option></select></label>
+                  <label className="field"><span>Положение</span><select value={pageNumbering.position} onChange={(event) => updatePageNumbering('position', event.target.value)}><option value="bottom-outer">Снизу, внешний угол</option><option value="bottom-inner">Снизу, у корешка</option><option value="bottom-center">Снизу, по центру</option><option value="top-outer">Сверху, внешний угол</option><option value="top-inner">Сверху, у корешка</option><option value="top-center">Сверху, по центру</option></select></label>
+                  <label className="field"><span>Шрифт</span><select value={pageNumbering.fontFamily} onChange={(event) => updatePageNumbering('fontFamily', event.target.value)}>{TEXT_FONTS.map((font) => <option key={font.id} value={font.family}>{font.label}</option>)}</select></label>
+                  <label className="field color-field"><span>Цвет</span><input type="color" value={pageNumbering.color} onChange={(event) => updatePageNumbering('color', event.target.value)} /></label>
+                  <label className="field"><span>Размер</span><SoftNumberInput min={12} max={120} value={pageNumbering.fontSize} onValue={(value) => updatePageNumbering('fontSize', value)} /></label>
+                  <label className="field"><span>Прозрачность, %</span><SoftNumberInput min={10} max={100} value={Math.round(pageNumbering.opacity * 100)} onValue={(value) => updatePageNumbering('opacity', value / 100)} /></label>
+                  <label className="field"><span>Отступ от края</span><SoftNumberInput min={16} max={300} value={pageNumbering.edgeOffset} onValue={(value) => updatePageNumbering('edgeOffset', value)} /></label>
+                  <label className="field"><span>Показывать со страницы</span><SoftNumberInput min={1} max={Math.max(1, pages.length)} value={pageNumbering.firstPage} onValue={(value) => updatePageNumbering('firstPage', value)} /></label>
+                  <label className="field"><span>Первый номер</span><SoftNumberInput min={0} max={9999} value={pageNumbering.firstNumber} onValue={(value) => updatePageNumbering('firstNumber', value)} /></label>
+                  <p className="hint wide-field">Например: «со страницы 2» и «первый номер 1» оставит обложку без номера. Служебные подписи редактора в PDF не попадают.</p>
+                </div>
+              </details>}
               {!isBooklet && <details className="print-settings-details-v2">
                 <summary>Размер и печать</summary>
                 <div className="document-grid">
@@ -3909,14 +3990,17 @@ export default function App() {
           <Layer>
             <PageLayer key={`print-page-${exportPage?.id ?? exportPageIndex}`} page={exportPage} pageIndex={exportPageIndex} x={0} {...commonPageLayerProps} />
             <ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} x={0} y={0} printMode />
+            <PageNumberLayer pageIndex={exportPageIndex} canvas={canvas} settings={pageNumbering} />
           </Layer>
         </Stage>
         <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}>
           <Layer>
             <PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} {...commonPageLayerProps} />
             <ExtraPageLayers extraLayers={extraLayers} pageIndex={spreadStart} x={0} y={0} printMode />
+            <PageNumberLayer pageIndex={spreadStart} x={0} canvas={canvas} settings={pageNumbering} />
             <PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} {...commonPageLayerProps} />
             <ExtraPageLayers extraLayers={extraLayers} pageIndex={spreadStart + 1} x={canvas.width} y={0} printMode />
+            {pages[spreadStart + 1] && <PageNumberLayer pageIndex={spreadStart + 1} x={canvas.width} canvas={canvas} settings={pageNumbering} />}
           </Layer>
         </Stage>
         <Stage ref={printBookletRef} width={bookletExportSheetSize.width} height={bookletExportSheetSize.height}>
@@ -3935,6 +4019,7 @@ export default function App() {
                     {...commonPageLayerProps}
                   />
                   <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={position.x} y={position.y} printMode />
+                  <PageNumberLayer pageIndex={pageIndex} x={position.x} y={position.y} canvas={canvas} settings={pageNumbering} />
                 </React.Fragment>
               );
             })}

@@ -127,7 +127,8 @@
 .page-rail-card:focus-visible,
 .photo-card:focus-visible,
 .booklet-export-details-v3 > summary:focus-visible,
-.print-settings-details-v2 > summary:focus-visible {
+.print-settings-details-v2 > summary:focus-visible,
+.page-numbering-settings > summary:focus-visible {
   position: relative;
   z-index: 2;
   outline: 3px solid var(--button-focus-ring);

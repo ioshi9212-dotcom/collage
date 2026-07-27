@@ -18,7 +18,15 @@ function options(overrides = {}) {
 {
   const plan = prepareEditorProject({
     canvas: { width: '2200', height: 99999 },
-    settings: { frameCount: 2 },
+    settings: {
+      frameCount: 2,
+      pageNumbering: {
+        enabled: true,
+        style: 'heart',
+        firstPage: 3,
+        firstNumber: 1,
+      },
+    },
     pages: [{ id: 'page-1' }, { id: 'page-2' }],
     currentPageId: 'page-2',
     library: [{ id: 'photo-1', src: 'data:image/png;base64,AA==' }],
@@ -33,6 +41,12 @@ function options(overrides = {}) {
   assert.equal(plan.canvas.height, 5000, 'canvas dimensions must be bounded before applying state');
   assert.equal(plan.settings.frameCount, 2);
   assert.equal(plan.settings.frameMode, 'free');
+  assert.deepEqual(plan.settings.pageNumbering, {
+    enabled: true,
+    style: 'heart',
+    firstPage: 3,
+    firstNumber: 1,
+  }, 'page-number appearance and starting point must survive project reopen');
   assert.equal(plan.currentPageId, 'page-2');
   assert.equal(plan.viewMode, 'booklet');
   assert.equal(plan.albumEditorMode, 'text');
