@@ -22,7 +22,7 @@ async function openPresetPicker(page) {
 
 test('keeps the original mixed compositions and applies overlays', async ({ page }) => {
   const picker = await openPresetPicker(page);
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(12);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(16);
   await expect(picker.locator('[data-preset-id="five-background-four-overlay"]')).toBeVisible();
   await expect(picker.locator('[data-preset-id="five-overlap-cascade"]')).toBeVisible();
   await expect(picker.locator('[data-preset-id="five-text-side"]')).toBeVisible();
@@ -46,7 +46,7 @@ test('offers 2 to 9 photos and previews reserved text space', async ({ page }) =
 
   await expect(counts.getByRole('button')).toHaveCount(8);
   await counts.getByRole('button', { name: '2', exact: true }).click();
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(12);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(16);
 
   await categories.getByRole('button', { name: 'С текстом', exact: true }).click();
   await expect(picker.locator('.collage-preset-card')).toHaveCount(4);
@@ -65,24 +65,27 @@ test('offers 2 to 9 photos and previews reserved text space', async ({ page }) =
   await expect(picker.locator('[data-preset-id="nine-timeline-story"] .collage-preset-preview-text-zone')).toBeVisible();
 
   await categories.getByRole('button', { name: 'Все', exact: true }).click();
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(12);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(16);
   await expect(picker.locator('[data-preset-id="nine-background-overlay"]')).toBeVisible();
   await expect(picker.locator('[data-preset-id="nine-overlap-editorial"]')).toBeVisible();
   await expect(picker.locator('[data-preset-id="nine-main-right-eight"]')).toBeVisible();
 });
 
-test('keeps all 12 presets reachable and applicable on a phone', async ({ page }) => {
+test('keeps all 16 presets reachable and applies an album layout on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const picker = await openPresetPicker(page);
-  await expect(picker.locator('.collage-preset-card')).toHaveCount(12);
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(16);
 
-  const newPreset = picker.locator('[data-preset-id="five-main-right-grid"]');
+  await picker.locator('.collage-preset-categories').getByRole('button', { name: 'Как в альбоме', exact: true }).click();
+  await expect(picker.locator('.collage-preset-card')).toHaveCount(4);
+
+  const newPreset = picker.locator('[data-preset-id="album-five-hero-four-bottom"]');
   await newPreset.scrollIntoViewIfNeeded();
   await expect(newPreset).toBeVisible();
   await newPreset.click();
 
   await expect.poll(() => currentPageState(page)).toMatchObject({
     settings: { frameCount: 5, frameMode: 'free' },
-    page: { frameCount: 5, layout: null, collagePresetId: 'five-main-right-grid' },
+    page: { frameCount: 5, layout: null, collagePresetId: 'album-five-hero-four-bottom' },
   });
 });
