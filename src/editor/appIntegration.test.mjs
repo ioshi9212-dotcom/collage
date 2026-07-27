@@ -23,11 +23,18 @@ assert.match(appSource, /describeSaveResult\(\{ local, indexedDb, cloud, cloudEr
 assert.match(appSource, /createPreparedProjectSnapshot\(prepared\)/, 'opened cloud projects must persist the validated normalized snapshot');
 assert.match(appSource, /await waitForPrintPhotos\(printPageRef,[\s\S]*?await renderPrintPng\(printPageRef/, 'album PDF export must wait for page photos before rasterizing');
 assert.match(appSource, /await waitForPrintPhotos\(printBookletRef,[\s\S]*?printBookletRef\.current\?\.toDataURL/, 'booklet PDF export must wait for both page photos before rasterizing');
+assert.match(appSource, /function exportPng\([\s\S]*?await waitForPrintPhotos\(stageRefToExport, photoReferences/, 'single-page and spread PNG export must wait for photos');
+assert.match(appSource, /async function exportPdf\([\s\S]*?await waitForPrintPhotos\(stageRefToExport, photoReferences/, 'single-page and spread PDF export must wait for photos');
+assert.match(appSource, /async function exportBookletSide[\s\S]*?renderBookletSidePng\(sideData\)/, 'single booklet PNG must use the photo-safe renderer');
+assert.match(appSource, /async function exportBookletAll[\s\S]*?renderBookletSidePng\(sideData, \{ checkResolution: false \}\)/, 'all booklet PNG exports must use the photo-safe renderer');
+assert.match(appSource, /async function exportBookletZip[\s\S]*?renderBookletSidePng\(sideData, \{ checkResolution: false \}\)/, 'booklet ZIP must use the photo-safe renderer');
 assert.match(appSource, /PDF не создан/, 'missing or late print photos must abort export instead of producing empty windows');
 assert.match(appSource, /collectAlbumResolutionWarnings\(sourcePageIndexesForBookletSides\(sequence\)\)/, 'partial booklet PDF exports must only block on photos included in the selected sides');
 assert.match(appSource, /loadedPhoto\.src === photoSource \? loadedPhoto\.image : null/, 'a reused frame must never render the previous page photo while its new source loads');
 assert.match(appSource, /printPhotoNodesReady\(references, renderedPhotoState\)/, 'print export must verify photo identity and source, not only rendered node count');
 assert.match(appSource, /key=\{`print-page-\$\{exportPage\?\.id/, 'the hidden album stage must remount when the exported page changes');
+assert.match(appSource, /hideGuidePageLabel=\{isBooklet\}/, 'booklet preview must not stack the generic page label under its side label');
+assert.match(appSource, /<PageNumberLayer[\s\S]*?settings=\{pageNumbering\}/, 'user page numbering must render as a dedicated export layer');
 
 const loadSavedBody = appSource.match(/function loadSaved\(\) \{([\s\S]*?)\n {2}\}/)?.[1] || '';
 assert.match(loadSavedBody, /applyProjectData\(data, 'Альбом загружен'\)/);
