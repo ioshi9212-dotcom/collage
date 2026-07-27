@@ -317,8 +317,8 @@ button.small-button {
 
 .notice {
   position: fixed;
-  z-index: 20;
-  top: 18px;
+  z-index: 100000;
+  top: max(76px, calc(env(safe-area-inset-top, 0px) + 76px));
   left: 50%;
   transform: translateX(-50%);
   width: fit-content;
