@@ -132,6 +132,51 @@ assert.equal(await dataUrlToBlob(tinyDataUrl).text(), 'hello');
 }
 
 {
+  const records = new Map([
+    ['asset-working', { id: 'asset-working', blob: new Blob(['kept'], { type: 'image/jpeg' }) }],
+  ]);
+  const runtime = await hydratePhotoProject({
+    library: [
+      {
+        id: 'stale-library-id',
+        assetId: 'asset-missing',
+        name: '2025-07-21 18.45.35.JPG',
+        size: 4,
+      },
+      {
+        id: 'working-library-id',
+        assetId: 'asset-working',
+        name: '2025-07-21 18.45.35.JPG',
+        size: 4,
+      },
+    ],
+    pages: [{
+      id: 'duplicate-recovery-page',
+      frames: [{
+        id: 'duplicate-recovery-frame',
+        photo: {
+          id: 'stale-library-id',
+          assetId: 'asset-missing',
+          name: '2025-07-21 18.45.35.JPG',
+          size: 4,
+          zoom: 1.35,
+        },
+      }],
+    }],
+  }, {
+    getAsset: async (id) => records.get(id),
+    runtimeUrlCache: new Map(),
+    createObjectURL: () => 'blob:working-duplicate',
+  });
+  assert.equal(runtime.pages[0].frames[0].photo.id, 'working-library-id');
+  assert.equal(runtime.pages[0].frames[0].photo.assetId, 'asset-working');
+  assert.equal(runtime.pages[0].frames[0].photo.src, 'blob:working-duplicate');
+  assert.equal(runtime.pages[0].frames[0].photo.zoom, 1.35);
+  assert.equal(runtime.recoveredFramePhotoCount, 1);
+  assert.equal(runtime.missingFramePhotoCount, 0);
+}
+
+{
   await assert.rejects(
     hydratePhotoProject({
       library: [{ id: 'available', name: 'available.jpg', src: tinyDataUrl }],

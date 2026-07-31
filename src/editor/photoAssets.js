@@ -317,15 +317,19 @@ export async function hydratePhotoProject(prepared, options = {}) {
     options.maxConcurrent ?? DEFAULT_PHOTO_ASSET_CONCURRENCY,
     (item) => hydrateLibraryItem(item, options),
   );
-  const byId = new Map(library.filter((item) => item?.id != null).map((item) => [String(item.id), item]));
-  const byAssetId = new Map(library.filter((item) => item?.assetId).map((item) => [String(item.assetId), item]));
+  const usableLibrary = library.filter((item) => item?.src);
+  const byId = new Map(usableLibrary.filter((item) => item?.id != null).map((item) => [String(item.id), item]));
+  const byAssetId = new Map(usableLibrary.filter((item) => item?.assetId).map((item) => [String(item.assetId), item]));
   const byCloudKey = new Map(
-    library
+    usableLibrary
       .map((item) => [cloudKeyFromPhoto(item), item])
       .filter(([key]) => key),
   );
-  const byFileIdentity = uniquePhotoIndex(library, photoFileIdentity);
-  const byUniqueName = uniquePhotoIndex(library, (item) => normalizedPhotoName(item?.name));
+  // Broken metadata-only duplicates must not make a usable original ambiguous.
+  // This can happen after reopening an older cloud save: the frame still points
+  // at the empty record while another library record owns the recovered Blob URL.
+  const byFileIdentity = uniquePhotoIndex(usableLibrary, photoFileIdentity);
+  const byUniqueName = uniquePhotoIndex(usableLibrary, (item) => normalizedPhotoName(item?.name));
   let referencedFramePhotoCount = 0;
   let missingFramePhotoCount = 0;
   let recoveredFramePhotoCount = 0;
