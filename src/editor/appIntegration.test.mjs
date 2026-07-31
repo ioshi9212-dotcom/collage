@@ -17,7 +17,8 @@ assert.doesNotMatch(softNumberChange, /commit\(/, 'number inputs must not rebuil
 
 assert.match(appSource, /filterDuplicatePhotoUploads\(rawFiles, library\)/, 'photo uploads must skip duplicates before conversion');
 assert.match(appSource, /prepareLocalPhotoFiles\(initialSelection\.accepted/, 'HEIC conversion must run inside the single React upload flow');
-assert.match(appSource, /Загружено: \{library\.length\} · используется: \{usedPhotoIds\.size\}/, 'photo panel must show loaded and used counts');
+assert.match(appSource, /В списке: \{visibleLibrary\.length\} · в альбоме: \{usedPhotoIds\.size\}/, 'photo panel must distinguish visible thumbnails from originals retained by the album');
+assert.match(appSource, /retainPlacedPhotos\(library, pages\)/, 'clearing the photo panel must retain originals already placed in frames');
 assert.match(appSource, /projectJsonFileError\(file\)/, 'project imports must enforce the JSON file limit');
 assert.match(appSource, /describeSaveResult\(\{ local, indexedDb, cloud, cloudError \}\)/, 'save feedback must be based on confirmed storage outcomes');
 assert.match(appSource, /createPreparedProjectSnapshot\(prepared\)/, 'opened cloud projects must persist the validated normalized snapshot');

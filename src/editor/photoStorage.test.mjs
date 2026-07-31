@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { compactProjectPhotos, hydrateProjectPhotos } from './photoStorage.js';
+import { compactProjectPhotos, hydrateProjectPhotos, retainPlacedPhotos } from './photoStorage.js';
 
 const source = `data:image/jpeg;base64,${'A'.repeat(12_000)}`;
 const library = [{ id: 'photo-1', name: 'family.jpg', src: source }];
@@ -170,5 +170,20 @@ assert.doesNotThrow(() => malformed[0].frames[0].photo.zoom.toFixed(2));
 
 const unresolved = hydrateProjectPhotos([], [{ frames: [{ id: 'frame', photo: { id: 'missing', zoom: 1 } }] }]);
 assert.equal(unresolved[0].frames[0].photo.src, undefined, 'missing library source must fail safely');
+
+const retainedAfterPanelClear = retainPlacedPhotos([
+  { id: 'placed', name: 'placed.jpg', assetId: 'asset-placed', src: source },
+  { id: 'unused', name: 'unused.jpg', assetId: 'asset-unused', src: `${source}unused` },
+], [{ frames: [{ photo: { id: 'placed', assetId: 'asset-placed', zoom: 1.6 } }] }]);
+assert.deepEqual(
+  retainedAfterPanelClear.map((photo) => photo.id),
+  ['placed'],
+  'clearing the visible photo panel must retain every original used by a frame',
+);
+const savedAfterPanelClear = compactProjectPhotos(retainedAfterPanelClear, [{
+  frames: [{ photo: { id: 'placed', assetId: 'asset-placed', zoom: 1.6 } }],
+}]);
+assert.equal(savedAfterPanelClear.library[0].assetId, 'asset-placed');
+assert.equal(savedAfterPanelClear.pages[0].frames[0].photo.zoom, 1.6);
 
 console.log('photo storage checks passed');

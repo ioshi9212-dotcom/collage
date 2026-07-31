@@ -162,6 +162,16 @@ export function compactProjectPhotos(library = [], pages = []) {
   return { library: nextLibrary, pages: nextPages };
 }
 
+export function retainPlacedPhotos(library = [], pages = []) {
+  const usedIds = new Set();
+  for (const page of Array.isArray(pages) ? pages : []) {
+    for (const frame of Array.isArray(page?.frames) ? page.frames : []) {
+      if (frame?.photo?.id != null) usedIds.add(String(frame.photo.id));
+    }
+  }
+  return cloneLibrary(library).filter((photo) => photo?.id != null && usedIds.has(String(photo.id)));
+}
+
 export function hydrateProjectPhotos(library = [], pages = []) {
   const sourceById = new Map(
     cloneLibrary(library)

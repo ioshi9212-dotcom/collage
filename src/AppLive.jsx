@@ -40,6 +40,7 @@ import {
   releaseUnusedPhotoRuntimeUrls,
 } from './editor/photoAssets';
 import { cleanupOrphanedPhotoAssets } from './editor/photoAssetCleanup';
+import { retainPlacedPhotos } from './editor/photoStorage';
 import { prepareLocalPhotoFiles } from './editor/localHeicUploadBridge';
 import { buildPhotoImportReport } from './editor/photoImportReport';
 import { loadCachedImage as loadImage } from './editor/imageCache';
@@ -1380,6 +1381,7 @@ export default function App() {
 
   const [album, setAlbum] = useState(() => createInitialAlbum(DEFAULT_CANVAS, DEFAULT_SETTINGS));
   const [library, setLibrary] = useState([]);
+  const [hiddenLibraryPhotoIds, setHiddenLibraryPhotoIds] = useState(() => new Set());
   const [canvas, setCanvas] = useState(DEFAULT_CANVAS);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [selectedFrameId, setSelectedFrameId] = useState(null);
@@ -1653,6 +1655,21 @@ export default function App() {
     });
     return used;
   }, [pages]);
+  const visibleLibrary = useMemo(
+    () => library.filter((photo) => !hiddenLibraryPhotoIds.has(String(photo.id))),
+    [library, hiddenLibraryPhotoIds],
+  );
+
+  function clearPhotoLibraryPanel() {
+    const retained = retainPlacedPhotos(library, pages);
+    setLibrary(retained);
+    setHiddenLibraryPhotoIds(new Set(retained.map((photo) => String(photo.id))));
+    setSelectedPhotoId(null);
+    setPhotoImportReport(null);
+    show(retained.length
+      ? `Список очищен. Фото в альбоме сохранены: ${retained.length}`
+      : 'Список фото очищен');
+  }
 
 
   function show(text) {
@@ -2720,6 +2737,7 @@ export default function App() {
     setCanvas(runtimePrepared.canvas);
     setSettings(runtimePrepared.settings);
     setLibrary(runtimePrepared.library);
+    setHiddenLibraryPhotoIds(new Set());
     setAlbum({ pages: runtimePrepared.pages, currentPageId: runtimePrepared.currentPageId });
     setViewMode(runtimePrepared.viewMode);
     setBookletSheetsPerBlock(runtimePrepared.bookletSheetsPerBlock);
@@ -3642,7 +3660,7 @@ export default function App() {
         <aside className="sidebar editor-left-panel-v2">
           {leftPanel === 'photos' && (
             <>
-              <div className="panel-title"><div><h2>Фото</h2><p>Загружено: {library.length} · используется: {usedPhotoIds.size}</p></div><span>{library.length}</span></div>
+              <div className="panel-title"><div><h2>Фото</h2><p>В списке: {visibleLibrary.length} · в альбоме: {usedPhotoIds.size}</p></div><span>{visibleLibrary.length}</span></div>
               <label className={`upload-box ${photoImporting ? 'disabled-upload-box' : ''}`}><strong>{photoImporting ? 'Загружаю фото…' : 'Загрузить фото'}</strong><small>{photoImporting ? 'Оригиналы сохраняются по очереди' : 'Можно сразу несколько'}</small><input type="file" accept="image/*" multiple disabled={photoImporting} onChange={uploadPhotos} /></label>
               {photoImportProgress.visible && (
                 <div className={`photo-upload-progress ${photoImportProgress.status}`} aria-live="polite">
@@ -3665,9 +3683,9 @@ export default function App() {
                 </div>
               )}
               <PhotoImportReport report={photoImportReport} onClose={() => setPhotoImportReport(null)} />
-              <button className="button full" onClick={() => { setLibrary([]); setSelectedPhotoId(null); setPhotoImportReport(null); show('Список фото очищен'); }} disabled={library.length === 0 || photoImporting}>Очистить список фото</button>
+              <button className="button full" onClick={clearPhotoLibraryPanel} disabled={visibleLibrary.length === 0 || photoImporting}>Очистить список фото</button>
               {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
-              {library.length === 0 ? <div className="empty-state"><p>Пока фото нет. Нажми “Загрузить фото”.</p></div> : <div className="photo-grid">{library.map((photo) => {
+              {visibleLibrary.length === 0 ? <div className="empty-state"><p>Список пуст. Фото, размещённые в альбоме, сохранены внутри проекта.</p></div> : <div className="photo-grid">{visibleLibrary.map((photo) => {
                 const isUsed = usedPhotoIds.has(photo.id);
                 return (
                   <button key={photo.id} type="button" className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''} ${isUsed ? 'used-photo-card' : ''}`} draggable onClick={() => { setSelectedPhotoId(photo.id); show(isUsed ? 'Фото уже есть в альбоме. Можно вставить ещё раз.' : 'Фото выбрано'); }} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }}>
