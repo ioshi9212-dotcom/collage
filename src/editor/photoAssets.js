@@ -32,6 +32,33 @@ function isBlobUrl(value) {
   return typeof value === 'string' && value.startsWith('blob:');
 }
 
+function normalizedPhotoName(value) {
+  return String(value || '').trim().toLocaleLowerCase();
+}
+
+function photoFileIdentity(photo) {
+  const name = normalizedPhotoName(photo?.sourceName || photo?.name);
+  const size = Number(photo?.sourceSize ?? photo?.size);
+  if (!name || !Number.isFinite(size) || size <= 0) return '';
+  return `${name}\u0000${Math.trunc(size)}`;
+}
+
+function uniquePhotoIndex(items, keyFor) {
+  const index = new Map();
+  const ambiguous = new Set();
+  for (const item of items) {
+    const key = keyFor(item);
+    if (!key || ambiguous.has(key)) continue;
+    if (index.has(key)) {
+      index.delete(key);
+      ambiguous.add(key);
+    } else {
+      index.set(key, item);
+    }
+  }
+  return index;
+}
+
 export function dataUrlToBlob(dataUrl) {
   if (!isDataUrl(dataUrl)) throw new Error('Источник фотографии не является data URL');
   const commaIndex = dataUrl.indexOf(',');
@@ -292,32 +319,69 @@ export async function hydratePhotoProject(prepared, options = {}) {
   );
   const byId = new Map(library.filter((item) => item?.id != null).map((item) => [String(item.id), item]));
   const byAssetId = new Map(library.filter((item) => item?.assetId).map((item) => [String(item.assetId), item]));
+  const byCloudKey = new Map(
+    library
+      .map((item) => [cloudKeyFromPhoto(item), item])
+      .filter(([key]) => key),
+  );
+  const byFileIdentity = uniquePhotoIndex(library, photoFileIdentity);
+  const byUniqueName = uniquePhotoIndex(library, (item) => normalizedPhotoName(item?.name));
+  let referencedFramePhotoCount = 0;
+  let missingFramePhotoCount = 0;
+  let recoveredFramePhotoCount = 0;
   const pages = compacted.pages.map((page) => ({
     ...page,
     frames: Array.isArray(page?.frames) ? page.frames.map((frame) => {
       const photo = frame?.photo;
       if (!photo || typeof photo !== 'object') return frame;
-      const runtime = photo.id != null ? byId.get(String(photo.id)) : byAssetId.get(String(photo.assetId || ''));
-      const cloudKey = cloudKeyFromPhoto(photo) || cloudKeyFromPhoto(runtime);
-      const src = runtime?.src || (cloudKey ? photoAssetUrl(cloudKey) : photo.src);
-      if (!runtime && !src) return frame;
+      referencedFramePhotoCount += 1;
+      const exactId = photo.id != null ? byId.get(String(photo.id)) : null;
+      const assetMatch = photo.assetId ? byAssetId.get(String(photo.assetId)) : null;
+      const cloudKey = cloudKeyFromPhoto(photo);
+      const cloudMatch = cloudKey ? byCloudKey.get(cloudKey) : null;
+      const identityMatch = byFileIdentity.get(photoFileIdentity(photo));
+      const nameMatch = byUniqueName.get(normalizedPhotoName(photo.name));
+      const runtime = exactId || assetMatch || cloudMatch || identityMatch || nameMatch || null;
+      const recoveredByFallback = Boolean(runtime && !exactId);
+      const resolvedCloudKey = cloudKey || cloudKeyFromPhoto(runtime);
+      const src = runtime?.src || (resolvedCloudKey ? photoAssetUrl(resolvedCloudKey) : photo.src);
+      if (!src) {
+        missingFramePhotoCount += 1;
+        return frame;
+      }
+      if (recoveredByFallback) recoveredFramePhotoCount += 1;
       return {
         ...frame,
         photo: {
           ...photo,
           ...(runtime ? {
+            id: runtime.id ?? photo.id,
             assetId: runtime.assetId,
             assetSchema: runtime.assetSchema,
             name: photo.name || runtime.name,
           } : {}),
-          ...(cloudKey ? { cloudKey } : {}),
+          ...(resolvedCloudKey ? { cloudKey: resolvedCloudKey } : {}),
           ...(src ? { src } : {}),
         },
       };
     }) : [],
   }));
   const missingPhotoCount = library.filter((item) => !item?.src).length;
-  return { ...prepared, library, pages, missingPhotoCount };
+  if (
+    referencedFramePhotoCount > 0
+    && missingFramePhotoCount === referencedFramePhotoCount
+    && library.some((item) => item?.src)
+  ) {
+    throw new MissingFramePhotoLinksError(referencedFramePhotoCount);
+  }
+  return {
+    ...prepared,
+    library,
+    pages,
+    missingPhotoCount,
+    missingFramePhotoCount,
+    recoveredFramePhotoCount,
+  };
 }
 
 export function createLocalPhotoProject(project) {
@@ -348,6 +412,14 @@ export class MissingPhotoAssetError extends Error {
     super(`Не найден оригинал фотографии «${photoName}». Открой проект в том браузере, где он был сохранён, или импортируй переносимый JSON.`);
     this.name = 'MissingPhotoAssetError';
     this.code = 'missing_photo_asset';
+  }
+}
+
+export class MissingFramePhotoLinksError extends Error {
+  constructor(frameCount = 0) {
+    super(`Не удалось связать ${frameCount} фото-окон с оригиналами. Старый альбом не заменён пустыми страницами.`);
+    this.name = 'MissingFramePhotoLinksError';
+    this.code = 'missing_frame_photo_links';
   }
 }
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   PHOTO_ASSET_SCHEMA,
   MissingPhotoAssetError,
+  MissingFramePhotoLinksError,
   createLocalPhotoProject,
   createPortablePhotoProject,
   dataUrlToBlob,
@@ -91,6 +92,59 @@ assert.equal(await dataUrlToBlob(tinyDataUrl).text(), 'hello');
     runtime.pages[0].frames[0].photo.src,
     `/api/photo-assets/file?key=${encodeURIComponent(cloudKey)}`,
     'a frame must recover directly from its own cloud metadata',
+  );
+}
+
+{
+  const records = new Map([
+    ['asset-kept', { id: 'asset-kept', blob: new Blob(['kept'], { type: 'image/jpeg' }) }],
+  ]);
+  const runtime = await hydratePhotoProject({
+    library: [{
+      id: 'new-library-id',
+      assetId: 'asset-kept',
+      name: 'family.jpg',
+      size: 4,
+    }],
+    pages: [{
+      id: 'relinked-page',
+      frames: [{
+        id: 'relinked-frame',
+        photo: {
+          id: 'stale-frame-id',
+          assetId: 'asset-kept',
+          name: 'family.jpg',
+          size: 4,
+          zoom: 1.6,
+        },
+      }],
+    }],
+  }, {
+    getAsset: async (id) => records.get(id),
+    runtimeUrlCache: new Map(),
+    createObjectURL: () => 'blob:relinked',
+  });
+  assert.equal(runtime.pages[0].frames[0].photo.id, 'new-library-id');
+  assert.equal(runtime.pages[0].frames[0].photo.src, 'blob:relinked');
+  assert.equal(runtime.pages[0].frames[0].photo.zoom, 1.6);
+  assert.equal(runtime.recoveredFramePhotoCount, 1);
+  assert.equal(runtime.missingFramePhotoCount, 0);
+}
+
+{
+  await assert.rejects(
+    hydratePhotoProject({
+      library: [{ id: 'available', name: 'available.jpg', src: tinyDataUrl }],
+      pages: [{
+        id: 'broken-page',
+        frames: [{ id: 'broken-frame', photo: { id: 'missing', name: 'missing.jpg' } }],
+      }],
+    }, {
+      putAsset: async () => {},
+      runtimeUrlCache: new Map(),
+      createObjectURL: () => 'blob:available',
+    }),
+    (error) => error instanceof MissingFramePhotoLinksError && error.code === 'missing_frame_photo_links',
   );
 }
 

@@ -2735,7 +2735,18 @@ export default function App() {
     setSelectedDrawingId(null);
     setDragPageIndex(null);
     setDragOverPageIndex(null);
-    show(runtimePrepared.missingPhotoCount ? `${message} · не найдено оригиналов: ${runtimePrepared.missingPhotoCount}` : message);
+    const loadWarnings = [
+      runtimePrepared.recoveredFramePhotoCount
+        ? `восстановлено связей: ${runtimePrepared.recoveredFramePhotoCount}`
+        : null,
+      runtimePrepared.missingFramePhotoCount
+        ? `пустых фото-окон: ${runtimePrepared.missingFramePhotoCount}`
+        : null,
+      runtimePrepared.missingPhotoCount
+        ? `не найдено оригиналов: ${runtimePrepared.missingPhotoCount}`
+        : null,
+    ].filter(Boolean);
+    show(loadWarnings.length ? `${message} · ${loadWarnings.join(' · ')}` : message);
     return runtimePrepared;
   }
 
