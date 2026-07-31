@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import './photoRecovery.test.mjs';
 import {
   PHOTO_ASSET_SCHEMA,
   MissingPhotoAssetError,

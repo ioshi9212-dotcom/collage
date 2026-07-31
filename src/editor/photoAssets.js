@@ -237,6 +237,7 @@ export async function persistPhotoFiles(files, options = {}) {
       size: file?.size,
       sourceName: file?.sourceName || file?.name || 'Фото',
       sourceSize: Number(file?.sourceSize ?? file?.size) || 0,
+      sourceLastModified: Number(file?.lastModified) || undefined,
     };
     try {
       return { ok: true, photo: await persistOnePhotoBlob(file, draft, options) };

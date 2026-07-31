@@ -43,6 +43,7 @@ import { cleanupOrphanedPhotoAssets } from './editor/photoAssetCleanup';
 import { retainPlacedPhotos } from './editor/photoStorage';
 import { prepareLocalPhotoFiles } from './editor/localHeicUploadBridge';
 import { buildPhotoImportReport } from './editor/photoImportReport';
+import { recoverMissingFramePhotos } from './editor/photoRecovery';
 import { loadCachedImage as loadImage } from './editor/imageCache';
 import { prepareEditorProject } from './editor/projectLoad';
 import {
@@ -1659,6 +1660,58 @@ export default function App() {
     () => library.filter((photo) => !hiddenLibraryPhotoIds.has(String(photo.id))),
     [library, hiddenLibraryPhotoIds],
   );
+
+  async function recoverPhotos(event) {
+    const input = event.target;
+    const rawFiles = Array.from(input.files || []);
+    input.value = '';
+    if (!rawFiles.length || photoImporting) return;
+    const missingBefore = pages.reduce((total, page) => total + (page.frames || []).filter((frame) => frame?.photo && !frame.photo.src).length, 0);
+    if (!missingBefore) return show('В альбоме нет пустых фото-окон для восстановления');
+
+    setPhotoImporting(true);
+    setPhotoImportReport(null);
+    showPhotoImportProgress({ percent: 2, label: 'Готовлю восстановление', detail: `Выбрано файлов: ${rawFiles.length}`, processed: 0, total: rawFiles.length });
+    try {
+      const prepared = await prepareLocalPhotoFiles(rawFiles, {
+        onProgress: ({ index, total, name }) => showPhotoImportProgress({ percent: 2 + (index / Math.max(1, total)) * 28, label: 'Преобразую HEIC', detail: `${index + 1} из ${total} · ${name}`, processed: index, total }),
+      });
+      const accepted = prepared.files.filter((file) => String(file?.type || '').startsWith('image/') && Number(file?.size) <= 25 * 1024 * 1024);
+      const loaded = [];
+      const failed = [...prepared.failed];
+      for (let offset = 0; offset < accepted.length; offset += 2) {
+        const chunk = accepted.slice(offset, offset + 2);
+        const result = await persistPhotoFiles(chunk, { idFactory: makeId, maxConcurrent: 1 });
+        loaded.push(...result.loaded);
+        failed.push(...result.failed);
+        const finished = Math.min(accepted.length, offset + chunk.length);
+        showPhotoImportProgress({ percent: 30 + (finished / Math.max(1, accepted.length)) * 65, label: 'Сопоставляю оригиналы', detail: `${finished} из ${accepted.length}`, processed: finished, total: accepted.length });
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+
+      const recovery = recoverMissingFramePhotos(pages, [...library, ...loaded]);
+      if (recovery.recovered) {
+        setAlbum((current) => ({ ...current, pages: recovery.pages }));
+        setLibrary((current) => {
+          const existingIds = new Set(current.map((photo) => String(photo.id)));
+          const additions = loaded.filter((photo) => recovery.usedPhotoIds.has(String(photo.id)) && !existingIds.has(String(photo.id)));
+          return [...current, ...additions].slice(0, MAX_LIBRARY_PHOTOS);
+        });
+      }
+      const detail = recovery.unresolved
+        ? `Восстановлено ${recovery.recovered} из ${recovery.missing}. Не найдено: ${recovery.unresolved}${recovery.ambiguous ? `, одинаковых имён: ${recovery.ambiguous}` : ''}`
+        : `Восстановлены все фотографии: ${recovery.recovered}`;
+      finishPhotoImportProgress({ status: recovery.recovered ? 'success' : 'error', label: recovery.recovered ? 'Восстановление завершено' : 'Совпадения не найдены', detail });
+      show(detail);
+      if (failed.length) console.warn('Some recovery files could not be read', failed);
+    } catch (error) {
+      const message = error?.message || 'Не удалось восстановить фотографии';
+      finishPhotoImportProgress({ status: 'error', label: 'Ошибка восстановления', detail: message });
+      show(message);
+    } finally {
+      setPhotoImporting(false);
+    }
+  }
 
   function clearPhotoLibraryPanel() {
     const retained = retainPlacedPhotos(library, pages);
@@ -3662,6 +3715,10 @@ export default function App() {
             <>
               <div className="panel-title"><div><h2>Фото</h2><p>В списке: {visibleLibrary.length} · в альбоме: {usedPhotoIds.size}</p></div><span>{visibleLibrary.length}</span></div>
               <label className={`upload-box ${photoImporting ? 'disabled-upload-box' : ''}`}><strong>{photoImporting ? 'Загружаю фото…' : 'Загрузить фото'}</strong><small>{photoImporting ? 'Оригиналы сохраняются по очереди' : 'Можно сразу несколько'}</small><input type="file" accept="image/*" multiple disabled={photoImporting} onChange={uploadPhotos} /></label>
+              <label className={`button full photo-recovery-button ${photoImporting ? 'disabled' : ''}`}>
+                Восстановить фотографии
+                <input className="hidden-input" type="file" accept="image/*,.heic,.heif" multiple disabled={photoImporting} onChange={recoverPhotos} />
+              </label>
               {photoImportProgress.visible && (
                 <div className={`photo-upload-progress ${photoImportProgress.status}`} aria-live="polite">
                   <div className="photo-upload-progress-head">
