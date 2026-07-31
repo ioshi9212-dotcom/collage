@@ -18,5 +18,5 @@ test('duplicate photos are skipped by name and size while same-name different-si
     buffer: Buffer.concat([source.buffer, Buffer.from([0])]),
   });
   await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().library.length)).toBe(2);
-  await expect(page.locator('.editor-left-panel-v2')).toContainText('Загружено: 2');
+  await expect(page.locator('.editor-left-panel-v2')).toContainText('В списке: 2');
 });
