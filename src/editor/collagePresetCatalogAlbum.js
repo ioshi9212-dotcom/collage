@@ -1,277 +1,129 @@
+const PAGE_ASPECT = 148 / 210;
+const MARGIN = .04;
+const GAP = .02;
+const INNER = 1 - MARGIN * 2;
+
 function frame(x, y, width, height, zIndex = 1) {
   return { x, y, width, height, zIndex };
 }
 
-export const ALBUM_COLLAGE_PRESETS = [
-  // 2 фото
-  {
-    id: 'album-two-equal-portraits',
-    count: 2,
-    category: 'album',
-    name: 'Два портрета рядом',
-    description: 'Два крупных вертикальных кадра на всю высоту страницы.',
-    frames: [frame(.04, .04, .45, .92), frame(.51, .04, .45, .92)],
-  },
-  {
-    id: 'album-two-hero-detail',
-    count: 2,
-    category: 'album',
-    name: 'Главное + деталь снизу',
-    description: 'Большой сюжетный кадр и широкое продолжение истории под ним.',
-    frames: [frame(.04, .04, .92, .64), frame(.04, .70, .92, .26)],
-  },
-  {
-    id: 'album-two-detail-hero',
-    count: 2,
-    category: 'album',
-    name: 'Деталь + главное',
-    description: 'Небольшой широкий кадр сверху и большой кадр ниже.',
-    frames: [frame(.04, .04, .92, .26), frame(.04, .32, .92, .64)],
-  },
-  {
-    id: 'album-two-narrow-wide',
-    count: 2,
-    category: 'album',
-    name: 'Узкое + широкое',
-    description: 'Узкий кадр сбоку и большое вертикальное фото рядом.',
-    frames: [frame(.04, .04, .32, .92), frame(.38, .04, .58, .92)],
-  },
+function rowLayout(rowCounts, { widths = [], aligns = [] } = {}) {
+  const desiredHeights = rowCounts.map((count, index) => {
+    const rowWidth = INNER * (widths[index] ?? 1);
+    const cellWidth = (rowWidth - GAP * (count - 1)) / count;
+    return cellWidth * PAGE_ASPECT;
+  });
+  const availableHeight = INNER - GAP * (rowCounts.length - 1);
+  const scale = Math.min(1.7, availableHeight / desiredHeights.reduce((sum, value) => sum + value, 0));
+  const heights = desiredHeights.map((value) => value * scale);
+  const frames = [];
+  const usedHeight = heights.reduce((sum, value) => sum + value, 0) + GAP * (rowCounts.length - 1);
+  let y = (1 - usedHeight) / 2;
 
-  // 3 фото
-  {
-    id: 'album-three-hero-bottom-pair',
-    count: 3,
-    category: 'album',
-    name: 'Главное + два снизу',
-    description: 'Крупное фото сверху и два последовательных кадра внизу.',
-    frames: [frame(.04, .04, .92, .62), frame(.04, .68, .45, .28), frame(.51, .68, .45, .28)],
-  },
-  {
-    id: 'album-three-hero-side-pair',
-    count: 3,
-    category: 'album',
-    name: 'Главное + два сбоку',
-    description: 'Большой вертикальный кадр и две детали одна под другой.',
-    frames: [frame(.04, .04, .62, .92), frame(.68, .04, .28, .45), frame(.68, .51, .28, .45)],
-  },
-  {
-    id: 'album-three-top-pair-hero',
-    count: 3,
-    category: 'album',
-    name: 'Два сверху + главное',
-    description: 'Два небольших фото сверху и широкое главное фото снизу.',
-    frames: [frame(.04, .04, .45, .30), frame(.51, .04, .45, .30), frame(.04, .36, .92, .60)],
-  },
-  {
-    id: 'album-three-story-strips',
-    count: 3,
-    category: 'album',
-    name: 'Три кадра истории',
-    description: 'Три равные горизонтальные фотографии для последовательной серии.',
-    frames: [frame(.04, .04, .92, .293), frame(.04, .353, .92, .293), frame(.04, .666, .92, .294)],
-  },
+  rowCounts.forEach((count, rowIndex) => {
+    const rowWidth = INNER * (widths[rowIndex] ?? 1);
+    const align = aligns[rowIndex] ?? 'center';
+    const x = align === 'left' ? MARGIN : align === 'right' ? 1 - MARGIN - rowWidth : (1 - rowWidth) / 2;
+    const cellWidth = (rowWidth - GAP * (count - 1)) / count;
+    for (let column = 0; column < count; column += 1) {
+      frames.push(frame(x + column * (cellWidth + GAP), y, cellWidth, heights[rowIndex]));
+    }
+    y += heights[rowIndex] + GAP;
+  });
 
-  // 4 фото
-  {
-    id: 'album-four-hero-three-bottom',
-    count: 4,
-    category: 'album',
-    name: 'Главное + три снизу',
-    description: 'Большой верхний кадр и лента из трёх фотографий под ним.',
-    frames: [frame(.04, .04, .92, .61), frame(.04, .67, .293, .29), frame(.353, .67, .293, .29), frame(.666, .67, .294, .29)],
-  },
-  {
-    id: 'album-four-hero-three-side',
-    count: 4,
-    category: 'album',
-    name: 'Главное + три сбоку',
-    description: 'Высокое главное фото и три небольших кадра в колонке.',
-    frames: [frame(.04, .04, .62, .92), frame(.68, .04, .28, .293), frame(.68, .353, .28, .293), frame(.68, .666, .28, .294)],
-  },
-  {
-    id: 'album-four-two-over-two',
-    count: 4,
-    category: 'album',
-    name: 'Два над двумя',
-    description: 'Ровная сетка из четырёх крупных повседневных кадров.',
-    frames: [frame(.04, .04, .45, .45), frame(.51, .04, .45, .45), frame(.04, .51, .45, .45), frame(.51, .51, .45, .45)],
-  },
-  {
-    id: 'album-four-two-main-two-details',
-    count: 4,
-    category: 'album',
-    name: 'Два главных + две детали',
-    description: 'Два больших кадра по диагонали и две поддерживающие фотографии.',
-    frames: [frame(.04, .04, .58, .45), frame(.64, .04, .32, .45), frame(.04, .51, .32, .45), frame(.38, .51, .58, .45)],
-  },
+  return frames;
+}
 
-  // 5 фото
-  {
-    id: 'album-five-hero-four-bottom',
-    count: 5,
-    category: 'album',
-    name: 'Главное + четыре снизу',
-    description: 'Большое сюжетное фото и четыре узких кадра продолжения.',
-    frames: [frame(.04, .04, .92, .60), frame(.04, .66, .215, .30), frame(.275, .66, .215, .30), frame(.51, .66, .215, .30), frame(.745, .66, .215, .30)],
-  },
-  {
-    id: 'album-five-hero-side-four',
-    count: 5,
-    category: 'album',
-    name: 'Главное + четыре сбоку',
-    description: 'Большой портрет и компактная сетка 2×2 рядом.',
-    frames: [frame(.04, .04, .58, .92), frame(.64, .04, .15, .45), frame(.81, .04, .15, .45), frame(.64, .51, .15, .45), frame(.81, .51, .15, .45)],
-  },
-  {
-    id: 'album-five-top-two-bottom-three',
-    count: 5,
-    category: 'album',
-    name: 'Два сверху + три снизу',
-    description: 'Два крупных кадра сверху и три вертикальных фото снизу.',
-    frames: [frame(.04, .04, .45, .42), frame(.51, .04, .45, .42), frame(.04, .48, .293, .48), frame(.353, .48, .293, .48), frame(.666, .48, .294, .48)],
-  },
-  {
-    id: 'album-five-side-two-hero-two',
-    count: 5,
-    category: 'album',
-    name: 'Главное в центре + края',
-    description: 'Высокий центральный кадр и по две фотографии с каждой стороны.',
-    frames: [frame(.04, .04, .25, .45), frame(.04, .51, .25, .45), frame(.31, .04, .38, .92), frame(.71, .04, .25, .45), frame(.71, .51, .25, .45)],
-  },
+function staggeredPair({ reverse = false, portrait = false } = {}) {
+  if (portrait) {
+    const first = frame(.08, .08, .40, .49);
+    const second = frame(.52, .43, .40, .49);
+    return reverse ? [second, first] : [first, second];
+  }
+  const first = frame(.04, .08, .72, .38);
+  const second = frame(.24, .54, .72, .38);
+  return reverse ? [second, first] : [first, second];
+}
 
-  // 6 фото
-  {
-    id: 'album-six-hero-five-side',
-    count: 6,
-    category: 'album',
-    name: 'Главное + пять сбоку',
-    description: 'Большой вертикальный кадр и пять фото разных пропорций рядом.',
-    frames: [frame(.04, .04, .55, .92), frame(.61, .04, .35, .27), frame(.61, .33, .165, .30), frame(.795, .33, .165, .30), frame(.61, .65, .165, .31), frame(.795, .65, .165, .31)],
-  },
-  {
-    id: 'album-six-hero-bottom-five',
-    count: 6,
-    category: 'album',
-    name: 'Главное + пять внизу',
-    description: 'Большое фото сверху и плотная серия из пяти кадров под ним.',
-    frames: [frame(.04, .04, .92, .58), frame(.04, .64, .168, .32), frame(.227, .64, .168, .32), frame(.414, .64, .168, .32), frame(.601, .64, .168, .32), frame(.788, .64, .172, .32)],
-  },
-  {
-    id: 'album-six-two-columns-three',
-    count: 6,
-    category: 'album',
-    name: 'Две колонки по три',
-    description: 'Шесть широких кадров для двух параллельных историй.',
-    frames: [frame(.04, .04, .45, .293), frame(.51, .04, .45, .293), frame(.04, .353, .45, .293), frame(.51, .353, .45, .293), frame(.04, .666, .45, .294), frame(.51, .666, .45, .294)],
-  },
-  {
-    id: 'album-six-two-main-four-details',
-    count: 6,
-    category: 'album',
-    name: 'Два главных + четыре детали',
-    description: 'Два больших фото и четыре маленьких кадра в свободном ритме.',
-    frames: [frame(.04, .04, .57, .45), frame(.63, .04, .155, .45), frame(.805, .04, .155, .45), frame(.04, .51, .155, .45), frame(.215, .51, .155, .45), frame(.39, .51, .57, .45)],
-  },
+const LAYOUT_SPECS = {
+  2: [
+    { rows: [2] },
+    { rows: [1, 1] },
+    { custom: staggeredPair() },
+    { custom: staggeredPair({ reverse: true }) },
+    { custom: staggeredPair({ portrait: true }) },
+    { custom: staggeredPair({ portrait: true, reverse: true }) },
+    { rows: [2], widths: [.86], aligns: ['left'] },
+    { rows: [2], widths: [.86], aligns: ['right'] },
+    { rows: [1, 1], widths: [.82, 1], aligns: ['left', 'right'] },
+    { rows: [1, 1], widths: [1, .82], aligns: ['left', 'right'] },
+  ],
+  3: [
+    { rows: [1, 2] }, { rows: [2, 1] }, { rows: [3] },
+    { rows: [1, 2], widths: [.82, 1], aligns: ['left', 'right'] },
+    { rows: [1, 2], widths: [.82, 1], aligns: ['right', 'left'] },
+    { rows: [2, 1], widths: [1, .82], aligns: ['left', 'right'] },
+    { rows: [2, 1], widths: [1, .82], aligns: ['right', 'left'] },
+    { rows: [1, 1, 1], widths: [.78, .78, .78], aligns: ['left', 'center', 'right'] },
+    { rows: [1, 1, 1], widths: [.78, .78, .78], aligns: ['right', 'center', 'left'] },
+    { rows: [3], widths: [.88], aligns: ['center'] },
+  ],
+  4: [
+    { rows: [2, 2] }, { rows: [1, 3] }, { rows: [3, 1] }, { rows: [4] },
+    { rows: [1, 3], widths: [.82, 1], aligns: ['left', 'right'] },
+    { rows: [1, 3], widths: [.82, 1], aligns: ['right', 'left'] },
+    { rows: [3, 1], widths: [1, .82], aligns: ['left', 'right'] },
+    { rows: [3, 1], widths: [1, .82], aligns: ['right', 'left'] },
+    { rows: [2, 2], widths: [.88, 1], aligns: ['left', 'right'] },
+    { rows: [2, 2], widths: [1, .88], aligns: ['left', 'right'] },
+  ],
+  5: [
+    { rows: [2, 3] }, { rows: [3, 2] }, { rows: [1, 2, 2] }, { rows: [2, 1, 2] }, { rows: [2, 2, 1] },
+    { rows: [1, 4], widths: [.78, 1], aligns: ['left', 'right'] },
+    { rows: [1, 4], widths: [.78, 1], aligns: ['right', 'left'] },
+    { rows: [4, 1], widths: [1, .78], aligns: ['left', 'right'] },
+    { rows: [2, 3], widths: [.88, 1], aligns: ['left', 'right'] },
+    { rows: [3, 2], widths: [1, .88], aligns: ['left', 'right'] },
+  ],
+  6: [
+    { rows: [3, 3] }, { rows: [2, 2, 2] }, { rows: [1, 2, 3] }, { rows: [3, 2, 1] }, { rows: [2, 1, 3] },
+    { rows: [3, 1, 2] }, { rows: [2, 3, 1] },
+    { rows: [2, 4], widths: [.88, 1], aligns: ['left', 'right'] },
+    { rows: [4, 2], widths: [1, .88], aligns: ['left', 'right'] },
+    { rows: [3, 3], widths: [.90, 1], aligns: ['left', 'right'] },
+  ],
+  7: [
+    { rows: [3, 4] }, { rows: [4, 3] }, { rows: [2, 2, 3] }, { rows: [3, 2, 2] }, { rows: [2, 3, 2] },
+    { rows: [1, 3, 3] }, { rows: [3, 3, 1] },
+    { rows: [2, 1, 4] }, { rows: [4, 1, 2] },
+    { rows: [3, 4], widths: [.90, 1], aligns: ['left', 'right'] },
+  ],
+  8: [
+    { rows: [4, 4] }, { rows: [3, 2, 3] }, { rows: [2, 3, 3] }, { rows: [3, 3, 2] },
+    { rows: [2, 2, 2, 2] }, { rows: [1, 3, 4] }, { rows: [4, 3, 1] },
+    { rows: [2, 4, 2] }, { rows: [3, 1, 4] },
+    { rows: [4, 4], widths: [.90, 1], aligns: ['left', 'right'] },
+  ],
+  9: [
+    { rows: [3, 3, 3] }, { rows: [4, 5] }, { rows: [5, 4] }, { rows: [2, 3, 4] }, { rows: [4, 3, 2] },
+    { rows: [3, 2, 4] }, { rows: [4, 2, 3] }, { rows: [2, 2, 2, 3] },
+    { rows: [3, 3, 3], widths: [.90, 1, .90], aligns: ['left', 'center', 'right'] },
+    { rows: [1, 4, 4], widths: [.76, 1, 1], aligns: ['left', 'center', 'center'] },
+  ],
+};
 
-  // 7 фото
-  {
-    id: 'album-seven-hero-six-bottom',
-    count: 7,
-    category: 'album',
-    name: 'Главное + шесть снизу',
-    description: 'Большой верхний кадр и две строки по три фото под ним.',
-    frames: [frame(.04, .04, .92, .48), frame(.04, .54, .293, .20), frame(.353, .54, .293, .20), frame(.666, .54, .294, .20), frame(.04, .76, .293, .20), frame(.353, .76, .293, .20), frame(.666, .76, .294, .20)],
-  },
-  {
-    id: 'album-seven-hero-side-six',
-    count: 7,
-    category: 'album',
-    name: 'Главное + шесть сбоку',
-    description: 'Высокое главное фото и сетка 2×3 с последовательностью кадров.',
-    frames: [frame(.04, .04, .50, .92), frame(.56, .04, .19, .293), frame(.77, .04, .19, .293), frame(.56, .353, .19, .293), frame(.77, .353, .19, .293), frame(.56, .666, .19, .294), frame(.77, .666, .19, .294)],
-  },
-  {
-    id: 'album-seven-two-main-five',
-    count: 7,
-    category: 'album',
-    name: 'Два главных + пять кадров',
-    description: 'Два крупных фото завершаются нижней лентой из пяти деталей.',
-    frames: [frame(.04, .04, .45, .60), frame(.51, .04, .45, .60), frame(.04, .66, .168, .30), frame(.227, .66, .168, .30), frame(.414, .66, .168, .30), frame(.601, .66, .168, .30), frame(.788, .66, .172, .30)],
-  },
-  {
-    id: 'album-seven-three-left-hero-three',
-    count: 7,
-    category: 'album',
-    name: 'Главное между сериями',
-    description: 'Центральный портрет и по три узких кадра по сторонам.',
-    frames: [frame(.04, .04, .20, .293), frame(.04, .353, .20, .293), frame(.04, .666, .20, .294), frame(.26, .04, .48, .92), frame(.76, .04, .20, .293), frame(.76, .353, .20, .293), frame(.76, .666, .20, .294)],
-  },
-
-  // 8 фото
-  {
-    id: 'album-eight-hero-seven-side',
-    count: 8,
-    category: 'album',
-    name: 'Главное + семь сбоку',
-    description: 'Большой кадр и семь фотографий, собранных плотной историей.',
-    frames: [frame(.04, .04, .50, .92), frame(.56, .04, .40, .22), frame(.56, .28, .19, .20), frame(.77, .28, .19, .20), frame(.56, .50, .19, .20), frame(.77, .50, .19, .20), frame(.56, .72, .19, .24), frame(.77, .72, .19, .24)],
-  },
-  {
-    id: 'album-eight-hero-bottom-seven',
-    count: 8,
-    category: 'album',
-    name: 'Главное + семь внизу',
-    description: 'Широкий главный кадр и семь фотографий в двух нижних рядах.',
-    frames: [frame(.04, .04, .92, .48), frame(.04, .54, .215, .19), frame(.275, .54, .215, .19), frame(.51, .54, .215, .19), frame(.745, .54, .215, .19), frame(.04, .75, .293, .21), frame(.353, .75, .293, .21), frame(.666, .75, .294, .21)],
-  },
-  {
-    id: 'album-eight-two-heroes-six',
-    count: 8,
-    category: 'album',
-    name: 'Два главных + шесть',
-    description: 'Два больших кадра сверху и сетка 3×2 в нижней части.',
-    frames: [frame(.04, .04, .45, .45), frame(.51, .04, .45, .45), frame(.04, .51, .293, .215), frame(.353, .51, .293, .215), frame(.666, .51, .294, .215), frame(.04, .745, .293, .215), frame(.353, .745, .293, .215), frame(.666, .745, .294, .215)],
-  },
-  {
-    id: 'album-eight-four-by-two',
-    count: 8,
-    category: 'album',
-    name: 'Четыре ряда по два',
-    description: 'Восемь равных широких кадров для длинной последовательности.',
-    frames: [frame(.04, .04, .45, .215), frame(.51, .04, .45, .215), frame(.04, .275, .45, .215), frame(.51, .275, .45, .215), frame(.04, .51, .45, .215), frame(.51, .51, .45, .215), frame(.04, .745, .45, .215), frame(.51, .745, .45, .215)],
-  },
-
-  // 9 фото
-  {
-    id: 'album-nine-hero-eight-side',
-    count: 9,
-    category: 'album',
-    name: 'Главное + восемь сбоку',
-    description: 'Большой портрет и восемь небольших кадров в сетке 2×4.',
-    frames: [frame(.04, .04, .50, .92), frame(.56, .04, .19, .215), frame(.77, .04, .19, .215), frame(.56, .275, .19, .215), frame(.77, .275, .19, .215), frame(.56, .51, .19, .215), frame(.77, .51, .19, .215), frame(.56, .745, .19, .215), frame(.77, .745, .19, .215)],
-  },
-  {
-    id: 'album-nine-hero-bottom-eight',
-    count: 9,
-    category: 'album',
-    name: 'Главное + восемь снизу',
-    description: 'Большой кадр сверху и две ленты по четыре фото.',
-    frames: [frame(.04, .04, .92, .48), frame(.04, .54, .215, .20), frame(.275, .54, .215, .20), frame(.51, .54, .215, .20), frame(.745, .54, .215, .20), frame(.04, .76, .215, .20), frame(.275, .76, .215, .20), frame(.51, .76, .215, .20), frame(.745, .76, .215, .20)],
-  },
-  {
-    id: 'album-nine-three-by-three',
-    count: 9,
-    category: 'album',
-    name: 'Сетка 3×3',
-    description: 'Девять равных кадров для насыщенной хроники дня или месяца.',
-    frames: [frame(.04, .04, .293, .293), frame(.353, .04, .293, .293), frame(.666, .04, .294, .293), frame(.04, .353, .293, .293), frame(.353, .353, .293, .293), frame(.666, .353, .294, .293), frame(.04, .666, .293, .294), frame(.353, .666, .293, .294), frame(.666, .666, .294, .294)],
-  },
-  {
-    id: 'album-nine-two-heroes-seven',
-    count: 9,
-    category: 'album',
-    name: 'Два главных + семь деталей',
-    description: 'Два больших кадра и семь небольших фото с живой асимметрией.',
-    frames: [frame(.04, .04, .58, .45), frame(.64, .04, .15, .215), frame(.81, .04, .15, .215), frame(.64, .275, .15, .215), frame(.81, .275, .15, .215), frame(.04, .51, .15, .45), frame(.21, .51, .15, .45), frame(.38, .51, .15, .45), frame(.55, .51, .41, .45)],
-  },
+const STYLE_NAMES = [
+  'Спокойная история', 'Крупный ритм', 'Журнальная полоса', 'Мягкая асимметрия', 'Серия кадров',
+  'Главное и детали', 'Зеркальная история', 'Воздушная сетка', 'Динамичная серия', 'Финальный ритм',
 ];
+
+export const ALBUM_COLLAGE_PRESETS = Object.entries(LAYOUT_SPECS).flatMap(([count, specs]) =>
+  specs.map((spec, index) => ({
+    id: `album-${count}-${index + 1}`,
+    count: Number(count),
+    category: 'album',
+    name: STYLE_NAMES[index],
+    description: `${count} фото с естественными пропорциями для печатной страницы A5.`,
+    frames: spec.custom ?? rowLayout(spec.rows, spec),
+  })),
+);
