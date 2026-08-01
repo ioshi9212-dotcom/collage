@@ -9,20 +9,20 @@ import {
 } from './collagePresetCatalog.js';
 
 assert.deepEqual(COLLAGE_PRESET_COUNTS, [2, 3, 4, 5, 6, 7, 8, 9]);
-assert.equal(COLLAGE_PRESET_CATALOG.length, 128);
-assert.equal(new Set(COLLAGE_PRESET_CATALOG.map((preset) => preset.id)).size, 128, 'preset ids must be unique');
+assert.equal(COLLAGE_PRESET_CATALOG.length, 176);
+assert.equal(new Set(COLLAGE_PRESET_CATALOG.map((preset) => preset.id)).size, 176, 'preset ids must be unique');
 assert.ok(COLLAGE_PRESET_CATEGORIES.some((item) => item.id === 'text' && item.label === 'С текстом'));
 assert.ok(COLLAGE_PRESET_CATEGORIES.some((item) => item.id === 'album' && item.label === 'Как в альбоме'));
 
 const expectedCounts = new Map([
-  [2, 16],
-  [3, 16],
-  [4, 16],
-  [5, 16],
-  [6, 16],
-  [7, 16],
-  [8, 16],
-  [9, 16],
+  [2, 22],
+  [3, 22],
+  [4, 22],
+  [5, 22],
+  [6, 22],
+  [7, 22],
+  [8, 22],
+  [9, 22],
 ]);
 
 for (const [count, expected] of expectedCounts) {
@@ -33,9 +33,9 @@ assert.equal(collagePresetsFor({ count: 5, category: 'overlay' }).length, 1);
 assert.equal(collagePresetsFor({ count: 2, category: 'text' }).length, 4);
 assert.equal(collagePresetsFor({ count: 9, category: 'text' }).length, 3);
 assert.equal(COLLAGE_PRESET_CATALOG.filter((preset) => preset.category === 'text').length, 19);
-assert.equal(COLLAGE_PRESET_CATALOG.filter((preset) => preset.category === 'album').length, 32);
+assert.equal(COLLAGE_PRESET_CATALOG.filter((preset) => preset.category === 'album').length, 80);
 for (const count of COLLAGE_PRESET_COUNTS) {
-  assert.equal(collagePresetsFor({ count, category: 'album' }).length, 4);
+  assert.equal(collagePresetsFor({ count, category: 'album' }).length, 10);
 }
 
 function assertNormalizedBox(box, label) {
@@ -45,9 +45,22 @@ function assertNormalizedBox(box, label) {
   assert.ok(box.y + box.height <= 1.000001, `${label} must fit vertically`);
 }
 
+const A5_PAGE_ASPECT = 148 / 210;
+const MIN_PHOTO_ASPECT = 9 / 16;
+const MAX_PHOTO_ASPECT = 16 / 9;
+
+function assertPrintablePhotoAspect(box, label) {
+  const physicalAspect = A5_PAGE_ASPECT * box.width / box.height;
+  assert.ok(physicalAspect >= MIN_PHOTO_ASPECT - 0.000001, `${label} must not be narrower than 9:16`);
+  assert.ok(physicalAspect <= MAX_PHOTO_ASPECT + 0.000001, `${label} must not be flatter than 16:9`);
+}
+
 for (const preset of COLLAGE_PRESET_CATALOG) {
   assert.equal(preset.frames.length, preset.count, `${preset.id} must contain exactly ${preset.count} frames`);
   preset.frames.forEach((item, index) => assertNormalizedBox(item, `${preset.id} frame ${index + 1}`));
+  if (preset.category === 'album') {
+    preset.frames.forEach((item, index) => assertPrintablePhotoAspect(item, `${preset.id} frame ${index + 1}`));
+  }
   if (preset.textZone) assertNormalizedBox(preset.textZone, `${preset.id} text zone`);
   if (preset.category === 'text') assert.ok(preset.textZone, `${preset.id} must describe its reserved text space`);
 }
