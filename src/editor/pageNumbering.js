@@ -27,6 +27,13 @@ function boundedNumber(value, fallback, min, max) {
   return Math.min(max, Math.max(min, number));
 }
 
+function normalizePageIndex(value) {
+  if (value == null || value === '') return null;
+  const pageIndex = Number(value);
+  if (!Number.isInteger(pageIndex) || pageIndex < 0) return null;
+  return pageIndex;
+}
+
 export function normalizePageNumbering(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   return {
@@ -47,16 +54,19 @@ export function normalizePageNumbering(value = {}) {
 
 export function pageNumberValue(pageIndex, settings) {
   const normalized = normalizePageNumbering(settings);
-  const physicalPage = Number(pageIndex) + 1;
-  if (!normalized.enabled || physicalPage < normalized.firstPage) return null;
+  const normalizedPageIndex = normalizePageIndex(pageIndex);
+  if (!normalized.enabled || normalizedPageIndex == null) return null;
+  const physicalPage = normalizedPageIndex + 1;
+  if (physicalPage < normalized.firstPage) return null;
   return normalized.firstNumber + physicalPage - normalized.firstPage;
 }
 
 export function pageNumberPlacement(pageIndex, canvas, settings) {
   const normalized = normalizePageNumbering(settings);
+  const normalizedPageIndex = normalizePageIndex(pageIndex) ?? 0;
   const width = Math.max(1, Number(canvas?.width) || 1);
   const height = Math.max(1, Number(canvas?.height) || 1);
-  const isEvenPhysicalPage = (Number(pageIndex) + 1) % 2 === 0;
+  const isEvenPhysicalPage = (normalizedPageIndex + 1) % 2 === 0;
   const [vertical, horizontal] = normalized.position.split('-');
   const outerIsLeft = isEvenPhysicalPage;
   const useLeft = horizontal === 'outer' ? outerIsLeft : horizontal === 'inner' ? !outerIsLeft : false;
