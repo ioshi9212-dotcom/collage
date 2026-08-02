@@ -14,6 +14,7 @@ assert.equal(pageNumberValue(1, { enabled: true, firstPage: 2, firstNumber: 1 })
 assert.equal(pageNumberValue(9, { enabled: true, firstPage: 3, firstNumber: 7 }), 14);
 assert.equal(pageNumberValue(0, { enabled: true, firstPage: 1, firstNumber: 0 }), 0, 'zero is a valid page number');
 
+// Missing and virtual spread pages must never produce a decorative number without a digit.
 const enabledNumbering = { enabled: true, firstPage: 1, firstNumber: 1 };
 assert.equal(pageNumberValue(undefined, enabledNumbering), null, 'a missing page index must not render an empty ornament');
 assert.equal(pageNumberValue(null, enabledNumbering), null);
