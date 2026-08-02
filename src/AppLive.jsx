@@ -1155,7 +1155,7 @@ function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, 
       ))}
       <Line points={[canvas.width / 2, 0, canvas.width / 2, canvas.height]} stroke={centerColor} strokeWidth={1.5} strokeScaleEnabled={false} opacity={0.22} listening={false} />
       <Line points={[0, canvas.height / 2, canvas.width, canvas.height / 2]} stroke={centerColor} strokeWidth={1.5} strokeScaleEnabled={false} opacity={0.22} listening={false} />
-      {showPageLabel && <Text
+      {showPageLabel && pageIndex >= 0 && <Text
         x={28}
         y={24}
         text={`Стр. ${pageIndex + 1}`}
@@ -1334,7 +1334,7 @@ function ExtraPageLayers({
 
 function PageNumberLayer({ pageIndex, x = 0, y = 0, canvas, settings }) {
   const value = pageNumberValue(pageIndex, settings);
-  if (value == null || pageIndex < 0) return null;
+  if (!Number.isFinite(value) || pageIndex < 0) return null;
   const placement = pageNumberPlacement(pageIndex, canvas, settings);
   const size = Math.max(placement.fontSize * 2.15, 58);
   const left = x + placement.x - size / 2;
@@ -1636,7 +1636,7 @@ export default function App() {
     : isSpread
       ? [
           { page: pages[spreadStart], pageIndex: spreadStart, x: 0 },
-          { page: pages[spreadStart + 1], pageIndex: spreadStart + 1, x: canvas.width + SPREAD_GAP },
+          { page: pages[spreadStart + 1], pageIndex: pages[spreadStart + 1] ? spreadStart + 1 : -1, x: canvas.width + SPREAD_GAP },
         ]
       : [{ page: currentPage, pageIndex: currentPageIndex, x: 0 }];
 
@@ -3321,13 +3321,15 @@ export default function App() {
         onTextDragEnd={updateText}
         onDrawingDragEnd={updateDrawing}
       />
-      <PageNumberLayer
-        pageIndex={entry.pageIndex}
-        x={entry.x}
-        y={entry.y ?? 0}
-        canvas={canvas}
-        settings={pageNumbering}
-      />
+      {entry.page && (
+        <PageNumberLayer
+          pageIndex={entry.pageIndex}
+          x={entry.x}
+          y={entry.y ?? 0}
+          canvas={canvas}
+          settings={pageNumbering}
+        />
+      )}
     </React.Fragment>
   ));
 
