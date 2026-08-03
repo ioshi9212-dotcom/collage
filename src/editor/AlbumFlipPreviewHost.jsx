@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva';
 import AlbumFlipPreview from './AlbumFlipPreview';
+import { hydratePhotoProject } from './photoAssets';
 import { loadCachedImage as loadImage } from './imageCache';
 import { coverPhotoRect } from './frameModel';
 import { borderDashFor, normalizeFrameStyle } from './frameStyle';
@@ -221,6 +222,7 @@ export default function AlbumFlipPreviewHost() {
   const [headerTarget, setHeaderTarget] = useState(null);
   const [project, setProject] = useState(null);
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const findTarget = () => setHeaderTarget(document.querySelector('.app-header-actions-v2'));
@@ -230,15 +232,28 @@ export default function AlbumFlipPreviewHost() {
     return () => observer.disconnect();
   }, []);
 
-  function openPreview() {
-    const current = window.__collageApp?.getProject?.();
-    if (!current?.pages?.length) return;
-    setProject(current);
-    setOpen(true);
+  async function openPreview() {
+    if (loading) return;
+    const snapshot = window.__collageApp?.getProject?.();
+    if (!snapshot?.pages?.length) return;
+    setLoading(true);
+    try {
+      const hydrated = await hydratePhotoProject(snapshot);
+      setProject(hydrated);
+      setOpen(true);
+    } catch (error) {
+      console.warn('Album flip preview could not prepare photos', error);
+      setProject(snapshot);
+      setOpen(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const launcher = headerTarget ? createPortal(
-    <button className="button album-flip-open-button" type="button" onClick={openPreview}>Листать альбом</button>,
+    <button className="button album-flip-open-button" type="button" disabled={loading} onClick={openPreview}>
+      {loading ? 'Готовлю альбом…' : 'Листать альбом'}
+    </button>,
     headerTarget,
   ) : null;
 
