@@ -3,6 +3,8 @@ import {
   albumMaxSpread,
   albumSpreadForPage,
   albumSpreadPages,
+  albumTurningLeafPages,
+  albumTurningLeafVisibleFace,
   albumVisiblePageLabel,
 } from './albumFlipModel';
 
@@ -60,9 +62,9 @@ function PaperStack({ side, depth }) {
 function TurningLeaf({ turn, progress, current, adjacent, renderPage }) {
   if (!turn) return null;
   const forward = turn === 'next';
-  const frontIndex = forward ? current.right : current.left;
-  const backIndex = forward ? adjacent.left : adjacent.right;
+  const { front: frontIndex, back: backIndex } = albumTurningLeafPages(turn, current, adjacent);
   const safeProgress = clamp01(progress);
+  const visibleFace = albumTurningLeafVisibleFace(safeProgress);
   const wave = Math.sin(safeProgress * Math.PI);
   const angle = (forward ? -180 : 180) * safeProgress;
   const lift = wave * 34;
@@ -87,11 +89,34 @@ function TurningLeaf({ turn, progress, current, adjacent, renderPage }) {
       aria-hidden="true"
     >
       <div className="album-flip-turning-inner">
-        <div className="album-flip-turning-front">
-          <PageFace pageIndex={frontIndex} side={forward ? 'right' : 'left'} renderPage={renderPage} cover={frontIndex === 0} />
+        <div
+          className="album-flip-turning-front"
+          data-album-leaf-side="front"
+          data-page-index={frontIndex ?? ''}
+          aria-hidden={visibleFace !== 'front'}
+          style={{ visibility: visibleFace === 'front' ? 'visible' : 'hidden' }}
+        >
+          <PageFace
+            key={`leaf-front-${frontIndex ?? 'empty'}`}
+            pageIndex={frontIndex}
+            side={forward ? 'right' : 'left'}
+            renderPage={renderPage}
+            cover={frontIndex === 0}
+          />
         </div>
-        <div className="album-flip-turning-back">
-          <PageFace pageIndex={backIndex} side={forward ? 'left' : 'right'} renderPage={renderPage} />
+        <div
+          className="album-flip-turning-back"
+          data-album-leaf-side="back"
+          data-page-index={backIndex ?? ''}
+          aria-hidden={visibleFace !== 'back'}
+          style={{ visibility: visibleFace === 'back' ? 'visible' : 'hidden' }}
+        >
+          <PageFace
+            key={`leaf-back-${backIndex ?? 'empty'}`}
+            pageIndex={backIndex}
+            side={forward ? 'left' : 'right'}
+            renderPage={renderPage}
+          />
         </div>
         <span className="album-flip-fold-shadow" aria-hidden="true" />
         <span className="album-flip-leaf-curl" aria-hidden="true"><i /><b /></span>

@@ -38,3 +38,16 @@ export function albumVisiblePageLabel(spreadIndex, pageCount) {
   if (visible.length === 1) return `Страница ${visible[0]}`;
   return `Страницы ${visible[0]}–${visible[1]}`;
 }
+
+export function albumTurningLeafPages(direction, current = {}, adjacent = {}) {
+  const forward = direction === 'next';
+  return {
+    front: forward ? current.right ?? null : current.left ?? null,
+    back: forward ? adjacent.left ?? null : adjacent.right ?? null,
+  };
+}
+
+export function albumTurningLeafVisibleFace(progress) {
+  const value = Number(progress);
+  return Number.isFinite(value) && value >= 0.5 ? 'back' : 'front';
+}

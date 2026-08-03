@@ -5,6 +5,8 @@ import {
   albumMaxSpread,
   albumSpreadForPage,
   albumSpreadPages,
+  albumTurningLeafPages,
+  albumTurningLeafVisibleFace,
   albumVisiblePageLabel,
 } from './albumFlipModel.js';
 
@@ -23,12 +25,30 @@ assert.equal(albumSpreadForPage(111, 112), 56);
 assert.equal(albumVisiblePageLabel(0, 112), 'Страница 1');
 assert.equal(albumVisiblePageLabel(1, 112), 'Страницы 2–3');
 
+const current = { left: 9, right: 10 };
+assert.deepEqual(
+  albumTurningLeafPages('next', current, { left: 11, right: 12 }),
+  { front: 10, back: 11 },
+);
+assert.deepEqual(
+  albumTurningLeafPages('prev', current, { left: 7, right: 8 }),
+  { front: 9, back: 8 },
+);
+assert.equal(albumTurningLeafVisibleFace(0), 'front');
+assert.equal(albumTurningLeafVisibleFace(0.499), 'front');
+assert.equal(albumTurningLeafVisibleFace(0.5), 'back');
+assert.equal(albumTurningLeafVisibleFace(1), 'back');
+
 const previewSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreview.jsx'), 'utf8');
 assert.match(previewSource, /function PaperStack/);
 assert.match(previewSource, /album-flip-leaf-curl/);
 assert.match(previewSource, /onPointerMove=\{moveSwipe\}/);
 assert.match(previewSource, /TURN_COMMIT_PROGRESS/);
 assert.match(previewSource, /Потяни внешний край листа/);
+assert.match(previewSource, /data-album-leaf-side="front"/);
+assert.match(previewSource, /data-album-leaf-side="back"/);
+assert.match(previewSource, /visibility: visibleFace === 'front'/);
+assert.match(previewSource, /visibility: visibleFace === 'back'/);
 
 const hostSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreviewHost.jsx'), 'utf8');
 assert.match(hostSource, /Листать альбом/);
