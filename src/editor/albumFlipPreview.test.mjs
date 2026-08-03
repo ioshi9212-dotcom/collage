@@ -23,12 +23,14 @@ assert.equal(albumSpreadForPage(111, 112), 56);
 assert.equal(albumVisiblePageLabel(0, 112), 'Страница 1');
 assert.equal(albumVisiblePageLabel(1, 112), 'Страницы 2–3');
 
-const appSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8');
-assert.match(appSource, /Листать альбом/);
-assert.match(appSource, /<AlbumFlipPreview/);
-assert.match(appSource, /printMode\s+collagePreviewOnly/);
+const hostSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreviewHost.jsx'), 'utf8');
+assert.match(hostSource, /Листать альбом/);
+assert.match(hostSource, /<AlbumFlipPreview/);
+assert.match(hostSource, /window\.__collageApp\?\.getProject/);
+assert.match(hostSource, /<PreviewPageNumber/);
 
 const mainSource = readFileSync(resolve(process.cwd(), 'src/main.jsx'), 'utf8');
 assert.match(mainSource, /album-flip-preview\.css/);
+assert.match(mainSource, /<AlbumFlipPreviewHost\s*\/>/);
 
 console.log('album flip preview checks passed');
