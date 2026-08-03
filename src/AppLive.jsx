@@ -4050,8 +4050,7 @@ export default function App() {
                   <label className="field"><span>Прозрачность, %</span><SoftNumberInput min={10} max={100} value={Math.round(pageNumbering.opacity * 100)} onValue={(value) => updatePageNumbering('opacity', value / 100)} /></label>
                   <label className="field"><span>Отступ от края</span><SoftNumberInput min={16} max={300} value={pageNumbering.edgeOffset} onValue={(value) => updatePageNumbering('edgeOffset', value)} /></label>
                   <label className="field"><span>Показывать со страницы</span><SoftNumberInput min={1} max={Math.max(1, pages.length)} value={pageNumbering.firstPage} onValue={(value) => updatePageNumbering('firstPage', value)} /></label>
-                  <label className="field"><span>Первый номер</span><SoftNumberInput min={0} max={9999} value={pageNumbering.firstNumber} onValue={(value) => updatePageNumbering('firstNumber', value)} /></label>
-                  <p className="hint wide-field">Например: «со страницы 2» и «первый номер 1» оставит обложку без номера. Служебные подписи редактора в PDF не попадают.</p>
+                  <p className="hint wide-field">Например: «со страницы 2» оставит обложку без номера, а на второй странице будет цифра 2. Служебные подписи редактора в PDF не попадают.</p>
                 </div>
               </details>}
               {!isBooklet && <details className="print-settings-details-v2">
