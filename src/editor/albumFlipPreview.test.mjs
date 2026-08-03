@@ -58,6 +58,7 @@ assert.match(hostSource, /<PreviewPageNumber/);
 
 const mainSource = readFileSync(resolve(process.cwd(), 'src/main.jsx'), 'utf8');
 assert.match(mainSource, /album-flip-preview\.css/);
+assert.match(mainSource, /album-flip-leaf-surface\.css/);
 assert.match(mainSource, /<AlbumFlipPreviewHost\s*\/>/);
 
 const cssSource = readFileSync(resolve(process.cwd(), 'src/album-flip-preview.css'), 'utf8');
@@ -65,5 +66,11 @@ assert.match(cssSource, /\.album-flip-paper-stack/);
 assert.match(cssSource, /\.album-flip-turning-inner/);
 assert.match(cssSource, /\.album-flip-leaf-curl/);
 assert.match(cssSource, /repeating-linear-gradient\(0deg, #d8d0c6/);
+
+const surfaceSource = readFileSync(resolve(process.cwd(), 'src/album-flip-leaf-surface.css'), 'utf8');
+assert.match(surfaceSource, /\.album-flip-turning-inner::before/);
+assert.match(surfaceSource, /background:[\s\S]*#f7f4ef/);
+assert.match(surfaceSource, /backface-visibility: visible/);
+assert.match(surfaceSource, /\.album-flip-turning-front,[\s\S]*\.album-flip-turning-back/);
 
 console.log('album flip preview checks passed');
