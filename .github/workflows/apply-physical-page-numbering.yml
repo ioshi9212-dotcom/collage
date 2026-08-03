@@ -1,0 +1,118 @@
+name: Apply physical page numbering refactor
+
+on:
+  push:
+    branches:
+      - fix/physical-page-numbering
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Refactor page numbering
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new, 1)
+
+          numbering_path = Path('src/editor/pageNumbering.js')
+          numbering = numbering_path.read_text(encoding='utf-8')
+          numbering = replace_once(
+              numbering,
+              "  firstPage: 2,\n  firstNumber: 1,\n",
+              "  firstPage: 2,\n",
+              'remove firstNumber default',
+          )
+          numbering = replace_once(
+              numbering,
+              "    firstPage: Math.round(boundedNumber(source.firstPage, DEFAULT_PAGE_NUMBERING.firstPage, 1, 9999)),\n    firstNumber: Math.round(boundedNumber(source.firstNumber, DEFAULT_PAGE_NUMBERING.firstNumber, 0, 9999)),\n",
+              "    firstPage: Math.round(boundedNumber(source.firstPage, DEFAULT_PAGE_NUMBERING.firstPage, 1, 9999)),\n",
+              'remove firstNumber normalization',
+          )
+          numbering = replace_once(
+              numbering,
+              "  return normalized.firstNumber + physicalPage - normalized.firstPage;\n",
+              "  return physicalPage;\n",
+              'use physical page number',
+          )
+          if 'firstNumber' in numbering:
+              raise SystemExit('pageNumbering.js still contains firstNumber')
+          numbering_path.write_text(numbering, encoding='utf-8')
+
+          app_path = Path('src/AppLive.jsx')
+          app = app_path.read_text(encoding='utf-8')
+          app = replace_once(
+              app,
+              "                  <label className=\"field\"><span>Первый номер</span><SoftNumberInput min={0} max={9999} value={pageNumbering.firstNumber} onValue={(value) => updatePageNumbering('firstNumber', value)} /></label>\n",
+              "",
+              'remove first number control',
+          )
+          app = replace_once(
+              app,
+              "                  <p className=\"hint wide-field\">Например: «со страницы 2» и «первый номер 1» оставит обложку без номера. Служебные подписи редактора в PDF не попадают.</p>\n",
+              "                  <p className=\"hint wide-field\">Например: «со страницы 2» оставит обложку без номера, а на второй странице будет цифра 2. Служебные подписи редактора в PDF не попадают.</p>\n",
+              'update numbering hint',
+          )
+          if 'firstNumber' in app:
+              raise SystemExit('AppLive.jsx still contains firstNumber')
+          app_path.write_text(app, encoding='utf-8')
+
+          test_path = Path('src/editor/pageNumbering.test.mjs')
+          tests = test_path.read_text(encoding='utf-8')
+          tests = replace_once(
+              tests,
+              "assert.equal(pageNumberValue(0, { enabled: true, firstPage: 2, firstNumber: 1 }), null);\nassert.equal(pageNumberValue(1, { enabled: true, firstPage: 2, firstNumber: 1 }), 1);\nassert.equal(pageNumberValue(9, { enabled: true, firstPage: 3, firstNumber: 7 }), 14);\nassert.equal(pageNumberValue(0, { enabled: true, firstPage: 1, firstNumber: 0 }), 0, 'zero is a valid page number');\n",
+              "assert.equal(pageNumberValue(0, { enabled: true, firstPage: 2 }), null);\nassert.equal(pageNumberValue(1, { enabled: true, firstPage: 2 }), 2, 'page 2 must display 2');\nassert.equal(pageNumberValue(9, { enabled: true, firstPage: 3 }), 10, 'page numbers match physical pages');\nassert.equal(pageNumberValue(0, { enabled: true, firstPage: 1 }), 1, 'page 1 must display 1');\n",
+              'update numbering expectations',
+          )
+          tests = replace_once(
+              tests,
+              "const enabledNumbering = { enabled: true, firstPage: 1, firstNumber: 1 };\n",
+              "const enabledNumbering = { enabled: true, firstPage: 1 };\n",
+              'remove firstNumber test fixture',
+          )
+          tests = replace_once(
+              tests,
+              "assert.match(\n  appSource,\n  /\\{showPageLabel && pageIndex >= 0 && <Text/,\n  'the empty half of an odd spread must not show a fake guide page number',\n);\n",
+              "assert.match(\n  appSource,\n  /\\{showPageLabel && pageIndex >= 0 && <Text/,\n  'the empty half of an odd spread must not show a fake guide page number',\n);\nassert.doesNotMatch(\n  appSource,\n  /firstNumber/,\n  'the editor must not expose a separate number offset',\n);\n",
+              'add UI regression assertion',
+          )
+          if 'firstNumber' in tests.replace('/firstNumber/', ''):
+              raise SystemExit('pageNumbering.test.mjs still contains obsolete firstNumber data')
+          test_path.write_text(tests, encoding='utf-8')
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit refactor and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-physical-page-numbering.yml
+          git add src/AppLive.jsx src/editor/pageNumbering.js src/editor/pageNumbering.test.mjs
+          git commit -m "Make page numbers match physical pages"
+          git push
