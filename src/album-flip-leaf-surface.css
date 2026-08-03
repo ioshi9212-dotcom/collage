@@ -1,0 +1,38 @@
+.album-flip-turning-inner {
+  isolation: isolate;
+}
+
+.album-flip-turning-inner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border: 1px solid rgba(112, 96, 83, .22);
+  border-radius: inherit;
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, .34), transparent 18%, transparent 82%, rgba(101, 87, 76, .08)),
+    #f7f4ef;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .55),
+    inset 0 -2px 0 rgba(101, 87, 76, .12);
+  backface-visibility: visible;
+  -webkit-backface-visibility: visible;
+  transform: translateZ(0);
+}
+
+.album-flip-turning-front,
+.album-flip-turning-back {
+  z-index: 2;
+  background: #f7f4ef;
+}
+
+.album-flip-turning-front .album-flip-face,
+.album-flip-turning-back .album-flip-face {
+  background-color: #f7f4ef;
+}
+
+.album-flip-turning-front[style*='hidden'],
+.album-flip-turning-back[style*='hidden'] {
+  background: transparent;
+}
