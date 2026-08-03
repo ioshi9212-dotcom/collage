@@ -1,0 +1,257 @@
+.album-flip-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255,255,255,.12), transparent 35%),
+    rgba(18, 20, 21, .94);
+  backdrop-filter: blur(12px);
+  color: #f7f5f2;
+}
+
+.album-flip-dialog {
+  width: min(1500px, 100vw);
+  height: 100dvh;
+  min-height: 520px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  outline: none;
+}
+
+.album-flip-header,
+.album-flip-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px clamp(16px, 3vw, 42px);
+}
+
+.album-flip-header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.album-flip-header strong { font-size: 20px; }
+.album-flip-header span,
+.album-flip-help { color: rgba(255,255,255,.66); }
+
+.album-flip-close {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  color: white;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.album-flip-scene {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  perspective: 2200px;
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.album-flip-book {
+  position: relative;
+  width: min(92vw, var(--album-book-width-by-height));
+  aspect-ratio: var(--album-book-aspect);
+  transform-style: preserve-3d;
+  transform: rotateX(2.5deg);
+  filter: drop-shadow(0 28px 28px rgba(0,0,0,.45));
+}
+
+.album-flip-book-shadow {
+  position: absolute;
+  width: min(78vw, 1150px);
+  height: 12%;
+  bottom: 6%;
+  border-radius: 50%;
+  background: rgba(0,0,0,.52);
+  filter: blur(30px);
+  transform: rotateX(72deg);
+}
+
+.album-flip-static-page,
+.album-flip-turning-leaf {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.album-flip-static-left { left: 0; }
+.album-flip-static-right { right: 0; }
+.album-flip-static-page.is-empty { pointer-events: none; }
+
+.album-flip-face,
+.album-flip-back-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #f7f4ef;
+  backface-visibility: hidden;
+}
+
+.album-flip-face-left {
+  border-radius: 8px 2px 2px 8px;
+  box-shadow: inset -24px 0 28px -30px rgba(0,0,0,.72);
+}
+
+.album-flip-face-right {
+  border-radius: 2px 8px 8px 2px;
+  box-shadow: inset 24px 0 28px -30px rgba(0,0,0,.72);
+}
+
+.album-flip-face.is-empty {
+  background: transparent;
+  box-shadow: none;
+}
+
+.album-flip-empty-page { width: 100%; height: 100%; }
+
+.album-flip-face.is-cover {
+  transform: translateZ(3px);
+  border-radius: 3px 10px 10px 3px;
+  box-shadow:
+    inset 4px 0 0 rgba(255,255,255,.2),
+    inset 20px 0 28px -28px rgba(0,0,0,.8),
+    6px 8px 0 -2px rgba(56,44,38,.72),
+    12px 14px 24px rgba(0,0,0,.38);
+}
+
+.album-flip-face .album-flip-stage,
+.album-flip-face .konvajs-content,
+.album-flip-face canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.album-flip-paper-edge {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 5px;
+  background: repeating-linear-gradient(0deg, rgba(110,98,88,.22) 0 1px, rgba(255,255,255,.45) 1px 2px);
+  pointer-events: none;
+}
+
+.album-flip-cover-back {
+  position: absolute;
+  inset: 7px -9px -10px 7px;
+  border-radius: 10px;
+  background: #6c5c54;
+  transform: translateZ(-12px);
+  box-shadow: 0 18px 35px rgba(0,0,0,.4);
+}
+
+.album-flip-spine {
+  position: absolute;
+  z-index: 40;
+  left: calc(50% - 9px);
+  top: 0;
+  width: 18px;
+  height: 100%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(0,0,0,.2), rgba(255,255,255,.12), rgba(0,0,0,.22), transparent);
+  mix-blend-mode: multiply;
+  opacity: .85;
+}
+
+.album-flip-turning-leaf { z-index: 30; }
+.album-flip-turning-leaf.turn-next { left: 50%; transform-origin: left center; }
+.album-flip-turning-leaf.turn-prev { left: 0; transform-origin: right center; }
+.album-flip-turning-inner { position: absolute; inset: 0; transform-style: preserve-3d; }
+.album-flip-back-face { transform: rotateY(180deg); }
+.album-flip-back-face > .album-flip-face { transform: none; }
+
+.album-flip-turning-leaf.turn-next .album-flip-turning-inner {
+  animation: album-flip-next 720ms cubic-bezier(.36,.02,.2,1) forwards;
+}
+.album-flip-turning-leaf.turn-prev .album-flip-turning-inner {
+  animation: album-flip-prev 720ms cubic-bezier(.36,.02,.2,1) forwards;
+}
+
+@keyframes album-flip-next {
+  0% { transform: rotateY(0deg); filter: brightness(1); }
+  48% { filter: brightness(.68); }
+  100% { transform: rotateY(-180deg); filter: brightness(1); }
+}
+@keyframes album-flip-prev {
+  0% { transform: rotateY(0deg); filter: brightness(1); }
+  48% { filter: brightness(.68); }
+  100% { transform: rotateY(180deg); filter: brightness(1); }
+}
+
+.album-flip-hit {
+  position: absolute;
+  z-index: 80;
+  top: 50%;
+  width: 58px;
+  height: 76px;
+  margin-top: -38px;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 16px;
+  background: rgba(0,0,0,.28);
+  color: white;
+  font-size: 52px;
+  line-height: 1;
+  cursor: pointer;
+}
+.album-flip-hit-prev { left: clamp(8px, 2vw, 28px); }
+.album-flip-hit-next { right: clamp(8px, 2vw, 28px); }
+.album-flip-hit:disabled { opacity: .18; cursor: default; }
+
+.album-flip-footer button {
+  min-width: 112px;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 10px;
+  background: rgba(255,255,255,.09);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+.album-flip-footer button:disabled { opacity: .35; cursor: default; }
+
+.album-flip-progress {
+  flex: 1;
+  max-width: 560px;
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  align-items: center;
+  gap: 12px;
+  color: rgba(255,255,255,.72);
+}
+.album-flip-progress input { width: 100%; accent-color: #d4aaa5; }
+.album-flip-help { margin: 0; padding: 0 20px 12px; text-align: center; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .album-flip-dialog { min-height: 430px; }
+  .album-flip-header { padding: 10px 12px; }
+  .album-flip-header strong { font-size: 17px; }
+  .album-flip-book { width: min(98vw, var(--album-book-mobile-width-by-height)); }
+  .album-flip-hit { width: 42px; height: 58px; margin-top: -29px; font-size: 40px; background: rgba(0,0,0,.18); }
+  .album-flip-hit-prev { left: 2px; }
+  .album-flip-hit-next { right: 2px; }
+  .album-flip-footer { padding: 8px 10px; gap: 8px; }
+  .album-flip-footer button { min-width: 78px; padding: 0 9px; font-size: 12px; }
+  .album-flip-progress { grid-template-columns: 36px 1fr; gap: 5px; }
+  .album-flip-help { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .album-flip-turning-leaf.turn-next .album-flip-turning-inner,
+  .album-flip-turning-leaf.turn-prev .album-flip-turning-inner { animation-duration: 1ms; }
+}
