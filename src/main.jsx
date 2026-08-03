@@ -19,12 +19,14 @@ import './editor-mobile.css';
 import './editor-mobile-mode-fixes.css';
 import './photo-upload-progress.css';
 import './photo-import-report.css';
+import './album-flip-preview.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
 import { installToolStateBehavior } from './editor/toolStateBehavior';
 import { installTextEditingBehavior } from './editor/textEditingBehavior';
 import { installDestructiveActionBehavior } from './editor/destructiveActionBehavior';
 import { installInspectorContextBehavior } from './editor/inspectorContextBehavior';
 import { installMobileEditorBehavior } from './editor/mobileEditorBehavior';
+import AlbumFlipPreviewHost from './editor/AlbumFlipPreviewHost';
 import App from './AppLive.jsx';
 
 try {
@@ -55,6 +57,7 @@ configureCanvasPerformance();
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
+    <AlbumFlipPreviewHost />
   </React.StrictMode>,
 );
 
