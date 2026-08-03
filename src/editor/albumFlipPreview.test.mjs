@@ -23,6 +23,13 @@ assert.equal(albumSpreadForPage(111, 112), 56);
 assert.equal(albumVisiblePageLabel(0, 112), 'Страница 1');
 assert.equal(albumVisiblePageLabel(1, 112), 'Страницы 2–3');
 
+const previewSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreview.jsx'), 'utf8');
+assert.match(previewSource, /function PaperStack/);
+assert.match(previewSource, /album-flip-leaf-curl/);
+assert.match(previewSource, /onPointerMove=\{moveSwipe\}/);
+assert.match(previewSource, /TURN_COMMIT_PROGRESS/);
+assert.match(previewSource, /Потяни внешний край листа/);
+
 const hostSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreviewHost.jsx'), 'utf8');
 assert.match(hostSource, /Листать альбом/);
 assert.match(hostSource, /<AlbumFlipPreview/);
@@ -32,5 +39,11 @@ assert.match(hostSource, /<PreviewPageNumber/);
 const mainSource = readFileSync(resolve(process.cwd(), 'src/main.jsx'), 'utf8');
 assert.match(mainSource, /album-flip-preview\.css/);
 assert.match(mainSource, /<AlbumFlipPreviewHost\s*\/>/);
+
+const cssSource = readFileSync(resolve(process.cwd(), 'src/album-flip-preview.css'), 'utf8');
+assert.match(cssSource, /\.album-flip-paper-stack/);
+assert.match(cssSource, /\.album-flip-turning-inner/);
+assert.match(cssSource, /\.album-flip-leaf-curl/);
+assert.match(cssSource, /repeating-linear-gradient\(0deg, #d8d0c6/);
 
 console.log('album flip preview checks passed');
