@@ -19,6 +19,7 @@ import './editor-mobile.css';
 import './editor-mobile-mode-fixes.css';
 import './photo-upload-progress.css';
 import './photo-import-report.css';
+import './album-flip-preview.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
 import { installToolStateBehavior } from './editor/toolStateBehavior';
 import { installTextEditingBehavior } from './editor/textEditingBehavior';
