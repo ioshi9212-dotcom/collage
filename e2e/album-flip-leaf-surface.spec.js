@@ -23,13 +23,14 @@ const fixtureCss = `
   .album-flip-turning-back {
     position: absolute;
     inset: 0;
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
   }
   .album-flip-turning-back { transform: rotateY(180deg); }
+  .sample-face { position: absolute; inset: 0; }
+  .sample-front { background: rgb(220, 45, 45); }
+  .sample-back { background: rgb(45, 90, 220); }
 `;
 
-async function brightPixelCount(page, angle) {
+async function readPixelCounts(page, angle) {
   await page.locator('.album-flip-turning-inner').evaluate((element, value) => {
     element.style.transform = `rotateY(${value}deg)`;
   }, angle);
@@ -40,13 +41,16 @@ async function brightPixelCount(page, angle) {
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  let brightPixels = 0;
+  const counts = { bright: 0, red: 0, blue: 0 };
   for (let offset = 0; offset < data.length; offset += info.channels) {
-    if (data[offset] > 210 && data[offset + 1] > 205 && data[offset + 2] > 195) {
-      brightPixels += 1;
-    }
+    const red = data[offset];
+    const green = data[offset + 1];
+    const blue = data[offset + 2];
+    if (red > 210 && green > 205 && blue > 195) counts.bright += 1;
+    if (red > 170 && green < 115 && blue < 115) counts.red += 1;
+    if (blue > 170 && red < 115 && green < 145) counts.blue += 1;
   }
-  return brightPixels;
+  return counts;
 }
 
 test('turning sheet keeps an opaque paper surface on both sides', async ({ page }) => {
@@ -55,8 +59,8 @@ test('turning sheet keeps an opaque paper surface on both sides', async ({ page 
     <style>${fixtureCss}\n${surfaceCss}</style>
     <div class="scene">
       <div class="album-flip-turning-inner">
-        <div class="album-flip-turning-front" style="visibility:hidden"></div>
-        <div class="album-flip-turning-back" style="visibility:hidden"></div>
+        <div class="album-flip-turning-front" aria-hidden="true" style="visibility:hidden"></div>
+        <div class="album-flip-turning-back" aria-hidden="true" style="visibility:hidden"></div>
       </div>
     </div>
   `);
@@ -75,9 +79,45 @@ test('turning sheet keeps an opaque paper surface on both sides', async ({ page 
   expect(paperSurface.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
   expect(paperSurface.backfaceVisibility).toBe('visible');
 
-  const frontHalfPixels = await brightPixelCount(page, -65);
-  const backHalfPixels = await brightPixelCount(page, -115);
+  const frontHalf = await readPixelCounts(page, -65);
+  const backHalf = await readPixelCounts(page, -115);
 
-  expect(frontHalfPixels).toBeGreaterThan(8_000);
-  expect(backHalfPixels).toBeGreaterThan(8_000);
+  expect(frontHalf.bright).toBeGreaterThan(8_000);
+  expect(backHalf.bright).toBeGreaterThan(8_000);
+});
+
+test('the page image remains visible and changes to the reverse side after the midpoint', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 560 });
+  await page.setContent(`
+    <style>${fixtureCss}\n${surfaceCss}</style>
+    <div class="scene">
+      <div class="album-flip-turning-inner">
+        <div class="album-flip-turning-front" aria-hidden="false" style="visibility:visible">
+          <div class="sample-face sample-front"></div>
+        </div>
+        <div class="album-flip-turning-back" aria-hidden="true" style="visibility:hidden">
+          <div class="sample-face sample-back"></div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  const frontHalf = await readPixelCounts(page, -65);
+  expect(frontHalf.red).toBeGreaterThan(8_000);
+  expect(frontHalf.blue).toBeLessThan(500);
+  expect(frontHalf.red).toBeGreaterThan(frontHalf.bright * 2);
+
+  await page.locator('.album-flip-turning-front').evaluate((element) => {
+    element.setAttribute('aria-hidden', 'true');
+    element.style.visibility = 'hidden';
+  });
+  await page.locator('.album-flip-turning-back').evaluate((element) => {
+    element.setAttribute('aria-hidden', 'false');
+    element.style.visibility = 'visible';
+  });
+
+  const backHalf = await readPixelCounts(page, -115);
+  expect(backHalf.blue).toBeGreaterThan(8_000);
+  expect(backHalf.red).toBeLessThan(500);
+  expect(backHalf.blue).toBeGreaterThan(backHalf.bright * 2);
 });
