@@ -25,14 +25,21 @@
 .album-flip-turning-back {
   z-index: 2;
   background: #f7f4ef;
+  visibility: visible !important;
+  opacity: 0;
+  backface-visibility: visible;
+  -webkit-backface-visibility: visible;
+  will-change: opacity;
+}
+
+.album-flip-turning-front[aria-hidden='false'],
+.album-flip-turning-back[aria-hidden='false'] {
+  opacity: 1;
 }
 
 .album-flip-turning-front .album-flip-face,
 .album-flip-turning-back .album-flip-face {
   background-color: #f7f4ef;
-}
-
-.album-flip-turning-front[style*='hidden'],
-.album-flip-turning-back[style*='hidden'] {
-  background: transparent;
+  backface-visibility: visible;
+  -webkit-backface-visibility: visible;
 }
