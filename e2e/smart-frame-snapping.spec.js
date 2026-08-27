@@ -68,3 +68,25 @@ test('smart alignment softly snaps frame edges and can be disabled', async ({ pa
   await expect(snapButton).not.toHaveClass(/active-mode/);
   await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().settings.smartSnap)).toBe(false);
 });
+
+
+test('free frame can be dragged on the first gesture without sticky selection handoff', async ({ page }) => {
+  await openEditor(page);
+  await page.locator('.app-view-switch-v2').getByRole('button', { name: 'Страница', exact: true }).click();
+  await page.locator('.editor-tool-button-v2[aria-label="Коллаж"]').click();
+
+  const snapButton = page.getByRole('button', { name: 'Умная привязка', exact: true });
+  if (await snapButton.evaluate((node) => node.classList.contains('active-mode'))) await snapButton.click();
+
+  const initial = await currentPage(page);
+  const frame = initial.frames[0];
+  await dragFrameBy(page, frame, 90, 60);
+
+  await expect.poll(async () => {
+    const next = await currentPage(page);
+    const moved = next.frames.find((item) => item.id === frame.id);
+    if (!moved) return false;
+    return Math.abs(moved.x - (frame.x + 90)) <= 3
+      && Math.abs(moved.y - (frame.y + 60)) <= 3;
+  }).toBe(true);
+});

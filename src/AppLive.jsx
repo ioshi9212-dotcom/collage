@@ -781,8 +781,14 @@ function PhotoImage({ frame, selected, image, imageSource, photoIdentity, rect, 
       width={rect.width}
       height={rect.height}
       draggable={!printMode && selected}
-      onMouseDown={(event) => { event.cancelBubble = true; onSelect(); }}
-      onTap={(event) => { event.cancelBubble = true; onSelect(); }}
+      onMouseDown={(event) => {
+        if (selected) event.cancelBubble = true;
+        onSelect();
+      }}
+      onTap={(event) => {
+        if (selected) event.cancelBubble = true;
+        onSelect();
+      }}
       onDragStart={(event) => { event.cancelBubble = true; }}
       onDragMove={(event) => {
         event.cancelBubble = true;
@@ -897,7 +903,7 @@ function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, bor
   const frameRectRef = useRef(null);
   const transformerRef = useRef(null);
   const rect = coverPhotoRect(image, frame, frame.photo);
-  const canDragFrame = !collagePreviewOnly && !printMode && selected && !locked;
+  const canDragFrame = !collagePreviewOnly && !printMode && !locked;
   const frameStyle = normalizeFrameStyle(frame, { borderWidth, borderColor });
 
   useEffect(() => {
@@ -928,7 +934,7 @@ function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, bor
     onSnapGuidesChange(null);
   }
 
-  function clampFrameNode(node) {
+  function clampFrameNode(node, applySnap = false) {
     const bounded = clampFramePosition(frame, canvas, node.x(), node.y());
     if (!smartSnap) {
       node.x(bounded.x);
@@ -943,16 +949,17 @@ function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, bor
       x: bounded.x,
       y: bounded.y,
     });
-    node.x(snapped.x);
-    node.y(snapped.y);
+    const next = applySnap ? snapped : bounded;
+    node.x(next.x);
+    node.y(next.y);
     onSnapGuidesChange(hasFrameSnapGuides(snapped.guides) ? snapped.guides : null);
-    return snapped;
+    return next;
   }
 
   function commitFrameDrag(event) {
-    if (collagePreviewOnly || printMode || !selected || locked) return;
+    if (collagePreviewOnly || printMode || locked) return;
     const node = event.target;
-    clampFrameNode(node);
+    clampFrameNode(node, true);
     onFrameChange(frame.id, { x: node.x(), y: node.y() });
     clearSnapGuides();
     onFrameDragFinish?.();
@@ -1005,9 +1012,14 @@ function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, bor
         draggable={canDragFrame}
         onMouseDown={onSelect}
         onTap={onSelect}
+        onDragStart={(event) => {
+          event.cancelBubble = true;
+          onSelect();
+          clearSnapGuides();
+        }}
         onDragMove={(event) => {
           if (!canDragFrame) return;
-          clampFrameNode(event.target);
+          clampFrameNode(event.target, false);
         }}
         onDragEnd={commitFrameDrag}
       >
