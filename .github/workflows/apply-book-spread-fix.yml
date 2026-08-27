@@ -21,6 +21,8 @@ jobs:
         run: npm ci
       - name: Apply book spread fix
         run: node scripts/apply-book-spread-fix.mjs
+      - name: Update print regression for opening page
+        run: node scripts/patch-book-spread-print-test.mjs
       - name: Lint
         run: npm run lint
       - name: Test
@@ -31,7 +33,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm scripts/apply-book-spread-fix.mjs .github/workflows/apply-book-spread-fix.yml
-          git add src/AppLive.jsx src/editor/albumFlipPreview.test.mjs
+          git rm scripts/apply-book-spread-fix.mjs scripts/patch-book-spread-print-test.mjs .github/workflows/apply-book-spread-fix.yml
+          git add src/AppLive.jsx src/editor/albumFlipPreview.test.mjs src/editor/printGeometryIntegration.test.mjs
           git commit -m 'Use book-style editor spreads'
           git push
