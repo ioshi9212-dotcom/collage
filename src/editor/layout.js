@@ -47,6 +47,20 @@ function safeCanvasSize(value) {
   return Number.isFinite(number) ? Math.max(MIN_FRAME, number) : MIN_FRAME;
 }
 
+function requestedPaddingValue(value) {
+  return Math.max(0, Math.round(Number(value) || 0));
+}
+
+function freeLayoutPaddingMarker(frame) {
+  const value = Number(frame?.freeLayoutPadding);
+  return Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
+}
+
+function markFreeLayoutPadding(frames, padding) {
+  const marker = requestedPaddingValue(padding);
+  return frames.map((frame) => ({ ...frame, freeLayoutPadding: marker }));
+}
+
 function fitGridMetrics(canvas, rowsShape, requestedPadding, requestedGap) {
   const width = safeCanvasSize(canvas?.width);
   const height = safeCanvasSize(canvas?.height);
@@ -149,8 +163,64 @@ export function cleanFrame(frame, canvas) {
   };
 }
 
+export function fitFramesToPadding(frames, canvas, requestedPadding) {
+  const items = Array.isArray(frames) ? frames.filter(Boolean) : [];
+  if (!items.length) return [];
+
+  const width = safeCanvasSize(canvas?.width);
+  const height = safeCanvasSize(canvas?.height);
+  const normalized = items.map((frame) => cleanFrame(frame, { width, height }));
+  const minX = Math.min(...normalized.map((frame) => frame.x));
+  const minY = Math.min(...normalized.map((frame) => frame.y));
+  const maxX = Math.max(...normalized.map((frame) => frame.x + frame.width));
+  const maxY = Math.max(...normalized.map((frame) => frame.y + frame.height));
+  const boundsWidth = Math.max(1, maxX - minX);
+  const boundsHeight = Math.max(1, maxY - minY);
+
+  const requiredTargetWidth = Math.max(...normalized.map((frame) => MIN_FRAME * (boundsWidth / frame.width)));
+  const requiredTargetHeight = Math.max(...normalized.map((frame) => MIN_FRAME * (boundsHeight / frame.height)));
+  const maxPaddingX = Math.floor((width - requiredTargetWidth) / 2);
+  const maxPaddingY = Math.floor((height - requiredTargetHeight) / 2);
+  const maxPadding = Math.max(0, Math.min(maxPaddingX, maxPaddingY, Math.floor((width - MIN_FRAME) / 2), Math.floor((height - MIN_FRAME) / 2)));
+  const padding = Math.min(requestedPaddingValue(requestedPadding), maxPadding);
+  const targetWidth = Math.max(MIN_FRAME, width - padding * 2);
+  const targetHeight = Math.max(MIN_FRAME, height - padding * 2);
+  const scaleX = targetWidth / boundsWidth;
+  const scaleY = targetHeight / boundsHeight;
+
+  return normalized.map((frame) => {
+    const left = Math.round(padding + (frame.x - minX) * scaleX);
+    const top = Math.round(padding + (frame.y - minY) * scaleY);
+    const right = Math.round(padding + (frame.x + frame.width - minX) * scaleX);
+    const bottom = Math.round(padding + (frame.y + frame.height - minY) * scaleY);
+    return cleanFrame({
+      ...frame,
+      x: left,
+      y: top,
+      width: Math.max(MIN_FRAME, right - left),
+      height: Math.max(MIN_FRAME, bottom - top),
+    }, { width, height });
+  });
+}
+
 export function buildGridLayout(canvas, settings, previousFrames = []) {
-  const rowsShape = layoutRows(Number(settings.frameCount) || 5);
+  const requestedFrameCount = Number(settings.frameCount) || 5;
+  const freeMode = settings?.frameMode === 'free';
+  const padding = requestedPaddingValue(settings?.padding);
+  const previousPadding = freeLayoutPaddingMarker(previousFrames[0]);
+  const shouldFitFreeComposition = freeMode
+    && previousFrames.length > 0
+    && previousFrames.length === requestedFrameCount
+    && previousPadding !== padding;
+
+  if (shouldFitFreeComposition) {
+    return {
+      layout: null,
+      frames: markFreeLayoutPadding(fitFramesToPadding(previousFrames, canvas, padding), padding),
+    };
+  }
+
+  const rowsShape = layoutRows(requestedFrameCount);
   const metrics = fitGridMetrics(canvas, rowsShape, settings.padding, settings.gap);
   const availableHeight = metrics.height - metrics.padding * 2 - metrics.gap * Math.max(0, rowsShape.length - 1);
   const rowHeights = fitTrackSizes(rowsShape.map(() => MIN_FRAME), availableHeight);
@@ -181,9 +251,10 @@ export function buildGridLayout(canvas, settings, previousFrames = []) {
     }),
   };
 
+  const builtFrames = framesFromLayout(layout, previousFrames);
   return {
     layout,
-    frames: framesFromLayout(layout, previousFrames),
+    frames: freeMode ? markFreeLayoutPadding(builtFrames, padding) : builtFrames,
   };
 }
 
@@ -204,6 +275,7 @@ export function framesFromLayout(layout, previousFrames = []) {
         height: Math.round(row.height),
         photo: previous?.photo ?? null,
         zIndex: previous?.zIndex ?? 0,
+        ...(previous?.freeLayoutPadding !== undefined ? { freeLayoutPadding: previous.freeLayoutPadding } : {}),
         ...(previous?.borderStyle !== undefined ? { borderStyle: previous.borderStyle } : {}),
         ...(previous?.borderWidth !== undefined ? { borderWidth: previous.borderWidth } : {}),
         ...(previous?.borderColor !== undefined ? { borderColor: previous.borderColor } : {}),

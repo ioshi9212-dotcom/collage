@@ -3,6 +3,7 @@ import {
   MIN_FRAME,
   buildGridLayout,
   ensureLayout,
+  fitFramesToPadding,
   framesFromLayout,
   layoutRows,
   resizeColumn,
@@ -126,5 +127,62 @@ const preserved = ensureLayout({
   ],
 }, { width: 600, height: 600 }, { frameCount: 4, padding: 300, gap: 200 });
 assertFramesInsideCanvas(framesFromLayout(preserved), { width: 600, height: 600 });
+
+{
+  const canvas = { width: 1000, height: 800 };
+  const frames = [
+    { id: 'a', x: 100, y: 100, width: 300, height: 250, photo: { id: 'photo-a' }, zIndex: 2 },
+    { id: 'b', x: 500, y: 200, width: 400, height: 500, borderWidth: 6, zIndex: 5 },
+  ];
+  const fitted = fitFramesToPadding(frames, canvas, 50);
+  const left = Math.min(...fitted.map((frame) => frame.x));
+  const top = Math.min(...fitted.map((frame) => frame.y));
+  const right = Math.max(...fitted.map((frame) => frame.x + frame.width));
+  const bottom = Math.max(...fitted.map((frame) => frame.y + frame.height));
+  assert.equal(left, 50, 'free composition must touch the requested left inset');
+  assert.equal(top, 50, 'free composition must touch the requested top inset');
+  assert.equal(right, 950, 'free composition must touch the requested right inset');
+  assert.equal(bottom, 750, 'free composition must touch the requested bottom inset');
+  assert.deepEqual(fitted[0].photo, frames[0].photo, 'photo assignment must survive fitting');
+  assert.equal(fitted[1].borderWidth, 6, 'frame style must survive fitting');
+  assert.equal(fitted[1].zIndex, 5, 'z order must survive fitting');
+  assert.deepEqual(frames[0], { id: 'a', x: 100, y: 100, width: 300, height: 250, photo: { id: 'photo-a' }, zIndex: 2 }, 'fitting must not mutate source frames');
+}
+
+{
+  const canvas = { width: 300, height: 300 };
+  const fitted = fitFramesToPadding([
+    { id: 'a', x: 0, y: 0, width: 80, height: 80 },
+    { id: 'b', x: 220, y: 220, width: 80, height: 80 },
+  ], canvas, 120);
+  assertFramesInsideCanvas(fitted, canvas);
+  assert.ok(fitted.every((frame) => frame.width >= MIN_FRAME && frame.height >= MIN_FRAME), 'large padding must not shrink frames below minimum');
+}
+
+{
+  const canvas = { width: 1000, height: 800 };
+  const source = [
+    { id: 'a', x: 100, y: 100, width: 300, height: 250, freeLayoutPadding: 70 },
+    { id: 'b', x: 500, y: 200, width: 400, height: 500, freeLayoutPadding: 70 },
+  ];
+  const fitted = buildGridLayout(canvas, {
+    frameCount: 2,
+    padding: 90,
+    gap: 28,
+    frameMode: 'free',
+  }, source);
+  assert.equal(fitted.layout, null, 'changing padding in free mode must preserve the composition instead of rebuilding a grid');
+  assert.equal(Math.min(...fitted.frames.map((frame) => frame.x)), 90);
+  assert.equal(Math.max(...fitted.frames.map((frame) => frame.x + frame.width)), 910);
+  assert.ok(fitted.frames.every((frame) => frame.freeLayoutPadding === 90));
+
+  const rebuilt = buildGridLayout(canvas, {
+    frameCount: 2,
+    padding: 70,
+    gap: 28,
+    frameMode: 'free',
+  }, source);
+  assert.equal(rebuilt.layout?.type, 'grid', 'same padding must retain the existing rebuild-grid behavior');
+}
 
 console.log('layout boundary checks passed');
