@@ -42,4 +42,4 @@ jobs:
           git commit -m 'Make free-frame dragging smooth and stable'
           git push
 
-# retry with repository Playwright config
+# retry with canvas scale tolerance
