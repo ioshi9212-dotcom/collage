@@ -1,0 +1,43 @@
+name: Apply frame drag stability fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-frame-drag-stability-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply drag stability patch
+        run: node scripts/patch-frame-drag-stability.mjs
+      - name: Lint
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run targeted drag regression
+        run: npx playwright test e2e/smart-frame-snapping.spec.js --project=chromium
+      - name: Commit fix and remove one-time helpers
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/patch-frame-drag-stability.mjs .github/workflows/apply-frame-drag-stability-fix.yml
+          git add src/AppLive.jsx e2e/smart-frame-snapping.spec.js
+          git commit -m 'Make free-frame dragging smooth and stable'
+          git push
