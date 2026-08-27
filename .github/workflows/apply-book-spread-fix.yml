@@ -1,0 +1,37 @@
+name: Apply book spread editor migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-book-spread-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply book spread fix
+        run: node scripts/apply-book-spread-fix.mjs
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Commit migration and remove one-time helpers
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/apply-book-spread-fix.mjs .github/workflows/apply-book-spread-fix.yml
+          git add src/AppLive.jsx src/editor/albumFlipPreview.test.mjs
+          git commit -m 'Use book-style editor spreads'
+          git push
