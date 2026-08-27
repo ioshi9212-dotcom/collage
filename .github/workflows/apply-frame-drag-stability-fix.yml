@@ -32,7 +32,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Run targeted drag regression
-        run: npx playwright test e2e/smart-frame-snapping.spec.js --project=chromium
+        run: npx playwright test e2e/smart-frame-snapping.spec.js
       - name: Commit fix and remove one-time helpers
         run: |
           git config user.name 'github-actions[bot]'
@@ -42,4 +42,4 @@ jobs:
           git commit -m 'Make free-frame dragging smooth and stable'
           git push
 
-# retry after helper lint fix
+# retry with repository Playwright config
