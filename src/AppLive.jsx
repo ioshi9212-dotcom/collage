@@ -157,6 +157,11 @@ import {
   pageNumberPlacement,
   pageNumberValue,
 } from './editor/pageNumbering';
+import {
+  albumSpreadForPage,
+  albumSpreadPages,
+  albumVisiblePageLabel,
+} from './editor/albumFlipModel';
 
 const STORAGE_KEY = 'collage-creator-album-live-v11-preserve-mode-layout';
 const LEGACY_KEYS = [
@@ -1521,7 +1526,15 @@ export default function App() {
   const exportPageIndex = printAlbumPageIndex ?? currentPageIndex;
   const exportPage = pages[exportPageIndex] ?? currentPage;
   const currentPageFrameCount = resolvePageFrameCount(currentPage, settings);
-  const spreadStart = currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1;
+  const spreadIndex = albumSpreadForPage(currentPageIndex, pages.length);
+  const spreadPages = albumSpreadPages(spreadIndex, pages.length);
+  const spreadPageIndexes = [spreadPages.left, spreadPages.right].filter((index) => index != null);
+  const spreadStart = spreadPageIndexes[0] ?? currentPageIndex;
+  const spreadPageCount = Math.max(1, spreadPageIndexes.length);
+  const spreadVisibleLabel = albumVisiblePageLabel(spreadIndex, pages.length);
+  const spreadFileLabel = spreadPageIndexes.length
+    ? spreadPageIndexes.map((index) => pad(index + 1)).join('-')
+    : pad(currentPageIndex + 1);
   const isBooklet = viewMode === 'booklet';
   const isSpread = viewMode === 'spread';
   const locked = settings.frameMode === 'locked';
@@ -1577,6 +1590,7 @@ export default function App() {
     () => getPrintPixelGeometry({ canvas, settings, kind: 'spread' }),
     [canvas, settings],
   );
+  const activeSpreadPrintGeometry = spreadPageCount === 1 ? pagePrintGeometry : spreadPrintGeometry;
   const bookletPixelRatio = useMemo(
     () => getBookletPixelRatio(canvas, settings),
     [canvas, settings],
@@ -1605,7 +1619,11 @@ export default function App() {
     () => getBookletSheetSize(canvas, bookletExportPrintSettings),
     [canvas, bookletExportPrintSettings],
   );
-  const stageRealWidth = isBooklet ? bookletSheetSize.width : isSpread ? canvas.width * 2 + SPREAD_GAP : canvas.width;
+  const stageRealWidth = isBooklet
+    ? bookletSheetSize.width
+    : isSpread
+      ? canvas.width * spreadPageCount + SPREAD_GAP * Math.max(0, spreadPageCount - 1)
+      : canvas.width;
   const stageRealHeight = isBooklet ? bookletSheetSize.height : canvas.height;
   const previewScale = getPreviewScale({
     stageWidth: stageRealWidth,
@@ -1634,10 +1652,11 @@ export default function App() {
         };
       })
     : isSpread
-      ? [
-          { page: pages[spreadStart], pageIndex: spreadStart, x: 0 },
-          { page: pages[spreadStart + 1], pageIndex: pages[spreadStart + 1] ? spreadStart + 1 : -1, x: canvas.width + SPREAD_GAP },
-        ]
+      ? spreadPageIndexes.map((pageIndex, position) => ({
+          page: pages[pageIndex],
+          pageIndex,
+          x: position * (canvas.width + SPREAD_GAP),
+        }))
       : [{ page: currentPage, pageIndex: currentPageIndex, x: 0 }];
 
   const selectedFrame = useMemo(() => currentPage?.frames.find((frame) => frame.id === selectedFrameId) ?? null, [currentPage, selectedFrameId]);
@@ -3381,7 +3400,7 @@ export default function App() {
     const sourceIndexes = scope === 'page'
       ? [currentPageIndex]
       : scope === 'spread'
-        ? [spreadStart, spreadStart + 1].filter((index) => index >= 0 && index < pages.length)
+        ? spreadPageIndexes
         : pages.map((_, index) => index);
     if (!sourceIndexes.length) return show('Нет страниц для шаблона');
     const defaultTitle = scope === 'album'
@@ -3464,7 +3483,7 @@ export default function App() {
       show('Шаблон применён как альбом');
       return;
     }
-    const count = mode === 'spread' ? Math.min(2, recordPages.length) : 1;
+    const count = mode === 'spread' ? Math.min(spreadPageCount, recordPages.length) : 1;
     const start = mode === 'spread' ? spreadStart : currentPageIndex;
     const replacementPages = Array.from({ length: count }, (_, i) => createPageFromTemplate(recordPages[i] || recordPages[0], start + i));
     setAlbum((current) => {
@@ -3664,7 +3683,7 @@ export default function App() {
           <span className="app-brand-mark-v2">CC</span>
           <div className="app-brand-copy-v2">
             <strong>Collage Creator</strong>
-            <span>{isBooklet ? (currentBookletSide?.title ?? 'Брошюра') : isSpread ? `Разворот ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)}` : `Страница ${currentPageIndex + 1} из ${pages.length}`}</span>
+            <span>{isBooklet ? (currentBookletSide?.title ?? 'Брошюра') : isSpread ? spreadVisibleLabel : `Страница ${currentPageIndex + 1} из ${pages.length}`}</span>
           </div>
         </div>
 
@@ -3683,9 +3702,9 @@ export default function App() {
             {exportMenuOpen && (
               <div className="export-popover-v2" role="menu">
                 <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPng(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.png`, 'Скачана страница', pagePrintGeometry, buildPrintPhotoReferences(currentPage)); }}>PNG страницы</button>
-                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPng(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.png`, 'Скачан разворот', spreadPrintGeometry, [pages[spreadStart], pages[spreadStart + 1]].flatMap(buildPrintPhotoReferences)); }}>PNG разворота</button>
+                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPng(printSpreadRef, `collage-spread-${spreadFileLabel}.png`, 'Скачан разворот', activeSpreadPrintGeometry, spreadPageIndexes.flatMap((index) => buildPrintPhotoReferences(pages[index]))); }}>PNG разворота</button>
                 <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPdf(printPageRef, `collage-page-${pad(currentPageIndex + 1)}.pdf`, 'PDF страницы', pagePrintGeometry, buildPrintPhotoReferences(currentPage)); }}>PDF страницы</button>
-                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPdf(printSpreadRef, `collage-spread-${pad(spreadStart + 1)}-${pad(Math.min(spreadStart + 2, pages.length))}.pdf`, 'PDF разворота', spreadPrintGeometry, [pages[spreadStart], pages[spreadStart + 1]].flatMap(buildPrintPhotoReferences)); }}>PDF разворота</button>
+                <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportPdf(printSpreadRef, `collage-spread-${spreadFileLabel}.pdf`, 'PDF разворота', activeSpreadPrintGeometry, spreadPageIndexes.flatMap((index) => buildPrintPhotoReferences(pages[index]))); }}>PDF разворота</button>
                 <button className="button" type="button" disabled={pdfExporting} onClick={() => { setExportMenuOpen(false); exportAlbumPdf(); }}>{pdfExporting ? 'Готовлю PDF…' : 'PDF альбома'}</button>
                 <div className="menu-section-v2">Проект</div>
                 <button className="button" type="button" onClick={() => { setExportMenuOpen(false); downloadProjectJson(); }}>Скачать JSON</button>
@@ -3834,14 +3853,14 @@ export default function App() {
               const bookletInfo = bookletPlan.pageMap[String(pageNumber)];
               const isVisibleInBooklet = isBooklet && visibleBookletPageNumbers.has(pageNumber);
               const isCurrent = isBooklet ? isVisibleInBooklet : page.id === album.currentPageId;
-              const isSpreadPage = isSpread && (index === spreadStart || index === spreadStart + 1);
+              const isSpreadPage = isSpread && spreadPageIndexes.includes(index);
               const isOnStage = isBooklet ? isVisibleInBooklet : isSpread ? isSpreadPage : isCurrent;
               const metaText = isBooklet
                 ? (bookletInfo ? `${bookletInfo.sideLabel} · л.${bookletInfo.sheetNumber}` : 'не в блоке')
                 : (isBlankPage ? 'пустая' : `${filledFrames}/${frameTotal} фото`);
               const pairText = isBooklet
                 ? (bookletInfo?.pairPageNumber ? `рядом ${bookletInfo.pairPageNumber}` : 'рядом пусто')
-                : (isBlankPage ? 'белая страница' : (index % 2 === 0 ? 'левая' : 'правая'));
+                : (isBlankPage ? 'белая страница' : (pageNumber % 2 === 0 ? 'левая' : 'правая'));
 
               return (
                 <button
@@ -3880,9 +3899,9 @@ export default function App() {
         <section ref={canvasAreaRef} className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px`, '--stage-display-height': `${stageDisplayHeight}px` }}>
           <div className="canvas-toolbar">
             <div>
-              <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${stageRealWidth}×${stageRealHeight}px` : isSpread ? `Разворот · страницы ${spreadStart + 1}–${Math.min(spreadStart + 2, pages.length)} · ${canvas.width}×${canvas.height}px · печать ${spreadPrintGeometry.outputWidthPx}×${spreadPrintGeometry.outputHeightPx}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px · печать ${pagePrintGeometry.outputWidthPx}×${pagePrintGeometry.outputHeightPx}px`}</strong>
+              <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${stageRealWidth}×${stageRealHeight}px` : isSpread ? `${spreadVisibleLabel} · ${canvas.width}×${canvas.height}px · печать ${activeSpreadPrintGeometry.outputWidthPx}×${activeSpreadPrintGeometry.outputHeightPx}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px · печать ${pagePrintGeometry.outputWidthPx}×${pagePrintGeometry.outputHeightPx}px`}</strong>
               <span>{isBooklet ? 'Просмотр физической стороны А4: слева и справа показаны страницы, которые будут напечатаны рядом.' : locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать и менять размер. Умная привязка выравнивает края и центры, розовая линия показывает совпадение.'}</span>
-              <em>{isBooklet ? 'Это режим просмотра и PNG-экспорта брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота склеивает две страницы в один файл без зазора.'}</em>
+              <em>{isBooklet ? 'Это режим просмотра и PNG-экспорта брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота сохраняет текущую книжную пару; первая страница сохраняется одна.'}</em>
             </div>
             {!isBooklet && <button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button>}
             {!isBooklet && <button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => clearAllFramePhotos(frames)); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button>}
@@ -3895,7 +3914,7 @@ export default function App() {
                   {isBooklet && <BookletSheetBackground canvas={canvas} printSettings={normalizedBookletPrintSettings} />}
                   {renderEntries}
                   {bookletLabels}
-                  {isSpread && !collagePreviewOnly && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}
+                  {isSpread && spreadPageCount > 1 && !collagePreviewOnly && settings.showGuides && <Line points={[canvas.width + SPREAD_GAP / 2, 0, canvas.width + SPREAD_GAP / 2, canvas.height]} stroke={locked ? '#2f7d52' : '#c27b4f'} strokeWidth={3} dash={[24, 18]} opacity={0.55} listening={false} />}
                   {isBooklet && <BookletPrintGuides canvas={canvas} printSettings={normalizedBookletPrintSettings} preview />}
                 </Layer>
               </Stage>
@@ -4081,14 +4100,15 @@ export default function App() {
             <PageNumberLayer pageIndex={exportPageIndex} canvas={canvas} settings={pageNumbering} />
           </Layer>
         </Stage>
-        <Stage ref={printSpreadRef} width={canvas.width * 2} height={canvas.height}>
+        <Stage ref={printSpreadRef} width={canvas.width * spreadPageCount} height={canvas.height}>
           <Layer>
-            <PageLayer page={pages[spreadStart]} pageIndex={spreadStart} x={0} {...commonPageLayerProps} />
-            <ExtraPageLayers extraLayers={extraLayers} pageIndex={spreadStart} x={0} y={0} printMode />
-            <PageNumberLayer pageIndex={spreadStart} x={0} canvas={canvas} settings={pageNumbering} />
-            <PageLayer page={pages[spreadStart + 1]} pageIndex={spreadStart + 1} x={canvas.width} {...commonPageLayerProps} />
-            <ExtraPageLayers extraLayers={extraLayers} pageIndex={spreadStart + 1} x={canvas.width} y={0} printMode />
-            {pages[spreadStart + 1] && <PageNumberLayer pageIndex={spreadStart + 1} x={canvas.width} canvas={canvas} settings={pageNumbering} />}
+            {spreadPageIndexes.map((pageIndex, position) => (
+              <React.Fragment key={`print-spread-${pageIndex}`}>
+                <PageLayer page={pages[pageIndex]} pageIndex={pageIndex} x={position * canvas.width} {...commonPageLayerProps} />
+                <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={position * canvas.width} y={0} printMode />
+                <PageNumberLayer pageIndex={pageIndex} x={position * canvas.width} canvas={canvas} settings={pageNumbering} />
+              </React.Fragment>
+            ))}
           </Layer>
         </Stage>
         <Stage ref={printBookletRef} width={bookletExportSheetSize.width} height={bookletExportSheetSize.height}>

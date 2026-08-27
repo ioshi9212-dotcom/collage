@@ -39,6 +39,15 @@ assert.equal(albumTurningLeafVisibleFace(0.499), 'front');
 assert.equal(albumTurningLeafVisibleFace(0.5), 'back');
 assert.equal(albumTurningLeafVisibleFace(1), 'back');
 
+
+const editorSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8');
+assert.ok(editorSource.includes("albumSpreadForPage(currentPageIndex, pages.length)"), 'editor spread must use book spread numbering');
+assert.ok(editorSource.includes("albumSpreadPages(spreadIndex, pages.length)"), 'editor spread must share the album spread model');
+assert.ok(editorSource.includes("spreadPageIndexes.map((pageIndex, position)"), 'editor spread must render the opening page alone and later pages as pairs');
+assert.ok(editorSource.includes("pageNumber % 2 === 0 ? 'левая' : 'правая'"), 'even book pages must be left and odd pages must be right');
+assert.ok(editorSource.includes("width={canvas.width * spreadPageCount}"), 'spread export width must support a single opening page');
+assert.ok(!editorSource.includes("currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1"), 'legacy 1-2 / 3-4 spread pairing must be removed');
+
 const previewSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreview.jsx'), 'utf8');
 assert.match(previewSource, /function PaperStack/);
 assert.match(previewSource, /album-flip-leaf-curl/);

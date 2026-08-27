@@ -211,6 +211,7 @@ export function buildGridLayout(canvas, settings, previousFrames = []) {
   const shouldFitFreeComposition = freeMode
     && previousFrames.length > 0
     && previousFrames.length === requestedFrameCount
+    && previousPadding !== null
     && previousPadding !== padding;
 
   if (shouldFitFreeComposition) {
