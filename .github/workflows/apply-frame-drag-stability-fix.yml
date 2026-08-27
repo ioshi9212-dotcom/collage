@@ -41,3 +41,5 @@ jobs:
           git add src/AppLive.jsx e2e/smart-frame-snapping.spec.js
           git commit -m 'Make free-frame dragging smooth and stable'
           git push
+
+# retry after helper lint fix
