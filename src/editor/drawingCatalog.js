@@ -14,6 +14,7 @@ export function normalizeDrawingCatalogAsset(value) {
     width: Math.max(1, Number(source.width) || 1),
     height: Math.max(1, Number(source.height) || 1),
     builtin: source.builtin === true || String(source.id || '').startsWith('builtin-'),
+    category: String(source.category || ''),
   };
 }
 
@@ -25,7 +26,22 @@ export const BUILTIN_DRAWING_ASSETS = Object.freeze([
   { id: 'builtin-branch-solid-01', name: 'Веточка силуэт', src: '/drawings/branch-solid-01.svg', width: 1254, height: 1254, builtin: true },
 ].map((asset) => Object.freeze(normalizeDrawingCatalogAsset(asset))));
 
+async function loadGeneratedBuiltinAssets(fetchImpl) {
+  try {
+    const response = await fetchImpl('/drawings/catalog.json', { cache: 'no-store' });
+    if (!response.ok) return BUILTIN_DRAWING_ASSETS;
+    const payload = await response.json().catch(() => ({}));
+    const assets = (Array.isArray(payload.assets) ? payload.assets : [])
+      .map(normalizeDrawingCatalogAsset)
+      .filter((asset) => asset.builtin && asset.id && asset.src.startsWith('/drawings/'));
+    return assets.length ? assets : BUILTIN_DRAWING_ASSETS;
+  } catch {
+    return BUILTIN_DRAWING_ASSETS;
+  }
+}
+
 export async function loadDrawingCatalog(fetchImpl = fetch) {
+  const builtinAssets = await loadGeneratedBuiltinAssets(fetchImpl);
   let remoteAssets = [];
   try {
     const response = await fetchImpl('/api/drawing-assets', { credentials: 'include' });
@@ -37,10 +53,11 @@ export async function loadDrawingCatalog(fetchImpl = fetch) {
     // Built-in drawings remain available even when the cloud catalog is unavailable.
   }
 
-  const builtinIds = new Set(BUILTIN_DRAWING_ASSETS.map((asset) => asset.id));
+  const builtinIds = new Set(builtinAssets.map((asset) => asset.id));
+  const builtinSources = new Set(builtinAssets.map((asset) => asset.src));
   return [
-    ...BUILTIN_DRAWING_ASSETS,
-    ...remoteAssets.filter((asset) => !builtinIds.has(asset.id)),
+    ...builtinAssets,
+    ...remoteAssets.filter((asset) => !builtinIds.has(asset.id) && !builtinSources.has(asset.src)),
   ];
 }
 
