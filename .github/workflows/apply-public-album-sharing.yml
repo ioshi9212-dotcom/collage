@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/apply-public-album-sharing.mjs'
+      - 'scripts/fix-public-album-migration.mjs'
       - '.github/workflows/apply-public-album-sharing.yml'
 
 permissions:
@@ -23,8 +24,10 @@ jobs:
         run: npm ci
       - name: Apply public album sharing migration
         run: node scripts/apply-public-album-sharing.mjs
+      - name: Fix browser regression fixture
+        run: node scripts/fix-public-album-migration.mjs
       - name: Remove one-time migration files
-        run: rm scripts/apply-public-album-sharing.mjs .github/workflows/apply-public-album-sharing.yml
+        run: rm scripts/apply-public-album-sharing.mjs scripts/fix-public-album-migration.mjs .github/workflows/apply-public-album-sharing.yml
       - name: Lint
         run: npm run lint
       - name: Unit and integration tests
