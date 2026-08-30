@@ -30,7 +30,12 @@ import { createFixedWindowRateLimiter } from './server/rateLimit.js';
 import { createHeicConversionHandler } from './server/heicConversion.js';
 import { applySecurityHeaders } from './server/securityHeaders.js';
 import { describeSessionSecretState, resolveSessionSecret } from './server/sessionSecret.js';
-import { createPublicAlbumToken, referencedPublicPhotoKey, rewritePublicAlbumProject } from './server/publicAlbumModel.js';
+import {
+  createPublicAlbumToken,
+  referencedPublicPhotoKey,
+  restorePublicAlbumPhotoMetadata,
+  rewritePublicAlbumProject,
+} from './server/publicAlbumModel.js';
 import { handleSafeProjectVersionApi } from './server/safeProjectVersions.js';
 import { drawingCatalogAsset, normalizeDrawingCatalogDimensions, normalizeDrawingCatalogKey } from './server/drawingCatalog.js';
 
@@ -625,7 +630,10 @@ async function handleApi(request, response) {
     const shareToken = decodeURIComponent(publicPhotoMatch[1]);
     const photoId = decodeURIComponent(publicPhotoMatch[2]);
     const result = await pool.query(
-      'SELECT user_id, data_json AS data FROM public_albums WHERE share_token = $1',
+      `SELECT pa.user_id, pa.data_json AS data, p.data_json AS project_data
+         FROM public_albums pa
+         LEFT JOIN projects p ON p.id = pa.project_id AND p.user_id = pa.user_id
+        WHERE pa.share_token = $1`,
       [shareToken],
     );
     const album = result.rows[0];
@@ -633,7 +641,8 @@ async function handleApi(request, response) {
       sendJson(response, 404, { error: 'public_album_not_found', message: 'Альбом недоступен' });
       return true;
     }
-    const key = referencedPublicPhotoKey(extractCloudPhotoKeys(album.data, album.user_id), photoId);
+    const resolvedData = restorePublicAlbumPhotoMetadata(album.data, album.project_data);
+    const key = referencedPublicPhotoKey(extractCloudPhotoKeys(resolvedData, album.user_id), photoId);
     if (!key) {
       sendJson(response, 404, { error: 'public_photo_not_found', message: 'Фотография недоступна' });
       return true;
@@ -646,7 +655,10 @@ async function handleApi(request, response) {
   if (method === 'GET' && publicAlbumMatch) {
     const shareToken = decodeURIComponent(publicAlbumMatch[1]);
     const result = await pool.query(
-      'SELECT title, data_json AS data, updated_at FROM public_albums WHERE share_token = $1',
+      `SELECT pa.title, pa.data_json AS data, pa.updated_at, p.data_json AS project_data
+         FROM public_albums pa
+         LEFT JOIN projects p ON p.id = pa.project_id AND p.user_id = pa.user_id
+        WHERE pa.share_token = $1`,
       [shareToken],
     );
     const album = result.rows[0];
@@ -654,11 +666,12 @@ async function handleApi(request, response) {
       sendJson(response, 404, { error: 'public_album_not_found', message: 'Альбом недоступен' });
       return true;
     }
+    const resolvedData = restorePublicAlbumPhotoMetadata(album.data, album.project_data);
     sendJson(response, 200, {
       album: {
         title: album.title,
         updatedAt: album.updated_at,
-        data: rewritePublicAlbumProject(album.data, shareToken),
+        data: rewritePublicAlbumProject(resolvedData, shareToken),
       },
     });
     return true;
@@ -668,26 +681,33 @@ async function handleApi(request, response) {
     const user = await requireUser(request, response);
     if (!user) return true;
     const body = await readBody(request);
-    const data = body.data || {};
-    if (!Array.isArray(data.pages) || !data.pages.length) {
-      sendJson(response, 400, { error: 'invalid_album', message: 'В альбоме нет страниц для публикации' });
-      return true;
-    }
+    let data = body.data || {};
     const title = String(body.title || 'Фотоальбом').trim().slice(0, 120) || 'Фотоальбом';
     const projectId = body.projectId ? String(body.projectId) : null;
     let shareToken = body.shareToken ? String(body.shareToken) : '';
 
     if (projectId) {
-      const ownedProject = await pool.query('SELECT id FROM projects WHERE id = $1 AND user_id = $2', [projectId, user.id]);
+      const ownedProject = await pool.query(
+        'SELECT id, data_json AS data FROM projects WHERE id = $1 AND user_id = $2',
+        [projectId, user.id],
+      );
       if (!ownedProject.rows[0]) {
         sendJson(response, 404, { error: 'project_not_found', message: 'Сначала сохрани проект в облако' });
         return true;
       }
+      // Publishing happens immediately after a successful cloud save. The database copy is
+      // therefore the canonical snapshot with durable photo keys; browser blob: URLs are not.
+      data = ownedProject.rows[0].data || data;
       const existing = await pool.query(
         'SELECT share_token FROM public_albums WHERE user_id = $1 AND project_id = $2',
         [user.id, projectId],
       );
       if (existing.rows[0]?.share_token) shareToken = existing.rows[0].share_token;
+    }
+
+    if (!Array.isArray(data.pages) || !data.pages.length) {
+      sendJson(response, 400, { error: 'invalid_album', message: 'В альбоме нет страниц для публикации' });
+      return true;
     }
 
     if (shareToken) {
