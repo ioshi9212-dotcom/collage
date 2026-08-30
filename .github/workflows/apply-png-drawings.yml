@@ -44,7 +44,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: PNG drawings browser test
-        run: npx playwright test e2e/png-drawings.spec.js --project=chromium
+        run: npx playwright test e2e/png-drawings.spec.js
       - name: Commit verified implementation
         run: |
           git config user.name 'github-actions[bot]'
