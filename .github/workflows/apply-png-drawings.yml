@@ -24,6 +24,15 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Repair migration quoting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-png-drawings.mjs')
+          source = path.read_text()
+          source = source.replace("${'${asset.name || 'рисунок'}'}", "${'${asset.name || \"рисунок\"}'}")
+          path.write_text(source)
+          PY
       - name: Apply PNG drawings implementation
         run: node scripts/apply-png-drawings.mjs
       - name: Lint
