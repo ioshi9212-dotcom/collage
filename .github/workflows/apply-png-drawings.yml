@@ -1,0 +1,46 @@
+name: Apply PNG drawings
+
+on:
+  push:
+    branches: [feature/png-drawings]
+    paths:
+      - 'scripts/apply-png-drawings.mjs'
+      - '.github/workflows/apply-png-drawings.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply PNG drawings implementation
+        run: node scripts/apply-png-drawings.mjs
+      - name: Lint
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: PNG drawings browser test
+        run: npx playwright test e2e/png-drawings.spec.js --project=chromium
+      - name: Commit verified implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/apply-png-drawings.mjs .github/workflows/apply-png-drawings.yml
+          git add src/AppLive.jsx src/editor-shell-v2.css src/editor/extraLayers.js src/editor/DrawingImageLayer.jsx src/editor/drawingColorization.js src/editor/drawingCatalog.js src/editor/extraLayers.image.test.mjs src/editor/drawingColorization.test.mjs server.js server/drawingCatalog.js server/drawingCatalog.test.mjs e2e/png-drawings.spec.js package.json
+          git commit -m 'Add reusable PNG drawing catalog'
+          git push origin HEAD:feature/png-drawings
