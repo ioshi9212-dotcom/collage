@@ -20,10 +20,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Apply public album feature
-        run: node scripts/apply-public-album.mjs
+        run: node scripts/apply-public-album-v2.mjs
       - name: Remove one-time migration files
         run: |
           rm -f scripts/apply-public-album.mjs
+          rm -f scripts/apply-public-album-v2.mjs
           rm -f .github/workflows/apply-public-album.yml
       - name: Lint
         run: npm run lint

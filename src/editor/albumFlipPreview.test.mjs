@@ -46,8 +46,12 @@ assert.ok(editorSource.includes("spreadPageIndexes.map((pageIndex, position)"), 
 assert.ok(editorSource.includes("pageNumber % 2 === 0 ? 'левая' : 'правая'"), 'even book pages must be left and odd pages must be right');
 assert.ok(editorSource.includes("width={canvas.width * spreadPageCount}"), 'spread export width must support a single opening page');
 assert.ok(!editorSource.includes("currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1"), 'legacy 1-2 / 3-4 spread pairing must be removed');
-assert.match(editorSource, /publishAlbumForClient/);
-assert.match(editorSource, /Поделиться/);
+assert.match(editorSource, /PublicAlbumShareControl/);
+
+const shareControlSource = readFileSync(resolve(process.cwd(), 'src/editor/PublicAlbumShareControl.jsx'), 'utf8');
+assert.match(shareControlSource, /Поделиться/);
+assert.match(shareControlSource, /Закрыть доступ/);
+assert.match(shareControlSource, /publishPublicAlbum/);
 
 const previewSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreview.jsx'), 'utf8');
 assert.match(previewSource, /function PaperStack/);
