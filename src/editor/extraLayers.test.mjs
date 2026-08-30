@@ -16,6 +16,7 @@ import {
   pruneExtraLayerPages,
   readExtraLayers,
   reorderExtraLayerPages,
+  swapExtraLayerPages,
   textLayersForPage,
   writeExtraLayers,
 } from './extraLayers.js';
@@ -189,6 +190,15 @@ const baseLayers = {
   assert.equal(reordered.pages[3], baseLayers.pages[1]);
   assert.equal(reordered.pages.metadata, baseLayers.pages.metadata);
   assert.equal(reorderExtraLayerPages(baseLayers, 1, 1, 3), baseLayers, 'no-op reorder must preserve the existing state object');
+}
+
+{
+  const swapped = swapExtraLayerPages(baseLayers, 0, 2, 3);
+  assert.equal(swapped.pages[1], baseLayers.pages[3]);
+  assert.equal(swapped.pages[2], baseLayers.pages[2]);
+  assert.equal(swapped.pages[3], baseLayers.pages[1]);
+  assert.equal(swapped.pages.metadata, baseLayers.pages.metadata);
+  assert.equal(swapExtraLayerPages(baseLayers, 2, 2, 3), baseLayers, 'no-op swap must preserve the existing state object');
 }
 
 const appSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8');

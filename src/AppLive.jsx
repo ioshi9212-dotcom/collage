@@ -64,6 +64,7 @@ import {
   resolvePageFrameCount,
   settingsForPage,
 } from './editor/pageModel';
+import { movePageOrder, pageNumberToIndex, swapPageOrder } from './editor/pageOrder';
 import {
   applyPhotoToFrames,
   bringFrameToFront,
@@ -101,6 +102,7 @@ import {
   pruneExtraLayerPages,
   reorderExtraLayerPages,
   sanitizeExtraLayers,
+  swapExtraLayerPages,
   textLayersForPage,
 } from './editor/extraLayers';
 import {
@@ -354,12 +356,6 @@ function pad(value) {
   return String(value).padStart(2, '0');
 }
 
-function moveArrayItem(items, fromIndex, toIndex) {
-  const next = [...items];
-  const [item] = next.splice(fromIndex, 1);
-  next.splice(toIndex, 0, item);
-  return next;
-}
 
 function downloadDataUrl(filename, dataUrl) {
   const link = document.createElement('a');
@@ -2493,6 +2489,11 @@ export default function App() {
     updateExtraLayers((layers) => reorderExtraLayerPages(layers, fromIndex, toIndex, pageCount));
   }
 
+  function swapExtraLayersByPageMove(firstIndex, secondIndex, pageCount) {
+    if (firstIndex === secondIndex) return;
+    updateExtraLayers((layers) => swapExtraLayerPages(layers, firstIndex, secondIndex, pageCount));
+  }
+
 
   function reorderPages(fromIndex, toIndex) {
     const safeFrom = Number(fromIndex);
@@ -2508,7 +2509,7 @@ export default function App() {
 
     const movedPage = pages[safeFrom];
     setAlbum((current) => {
-      const nextPages = moveArrayItem(current.pages, safeFrom, safeTo);
+      const nextPages = movePageOrder(current.pages, safeFrom, safeTo);
       return { ...current, pages: nextPages, currentPageId: movedPage?.id ?? current.currentPageId };
     });
 
@@ -2525,6 +2526,58 @@ export default function App() {
     show(`Страница ${safeFrom + 1} перемещена на место ${safeTo + 1}`);
   }
 
+  function swapPagesByIndex(firstIndex, secondIndex) {
+    const safeFirst = Number(firstIndex);
+    const safeSecond = Number(secondIndex);
+    if (!Number.isInteger(safeFirst) || !Number.isInteger(safeSecond)) return;
+    if (safeFirst < 0 || safeSecond < 0 || safeFirst >= pages.length || safeSecond >= pages.length) return;
+    if (safeFirst === safeSecond) {
+      selectPageByIndex(safeFirst);
+      return;
+    }
+
+    swapExtraLayersByPageMove(safeFirst, safeSecond, pages.length);
+
+    const selectedPage = pages[safeFirst];
+    setAlbum((current) => ({
+      ...current,
+      pages: swapPageOrder(current.pages, safeFirst, safeSecond),
+      currentPageId: selectedPage?.id ?? current.currentPageId,
+    }));
+
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    setDragPageIndex(null);
+    setDragOverPageIndex(null);
+
+    if (viewMode === 'booklet') {
+      const side = findBookletSideForPage(bookletPlan, safeSecond + 1);
+      setBookletSideId(side?.id ?? null);
+    }
+
+    show('Страницы ' + (safeFirst + 1) + ' и ' + (safeSecond + 1) + ' поменяны местами');
+  }
+
+  function promptPageOrderTarget(action) {
+    if (!currentPage || currentPageIndex < 0) return;
+    const currentNumber = currentPageIndex + 1;
+    const promptText = action === 'swap'
+      ? 'С какой страницей поменять местами страницу ' + currentNumber + '? Введи номер от 1 до ' + pages.length + '.'
+      : 'На какую позицию переместить страницу ' + currentNumber + '? Введи номер от 1 до ' + pages.length + '.';
+    const rawTarget = window.prompt(promptText, String(currentNumber));
+    if (rawTarget === null) return;
+    const targetIndex = pageNumberToIndex(rawTarget, pages.length);
+    if (targetIndex === null) {
+      show('Нужен целый номер страницы от 1 до ' + pages.length);
+      return;
+    }
+    if (targetIndex === currentPageIndex) {
+      show('Страница ' + currentNumber + ' уже на этом месте');
+      return;
+    }
+    if (action === 'swap') swapPagesByIndex(currentPageIndex, targetIndex);
+    else reorderPages(currentPageIndex, targetIndex);
+  }
   function startPageDrag(event, index) {
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('application/x-collage-page-index', String(index));
@@ -3794,6 +3847,8 @@ export default function App() {
               <button className="button full" onClick={addPage}>+ Страница</button>
               <button className="button full" onClick={addBlankPage}>+ Пустая страница</button>
               <button className="button full" onClick={duplicatePage}>Сделать копию</button>
+              <button className="button full" onClick={() => promptPageOrderTarget('move')}>Переместить на позицию…</button>
+              <button className="button full" onClick={() => promptPageOrderTarget('swap')}>Поменять местами с…</button>
               <button className="button full danger-button" onClick={deletePage}>Удалить страницу</button>
               <div className="inspector-block">
                 <h3>Просмотр</h3>

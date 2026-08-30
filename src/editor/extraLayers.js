@@ -1,3 +1,5 @@
+import { moveArrayItem, swapArrayItems } from './pageOrder.js';
+
 export const ALBUM_EDITOR_MODES = ['collage', 'text', 'drawings', 'templates'];
 export const ALBUM_MODE_KEY = 'collage-album-editor-mode';
 export const ALBUM_LAYERS_KEY = 'collage-album-extra-layers-v1';
@@ -23,12 +25,6 @@ function cloneDeep(value) {
   }
 }
 
-function moveArrayItem(items, fromIndex, toIndex) {
-  const next = [...items];
-  const [item] = next.splice(fromIndex, 1);
-  next.splice(toIndex, 0, item);
-  return next;
-}
 
 function makeLayerId() {
   return globalThis.crypto?.randomUUID?.() ?? `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -314,13 +310,10 @@ export function pruneExtraLayerPages(layers, pageCount) {
   return { ...layers, pages: nextPagesMap };
 }
 
-export function reorderExtraLayerPages(layers, fromIndex, toIndex, pageCount) {
-  if (fromIndex === toIndex) return layers;
+function remapOrderedLayerPages(layers, orderedLayerPages, pageCount) {
   const pagesMap = layers?.pages ?? {};
-  const orderedLayerPages = Array.from({ length: pageCount }, (_, index) => pagesMap[String(index + 1)] ?? null);
-  const movedLayerPages = moveArrayItem(orderedLayerPages, fromIndex, toIndex);
   const nextPagesMap = {};
-  movedLayerPages.forEach((pageLayers, index) => {
+  orderedLayerPages.forEach((pageLayers, index) => {
     if (pageLayers) nextPagesMap[String(index + 1)] = pageLayers;
   });
   for (const [key, value] of Object.entries(pagesMap)) {
@@ -328,4 +321,23 @@ export function reorderExtraLayerPages(layers, fromIndex, toIndex, pageCount) {
     if (!Number.isInteger(numberKey) || numberKey < 1 || numberKey > pageCount) nextPagesMap[key] = value;
   }
   return { ...layers, pages: nextPagesMap };
+}
+
+function orderedLayerPages(layers, pageCount) {
+  const pagesMap = layers?.pages ?? {};
+  return Array.from({ length: pageCount }, (_, index) => pagesMap[String(index + 1)] ?? null);
+}
+
+export function reorderExtraLayerPages(layers, fromIndex, toIndex, pageCount) {
+  if (fromIndex === toIndex) return layers;
+  const ordered = orderedLayerPages(layers, pageCount);
+  const moved = moveArrayItem(ordered, fromIndex, toIndex);
+  return moved === ordered ? layers : remapOrderedLayerPages(layers, moved, pageCount);
+}
+
+export function swapExtraLayerPages(layers, firstIndex, secondIndex, pageCount) {
+  if (firstIndex === secondIndex) return layers;
+  const ordered = orderedLayerPages(layers, pageCount);
+  const swapped = swapArrayItems(ordered, firstIndex, secondIndex);
+  return swapped === ordered ? layers : remapOrderedLayerPages(layers, swapped, pageCount);
 }
