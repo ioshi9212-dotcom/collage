@@ -1,8 +1,62 @@
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
 function apiError(response, payload, fallback) {
   const error = new Error(payload?.message || payload?.error || fallback);
   error.status = response.status;
   return error;
 }
+
+export function isPngDrawingCandidate(file) {
+  if (!(file instanceof Blob)) return false;
+  const type = String(file.type || '').toLowerCase();
+  const name = String(file.name || '').toLowerCase();
+  return type === 'image/png' || name.endsWith('.png');
+}
+
+export async function hasPngSignature(file) {
+  if (!(file instanceof Blob) || typeof file.slice !== 'function') return false;
+  const bytes = new Uint8Array(await file.slice(0, PNG_SIGNATURE.length).arrayBuffer());
+  return bytes.length === PNG_SIGNATURE.length
+    && PNG_SIGNATURE.every((byte, index) => bytes[index] === byte);
+}
+
+function installDrawingPngInputCompatibility(documentRef = globalThis.document) {
+  if (!documentRef?.addEventListener || documentRef.__collageDrawingPngCompatInstalled) return;
+  documentRef.__collageDrawingPngCompatInstalled = true;
+
+  documentRef.addEventListener('change', (event) => {
+    const input = event?.target;
+    if (!input || input.type !== 'file' || !input.closest?.('.drawing-upload-button')) return;
+
+    const files = [...(input.files || [])];
+    const needsNormalization = files.some((file) => (
+      String(file?.type || '').toLowerCase() !== 'image/png'
+      && String(file?.name || '').toLowerCase().endsWith('.png')
+    ));
+    if (!needsNormalization || typeof globalThis.DataTransfer !== 'function' || typeof globalThis.File !== 'function') return;
+
+    try {
+      const transfer = new globalThis.DataTransfer();
+      for (const file of files) {
+        const isPngName = String(file?.name || '').toLowerCase().endsWith('.png');
+        const type = String(file?.type || '').toLowerCase();
+        if (isPngName && type !== 'image/png') {
+          transfer.items.add(new globalThis.File([file], file.name || 'Рисунок.png', {
+            type: 'image/png',
+            lastModified: Number(file.lastModified) || Date.now(),
+          }));
+        } else {
+          transfer.items.add(file);
+        }
+      }
+      input.files = transfer.files;
+    } catch {
+      // Some browsers expose FileList as read-only. In that case the normal validation message remains.
+    }
+  }, true);
+}
+
+installDrawingPngInputCompatibility();
 
 export function normalizeDrawingCatalogAsset(value) {
   const source = value && typeof value === 'object' ? value : {};
@@ -38,7 +92,9 @@ function imageDimensions(file) {
 }
 
 export async function uploadDrawingCatalogAsset(file, fetchImpl = fetch) {
-  if (!(file instanceof Blob) || String(file.type).toLowerCase() !== 'image/png') throw new Error('Для рисунков нужен PNG-файл');
+  if (!isPngDrawingCandidate(file) || !(await hasPngSignature(file))) {
+    throw new Error('Для рисунков нужен настоящий PNG-файл');
+  }
   const dimensions = await imageDimensions(file);
   const upload = await fetchImpl('/api/photo-assets/upload?name=' + encodeURIComponent(file.name || 'Рисунок.png'), {
     method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'image/png' }, body: file,
