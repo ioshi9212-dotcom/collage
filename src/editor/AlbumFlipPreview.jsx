@@ -133,11 +133,15 @@ export default function AlbumFlipPreview({
   pageAspect = 0.705,
   renderPage,
   onClose,
+  standalone = false,
+  allowZoom = false,
+  title = 'Альбом',
 }) {
   const maxSpread = albumMaxSpread(pageCount);
   const [spreadIndex, setSpreadIndex] = useState(() => albumSpreadForPage(startPageIndex, pageCount));
   const [turn, setTurn] = useState(null);
   const [turnProgress, setTurnProgress] = useState(0);
+  const [zoomed, setZoomed] = useState(false);
   const animationRef = useRef(0);
   const requestTurnRef = useRef(null);
   const dragRef = useRef(null);
@@ -214,6 +218,7 @@ export default function AlbumFlipPreview({
     setSpreadIndex(albumSpreadForPage(startPageIndex, pageCount));
     setTurn(null);
     setTurnProgress(0);
+    setZoomed(false);
   }, [open, startPageIndex, pageCount]);
 
   useEffect(() => () => {
@@ -225,7 +230,7 @@ export default function AlbumFlipPreview({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose?.();
+      if (event.key === 'Escape' && !standalone) onClose?.();
       if (event.key === 'ArrowRight') requestTurnRef.current?.('next');
       if (event.key === 'ArrowLeft') requestTurnRef.current?.('prev');
     };
@@ -235,7 +240,7 @@ export default function AlbumFlipPreview({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [open, onClose]);
+  }, [open, onClose, standalone]);
 
   const current = useMemo(() => albumSpreadPages(spreadIndex, pageCount), [spreadIndex, pageCount]);
   const previous = useMemo(() => albumSpreadPages(spreadIndex - 1, pageCount), [spreadIndex, pageCount]);
@@ -244,7 +249,7 @@ export default function AlbumFlipPreview({
   if (!open) return null;
 
   function beginSwipe(event) {
-    if (turn || event.button > 0 || event.target.closest?.('button, input')) return;
+    if (zoomed || turn || event.button > 0 || event.target.closest?.('button, input')) return;
     const rect = bookRef.current?.getBoundingClientRect();
     if (!rect || event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return;
     const direction = event.clientX >= rect.left + rect.width / 2 ? 'next' : 'prev';
@@ -308,14 +313,14 @@ export default function AlbumFlipPreview({
   const rightStackDepth = Math.max(0, maxSpread - virtualSpread);
 
   return (
-    <div className="album-flip-overlay" role="dialog" aria-modal="true" aria-label="Просмотр альбома">
+    <div className={`album-flip-overlay ${standalone ? 'is-standalone' : ''} ${zoomed ? 'is-zoomed' : ''}`} role="dialog" aria-modal="true" aria-label="Просмотр альбома">
       <div className="album-flip-dialog" ref={dialogRef} tabIndex={-1}>
         <header className="album-flip-header">
           <div>
-            <strong>Альбом</strong>
+            <strong>{title}</strong>
             <span>{albumVisiblePageLabel(spreadIndex, pageCount)} · всего {pageCount}</span>
           </div>
-          <button type="button" className="album-flip-close" onClick={onClose} aria-label="Закрыть просмотр">×</button>
+          {!standalone && <button type="button" className="album-flip-close" onClick={onClose} aria-label="Закрыть просмотр">×</button>}
         </header>
 
         <div
@@ -359,9 +364,10 @@ export default function AlbumFlipPreview({
               aria-label="Перейти к развороту"
             />
           </label>
+          {allowZoom && <button type="button" className="album-flip-zoom-toggle" onClick={() => setZoomed((value) => !value)}>{zoomed ? 'Уменьшить' : 'Увеличить'}</button>}
           <button type="button" onClick={() => requestTurn('next')} disabled={spreadIndex >= maxSpread || Boolean(turn)}>Вперёд →</button>
         </footer>
-        <p className="album-flip-help">Потяни внешний край листа: страница поднимется, согнётся и перевернётся. На телефоне работает свайп.</p>
+        <p className="album-flip-help">{zoomed ? 'Перемещай увеличенный альбом пальцем. Нажми «Уменьшить», чтобы снова листать.' : 'Потяни внешний край листа или листай свайпом. Для деталей можно увеличить альбом.'}</p>
       </div>
     </div>
   );

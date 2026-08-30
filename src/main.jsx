@@ -28,6 +28,8 @@ import { installDestructiveActionBehavior } from './editor/destructiveActionBeha
 import { installInspectorContextBehavior } from './editor/inspectorContextBehavior';
 import { installMobileEditorBehavior } from './editor/mobileEditorBehavior';
 import AlbumFlipPreviewHost from './editor/AlbumFlipPreviewHost';
+import PublicAlbumPage from './editor/PublicAlbumPage';
+import PublicAlbumShareControls from './editor/PublicAlbumShareControls';
 import App from './AppLive.jsx';
 
 try {
@@ -55,18 +57,29 @@ function configureCanvasPerformance() {
 
 configureCanvasPerformance();
 
+const isPublicAlbumRoute = /^\/album\/[^/]+\/?$/.test(window.location.pathname);
+
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
-    <AlbumFlipPreviewHost />
+    {isPublicAlbumRoute ? (
+      <PublicAlbumPage />
+    ) : (
+      <>
+        <App />
+        <AlbumFlipPreviewHost />
+        <PublicAlbumShareControls />
+      </>
+    )}
   </React.StrictMode>,
 );
 
-installPageRailBehavior();
-installToolStateBehavior();
-// Install the mobile guard before text behavior, which otherwise sharpens the
-// visible editor canvas after startup. Export stages are deliberately excluded.
-installMobileEditorBehavior();
-installTextEditingBehavior();
-installDestructiveActionBehavior();
-installInspectorContextBehavior();
+if (!isPublicAlbumRoute) {
+  installPageRailBehavior();
+  installToolStateBehavior();
+  // Install the mobile guard before text behavior, which otherwise sharpens the
+  // visible editor canvas after startup. Export stages are deliberately excluded.
+  installMobileEditorBehavior();
+  installTextEditingBehavior();
+  installDestructiveActionBehavior();
+  installInspectorContextBehavior();
+}

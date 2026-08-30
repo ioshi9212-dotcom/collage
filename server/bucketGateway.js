@@ -524,9 +524,23 @@ export function createPhotoAssetGateway({
     return true;
   }
 
+  async function servePublicPhoto({ response, userId, key }) {
+    if (!config.configured) {
+      sendBucketError(response, 503, 'bucket_not_configured', 'Облачное хранилище фотографий не подключено.');
+      return;
+    }
+    if (!isOwnedPhotoKey(userId, key)) {
+      sendBucketError(response, 403, 'photo_access_denied', 'Нет доступа к этой фотографии.');
+      return;
+    }
+    const request = { url: '/api/photo-assets/file?key=' + encodeURIComponent(key) };
+    await proxyDownload({ request, response, user: { id: Number(userId) }, config, fetchImpl, assetStore });
+  }
+
   return {
     handle,
     cleanupUnreferenced,
+    servePublicPhoto,
     config,
   };
 }

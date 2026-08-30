@@ -241,11 +241,19 @@ export function createPostgresPhotoAssetStore({ pool, limits = getPhotoAssetLimi
 
   async function isReferenced({ userId, key }) {
     const result = await pool.query(
-      `SELECT EXISTS(
-         SELECT 1
-           FROM projects
-          WHERE user_id = $1
-            AND POSITION($2 IN data_json::text) > 0
+      `SELECT (
+         EXISTS(
+           SELECT 1
+             FROM projects
+            WHERE user_id = $1
+              AND POSITION($2 IN data_json::text) > 0
+         )
+         OR EXISTS(
+           SELECT 1
+             FROM public_albums
+            WHERE user_id = $1
+              AND POSITION($2 IN data_json::text) > 0
+         )
        ) AS referenced`,
       [userId, key],
     );

@@ -482,3 +482,29 @@
   .album-flip-turning-inner,
   .album-flip-leaf-curl { will-change: auto; }
 }
+
+
+/* Public client album and sharing controls */
+.album-flip-book { transition: transform 180ms ease; }
+.album-flip-overlay.is-zoomed .album-flip-scene { overflow: auto; touch-action: pan-x pan-y; cursor: grab; }
+.album-flip-overlay.is-zoomed .album-flip-book { transform: rotateX(2deg) scale(1.62) translateZ(0); }
+.album-flip-overlay.is-standalone { background: #151718; backdrop-filter: none; }
+.album-flip-overlay.is-standalone .album-flip-dialog { max-width: none; }
+.public-album-status { position: fixed; inset: 0; display: grid; place-items: center; background: #151718; color: #fff; font-family: Arial, sans-serif; }
+.public-album-status > div { display: grid; gap: 8px; text-align: center; padding: 24px; }
+.public-album-status span { color: rgba(255,255,255,.64); font-size: 13px; }
+.public-album-share-open { white-space: nowrap; }
+.public-album-share-popover { position: fixed; z-index: 6000; top: 64px; right: 14px; width: min(430px, calc(100vw - 28px)); display: grid; gap: 10px; border: 1px solid var(--shell-line-strong, #adb4b8); border-radius: 8px; background: #fff; color: #272b2e; padding: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.public-album-share-popover > strong { padding-right: 34px; }
+.public-album-share-popover input { width: 100%; min-height: 38px; box-sizing: border-box; border: 1px solid #cfd4d7; border-radius: 5px; padding: 7px 9px; font-size: 12px; }
+.public-album-share-popover p { margin: 0; color: #70767a; font-size: 11px; line-height: 1.4; }
+.public-album-share-popover .public-album-share-error { color: #a43d3d; }
+.public-album-share-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.public-album-share-close { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: #eef0f1; font-size: 20px; cursor: pointer; }
+@media (max-width: 760px) {
+  .public-album-share-open { display: none !important; }
+  .album-flip-overlay.is-standalone .album-flip-header { padding: 10px 12px; }
+  .album-flip-overlay.is-standalone .album-flip-header strong { font-size: 15px; }
+  .album-flip-overlay.is-standalone .album-flip-help { padding: 0 12px 10px; font-size: 10px; }
+  .album-flip-overlay.is-zoomed .album-flip-book { transform: rotateX(1deg) scale(1.9) translateZ(0); }
+}

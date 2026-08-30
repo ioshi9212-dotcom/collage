@@ -189,7 +189,7 @@ function PreviewPageNumber({ pageIndex, canvas, settings }) {
   );
 }
 
-function AlbumPagePreview({ project, pageIndex }) {
+export function AlbumPagePreview({ project, pageIndex }) {
   const canvas = project.canvas || { width: 1480, height: 2100 };
   const settings = project.settings || {};
   const page = project.pages?.[pageIndex];

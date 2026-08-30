@@ -30,6 +30,7 @@ import { createFixedWindowRateLimiter } from './server/rateLimit.js';
 import { createHeicConversionHandler } from './server/heicConversion.js';
 import { applySecurityHeaders } from './server/securityHeaders.js';
 import { describeSessionSecretState, resolveSessionSecret } from './server/sessionSecret.js';
+import { createPublicAlbumToken, referencedPublicPhotoKey, rewritePublicAlbumProject } from './server/publicAlbumModel.js';
 
 const { Pool } = pg;
 
@@ -330,6 +331,22 @@ async function ensureDb() {
 
       CREATE INDEX IF NOT EXISTS projects_user_updated_idx ON projects(user_id, updated_at DESC);
 
+      CREATE TABLE IF NOT EXISTS public_albums (
+        share_token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        title TEXT NOT NULL DEFAULT 'Фотоальбом',
+        data_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS public_albums_user_project_idx
+        ON public_albums(user_id, project_id)
+        WHERE project_id IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS public_albums_updated_idx ON public_albums(updated_at DESC);
+
       CREATE TABLE IF NOT EXISTS photo_assets (
         id TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -517,6 +534,119 @@ async function handleApi(request, response) {
     const user = { id: row.id, email: row.email };
     authRateLimiter.clearEmail(email);
     sendJson(response, 200, { user }, { 'Set-Cookie': sessionCookie(makeToken(user)) });
+    return true;
+  }
+
+  const publicPhotoMatch = path.match(/^\/api\/public-albums\/([^/]+)\/photos\/([^/]+)$/);
+  if (method === 'GET' && publicPhotoMatch) {
+    const shareToken = decodeURIComponent(publicPhotoMatch[1]);
+    const photoId = decodeURIComponent(publicPhotoMatch[2]);
+    const result = await pool.query(
+      'SELECT user_id, data_json AS data FROM public_albums WHERE share_token = $1',
+      [shareToken],
+    );
+    const album = result.rows[0];
+    if (!album) {
+      sendJson(response, 404, { error: 'public_album_not_found', message: 'Альбом недоступен' });
+      return true;
+    }
+    const key = referencedPublicPhotoKey(extractCloudPhotoKeys(album.data, album.user_id), photoId);
+    if (!key) {
+      sendJson(response, 404, { error: 'public_photo_not_found', message: 'Фотография недоступна' });
+      return true;
+    }
+    await photoAssetGateway.servePublicPhoto({ response, userId: album.user_id, key });
+    return true;
+  }
+
+  const publicAlbumMatch = path.match(/^\/api\/public-albums\/([^/]+)$/);
+  if (method === 'GET' && publicAlbumMatch) {
+    const shareToken = decodeURIComponent(publicAlbumMatch[1]);
+    const result = await pool.query(
+      'SELECT title, data_json AS data, updated_at FROM public_albums WHERE share_token = $1',
+      [shareToken],
+    );
+    const album = result.rows[0];
+    if (!album) {
+      sendJson(response, 404, { error: 'public_album_not_found', message: 'Альбом недоступен' });
+      return true;
+    }
+    sendJson(response, 200, {
+      album: {
+        title: album.title,
+        updatedAt: album.updated_at,
+        data: rewritePublicAlbumProject(album.data, shareToken),
+      },
+    });
+    return true;
+  }
+
+  if (method === 'POST' && path === '/api/public-albums') {
+    const user = await requireUser(request, response);
+    if (!user) return true;
+    const body = await readBody(request);
+    const data = body.data || {};
+    if (!Array.isArray(data.pages) || !data.pages.length) {
+      sendJson(response, 400, { error: 'invalid_album', message: 'В альбоме нет страниц для публикации' });
+      return true;
+    }
+    const title = String(body.title || 'Фотоальбом').trim().slice(0, 120) || 'Фотоальбом';
+    const projectId = body.projectId ? String(body.projectId) : null;
+    let shareToken = body.shareToken ? String(body.shareToken) : '';
+
+    if (projectId) {
+      const ownedProject = await pool.query('SELECT id FROM projects WHERE id = $1 AND user_id = $2', [projectId, user.id]);
+      if (!ownedProject.rows[0]) {
+        sendJson(response, 404, { error: 'project_not_found', message: 'Сначала сохрани проект в облако' });
+        return true;
+      }
+      const existing = await pool.query(
+        'SELECT share_token FROM public_albums WHERE user_id = $1 AND project_id = $2',
+        [user.id, projectId],
+      );
+      if (existing.rows[0]?.share_token) shareToken = existing.rows[0].share_token;
+    }
+
+    if (shareToken) {
+      const updated = await pool.query(
+        `UPDATE public_albums
+            SET project_id = $3, title = $4, data_json = $5, updated_at = NOW()
+          WHERE share_token = $1 AND user_id = $2
+          RETURNING share_token, title, updated_at`,
+        [shareToken, user.id, projectId, title, data],
+      );
+      if (updated.rows[0]) {
+        await touchProjectPhotoAssets(user.id, data);
+        sendJson(response, 200, { album: { token: shareToken, url: '/album/' + shareToken, title, updatedAt: updated.rows[0].updated_at } });
+        return true;
+      }
+    }
+
+    shareToken = createPublicAlbumToken();
+    const created = await pool.query(
+      `INSERT INTO public_albums(share_token, user_id, project_id, title, data_json)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING share_token, title, updated_at`,
+      [shareToken, user.id, projectId, title, data],
+    );
+    await touchProjectPhotoAssets(user.id, data);
+    sendJson(response, 200, { album: { token: shareToken, url: '/album/' + shareToken, title, updatedAt: created.rows[0].updated_at } });
+    return true;
+  }
+
+  if (method === 'DELETE' && publicAlbumMatch) {
+    const user = await requireUser(request, response);
+    if (!user) return true;
+    const shareToken = decodeURIComponent(publicAlbumMatch[1]);
+    const deleted = await pool.query(
+      'DELETE FROM public_albums WHERE share_token = $1 AND user_id = $2 RETURNING share_token',
+      [shareToken, user.id],
+    );
+    if (!deleted.rows[0]) {
+      sendJson(response, 404, { error: 'public_album_not_found', message: 'Публичная ссылка уже недоступна' });
+      return true;
+    }
+    sendJson(response, 200, { ok: true });
     return true;
   }
 

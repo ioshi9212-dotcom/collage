@@ -3014,6 +3014,7 @@ export default function App() {
           throw error;
         }
       },
+      saveProject: () => save(),
       saveLocal: () => saveLocalProject({ silent: true }),
       openProject: async (data) => {
         const prepared = await applyProjectData(data, 'Проект открыт из аккаунта');
