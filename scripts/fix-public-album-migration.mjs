@@ -1,5 +1,13 @@
 import fs from 'node:fs';
 
+const previewPath = 'src/editor/AlbumFlipPreview.jsx';
+let preview = fs.readFileSync(previewPath, 'utf8');
+const currentHelp = `<p className="album-flip-help">{zoomed ? 'Перемещай увеличенный альбом пальцем. Нажми «Уменьшить», чтобы снова листать.' : 'Листай свайпом. Для деталей можно увеличить альбом.'}</p>`;
+const compatibleHelp = `<p className="album-flip-help">{zoomed ? 'Перемещай увеличенный альбом пальцем. Нажми «Уменьшить», чтобы снова листать.' : 'Потяни внешний край листа или листай свайпом. Для деталей можно увеличить альбом.'}</p>`;
+if (!preview.includes(currentHelp)) throw new Error('Missing album viewer help patch target');
+preview = preview.replace(currentHelp, compatibleHelp);
+fs.writeFileSync(previewPath, preview);
+
 fs.writeFileSync('e2e/public-album-route.spec.js', `import { test, expect } from '@playwright/test';
 
 test('public album route does not render editor chrome', async ({ page }) => {
@@ -28,4 +36,4 @@ test('public album route does not render editor chrome', async ({ page }) => {
 });
 `);
 
-console.log('Public album migration browser test fixed');
+console.log('Public album migration browser test and viewer help fixed');
