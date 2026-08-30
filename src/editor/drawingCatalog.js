@@ -13,14 +13,35 @@ export function normalizeDrawingCatalogAsset(value) {
     src: String(source.src || ''),
     width: Math.max(1, Number(source.width) || 1),
     height: Math.max(1, Number(source.height) || 1),
+    builtin: source.builtin === true || String(source.id || '').startsWith('builtin-'),
   };
 }
 
+export const BUILTIN_DRAWING_ASSETS = Object.freeze([
+  { id: 'builtin-branch-outline-01', name: 'Веточка 1', src: '/drawings/branch-outline-01.svg', width: 1254, height: 1254, builtin: true },
+  { id: 'builtin-branch-outline-02', name: 'Веточка 2', src: '/drawings/branch-outline-02.svg', width: 1254, height: 1254, builtin: true },
+  { id: 'builtin-branch-outline-03', name: 'Веточка 3', src: '/drawings/branch-outline-03.svg', width: 1254, height: 1254, builtin: true },
+  { id: 'builtin-branch-outline-04', name: 'Веточка 4', src: '/drawings/branch-outline-04.svg', width: 1254, height: 1254, builtin: true },
+  { id: 'builtin-branch-solid-01', name: 'Веточка силуэт', src: '/drawings/branch-solid-01.svg', width: 1254, height: 1254, builtin: true },
+].map((asset) => Object.freeze(normalizeDrawingCatalogAsset(asset))));
+
 export async function loadDrawingCatalog(fetchImpl = fetch) {
-  const response = await fetchImpl('/api/drawing-assets', { credentials: 'include' });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw apiError(response, payload, 'Не удалось загрузить рисунки');
-  return (Array.isArray(payload.assets) ? payload.assets : []).map(normalizeDrawingCatalogAsset);
+  let remoteAssets = [];
+  try {
+    const response = await fetchImpl('/api/drawing-assets', { credentials: 'include' });
+    if (response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      remoteAssets = (Array.isArray(payload.assets) ? payload.assets : []).map(normalizeDrawingCatalogAsset);
+    }
+  } catch {
+    // Built-in drawings remain available even when the cloud catalog is unavailable.
+  }
+
+  const builtinIds = new Set(BUILTIN_DRAWING_ASSETS.map((asset) => asset.id));
+  return [
+    ...BUILTIN_DRAWING_ASSETS,
+    ...remoteAssets.filter((asset) => !builtinIds.has(asset.id)),
+  ];
 }
 
 function imageDimensions(file) {
@@ -59,6 +80,7 @@ export async function uploadDrawingCatalogAsset(file, fetchImpl = fetch) {
 }
 
 export async function deleteDrawingCatalogAsset(id, fetchImpl = fetch) {
+  if (String(id || '').startsWith('builtin-')) throw new Error('Встроенный рисунок нельзя удалить');
   const response = await fetchImpl('/api/drawing-assets/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'include' });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw apiError(response, payload, 'Не удалось удалить рисунок');
