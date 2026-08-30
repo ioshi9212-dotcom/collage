@@ -222,16 +222,18 @@ for (const failure of [
   const calls = [];
   const harness = createHarness(async (url, options = {}) => {
     calls.push({ url, method: options.method || 'GET' });
-    if (url === '/api/projects/original-project' && options.method === 'PUT') {
-      return jsonResponse(200, { project: { id: 'original-project', title: 'Исходный альбом' } });
+    if (url === '/api/projects' && options.method === 'POST') {
+      return jsonResponse(200, { project: { id: 'version-2', title: 'Исходный альбом.2' } });
     }
     if (url === '/api/projects') return jsonResponse(200, { projects: [] });
     throw new Error(`Unexpected request: ${options.method || 'GET'} ${url}`);
   });
 
   await harness.api.saveCloud();
-  assert.equal(calls[0].method, 'PUT');
-  assert.equal(calls[0].url, '/api/projects/original-project');
+  assert.equal(calls[0].method, 'POST');
+  assert.equal(calls[0].url, '/api/projects');
+  assert.equal(harness.localStorage.getItem(CURRENT_PROJECT_ID_KEY), 'version-2');
+  assert.equal(harness.localStorage.getItem(CURRENT_PROJECT_TITLE_KEY), 'Исходный альбом.2');
 }
 
 {
@@ -304,7 +306,11 @@ for (const failure of [
 const source = readFileSync(SOURCE_PATH, 'utf8');
 const saveAsNewBody = source.match(/async function saveAsNew\(\) \{([\s\S]*?)\n {2}\}/)?.[1] || '';
 assert.doesNotMatch(saveAsNewBody, /removeItem\(CURRENT_PROJECT_ID_KEY\)/);
-assert.match(saveAsNewBody, /saveCloud\(\{\s*forceCreate:\s*true\s*\}\)/);
+assert.match(saveAsNewBody, /saveCloud\(\)/);
+assert.match(source, /Сохранить версию/);
+assert.match(source, /Предыдущая версия/);
+assert.match(source, /Восстановить публикацию/);
+assert.match(source, /recover-public/);
 assert.match(source, /typeof bridge\?\.openProject === 'function'/);
 assert.match(source, /await bridge\.openProject\(project\.data\)/);
 assert.match(source, /typeof bridge\.getCloudProject === 'function'/);

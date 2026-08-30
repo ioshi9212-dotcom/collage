@@ -14,6 +14,7 @@
 
   window.__collageCloudAuth = {
     isAuthenticated: () => Boolean(state.user),
+    saveVersion: () => saveAsNew(),
   };
 
   function el(tag, attrs = {}, children = []) {
@@ -134,6 +135,16 @@
     return pages ? `Альбом ${date} · ${pages} стр.` : `Альбом ${date}`;
   }
 
+  function titleBase(title) {
+    const value = String(title || '').trim();
+    const match = value.match(/^(.+)\.(\d+)$/);
+    return match && Number(match[2]) >= 2 ? match[1] : value;
+  }
+
+  function sameTitleFamily(left, right) {
+    return titleBase(left) === titleBase(right);
+  }
+
   async function loadMe() {
     try {
       const result = await api('/api/me');
@@ -180,9 +191,8 @@
     if (shouldRender) render();
   }
 
-  async function saveCloud(options = {}) {
+  async function saveCloud() {
     if (state.busy) return;
-    const forceCreate = options?.forceCreate === true;
     if (!state.user) return setStatus('Сначала войди в аккаунт');
     const requestedTitle = document.querySelector('.cloud-project-title')?.value || '';
     let finalStatus = '';
@@ -199,9 +209,8 @@
       }
 
       const title = (requestedTitle || guessTitle(editorProject.data)).trim() || 'Без названия';
-      const existingId = forceCreate ? '' : localStorage.getItem(CURRENT_PROJECT_ID_KEY);
-      const url = existingId ? `/api/projects/${existingId}` : '/api/projects';
-      const method = existingId ? 'PUT' : 'POST';
+      const url = '/api/projects';
+      const method = 'POST';
       const payload = JSON.stringify({ title, data: editorProject.data });
       const payloadBytes = byteLength(payload);
 
@@ -217,7 +226,7 @@
       localStorage.setItem(CURRENT_PROJECT_ID_KEY, result.project.id);
       localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, result.project.title);
       await loadProjects(false);
-      finalStatus = editorProject.source === 'bridge' ? 'Сохранено в аккаунт' : 'Сохранено в аккаунт из локального сохранения';
+      finalStatus = editorProject.source === 'bridge' ? 'Сохранена новая версия' : 'Сохранена новая версия из локального сохранения';
     } catch (error) {
       finalStatus = error.message;
     } finally {
@@ -228,7 +237,45 @@
   }
 
   async function saveAsNew() {
-    await saveCloud({ forceCreate: true });
+    await saveCloud();
+  }
+
+  async function openPreviousVersion() {
+    if (state.busy) return;
+    const currentId = localStorage.getItem(CURRENT_PROJECT_ID_KEY);
+    const currentTitle = localStorage.getItem(CURRENT_PROJECT_TITLE_KEY) || '';
+    if (!currentTitle) return setStatus('Сначала открой сохранённый проект');
+    const currentProject = state.projects.find((project) => project.id === currentId);
+    const currentTime = Date.parse(currentProject?.created_at || currentProject?.updated_at || '') || Number.POSITIVE_INFINITY;
+    const family = state.projects
+      .filter((project) => project.id !== currentId && sameTitleFamily(project.title, currentTitle))
+      .filter((project) => (Date.parse(project.created_at || project.updated_at || '') || 0) < currentTime)
+      .sort((left, right) => (Date.parse(right.created_at || right.updated_at || '') || 0) - (Date.parse(left.created_at || left.updated_at || '') || 0));
+    const previous = family[0];
+    if (!previous) return setStatus('Предыдущей версии этого альбома нет');
+    await openProject(previous.id);
+  }
+
+  async function recoverPublicSnapshot(id) {
+    if (state.busy) return;
+    const project = state.projects.find((item) => item.id === id);
+    if (!project?.has_public_snapshot) return setStatus('Опубликованная копия не найдена');
+    if (!confirm(`Восстановить опубликованную копию «${project.title || 'альбом'}» как новый проект?`)) return;
+    state.busy = true;
+    setStatus('Восстанавливаю опубликованную копию…');
+    render();
+    let finalStatus = '';
+    try {
+      const result = await api(`/api/projects/${id}/recover-public`, { method: 'POST', body: '{}' });
+      await loadProjects(false);
+      finalStatus = `Восстановлено как «${result.project?.title || 'новая версия'}». Нажми «Открыть» у этой версии.`;
+    } catch (error) {
+      finalStatus = error.message;
+    } finally {
+      state.busy = false;
+      render();
+      setStatus(finalStatus);
+    }
   }
 
   async function openProject(id) {
@@ -313,11 +360,11 @@
         el('input', { class: 'cloud-project-title', type: 'text', value: currentTitle, placeholder: 'Например: Альбом для печати' }),
       ]),
       el('div', { class: 'cloud-auth-row' }, [
-        el('button', { class: 'cloud-auth-button primary', type: 'button', disabled: state.busy ? 'disabled' : null, onclick: saveCloud, text: 'Сохранить' }),
-        el('button', { class: 'cloud-auth-button', type: 'button', disabled: state.busy ? 'disabled' : null, onclick: saveAsNew, text: 'Как новый' }),
+        el('button', { class: 'cloud-auth-button primary', type: 'button', disabled: state.busy ? 'disabled' : null, onclick: saveCloud, text: 'Сохранить версию' }),
+        el('button', { class: 'cloud-auth-button', type: 'button', disabled: state.busy ? 'disabled' : null, onclick: openPreviousVersion, text: 'Предыдущая версия' }),
         el('button', { class: 'cloud-auth-button', type: 'button', onclick: () => loadProjects(), text: 'Обновить' }),
       ]),
-      el('div', { class: 'cloud-auth-status', text: currentId ? 'Этот проект связан с аккаунтом.' : 'Сохрани, чтобы создать проект в аккаунте.' }),
+      el('div', { class: 'cloud-auth-status', text: currentId ? 'Каждое сохранение создаёт новую версию. Старые остаются, пока ты сама их не удалишь.' : 'Сохрани, чтобы создать первую версию проекта.' }),
       el('div', { class: 'cloud-project-list' }, state.projects.length ? state.projects.map((project) => {
         const active = project.id === currentId;
         return el('div', { class: `cloud-project-card ${active ? 'active' : ''}` }, [
@@ -325,6 +372,9 @@
           el('small', { text: `Обновлён: ${formatDate(project.updated_at)}` }),
           el('div', { class: 'cloud-project-actions' }, [
             el('button', { class: 'cloud-auth-button', type: 'button', onclick: () => openProject(project.id), text: 'Открыть' }),
+            ...(project.has_public_snapshot ? [
+              el('button', { class: 'cloud-auth-button', type: 'button', onclick: () => recoverPublicSnapshot(project.id), text: 'Восстановить публикацию' }),
+            ] : []),
             el('button', { class: 'cloud-auth-button danger', type: 'button', onclick: () => deleteProject(project.id), text: 'Удалить' }),
           ]),
         ]);

@@ -31,6 +31,7 @@ import { createHeicConversionHandler } from './server/heicConversion.js';
 import { applySecurityHeaders } from './server/securityHeaders.js';
 import { describeSessionSecretState, resolveSessionSecret } from './server/sessionSecret.js';
 import { createPublicAlbumToken, referencedPublicPhotoKey, rewritePublicAlbumProject } from './server/publicAlbumModel.js';
+import { handleSafeProjectVersionApi } from './server/safeProjectVersions.js';
 
 const { Pool } = pg;
 
@@ -649,6 +650,21 @@ async function handleApi(request, response) {
     sendJson(response, 200, { ok: true });
     return true;
   }
+
+  const safeProjectVersionHandled = await handleSafeProjectVersionApi({
+    request,
+    response,
+    path,
+    method,
+    pool,
+    projectQuotaLimits,
+    requireUser,
+    readBody,
+    sendJson,
+    touchProjectPhotoAssets,
+    sendProjectMutationError,
+  });
+  if (safeProjectVersionHandled) return true;
 
   if (method === 'GET' && path === '/api/projects') {
     const user = await requireUser(request, response);
