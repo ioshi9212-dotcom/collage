@@ -26,6 +26,27 @@ jobs:
         run: npm ci
       - name: Apply safe-save migration
         run: node scripts/apply-safe-save-recovery.mjs
+      - name: Remove obsolete force-create branch
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const authPath = 'public/cloud-auth.js';
+          let auth = fs.readFileSync(authPath, 'utf8');
+          auth = auth.replace(
+            "  async function saveCloud(options = {}) {\n    if (state.busy) return;\n    const forceCreate = options?.forceCreate === true;\n",
+            "  async function saveCloud() {\n    if (state.busy) return;\n",
+          );
+          auth = auth.replace('    await saveCloud({ forceCreate: true });', '    await saveCloud();');
+          fs.writeFileSync(authPath, auth);
+
+          const testPath = 'tests/cloud-auth.test.mjs';
+          let test = fs.readFileSync(testPath, 'utf8');
+          test = test.replace(
+            'assert.match(saveAsNewBody, /saveCloud\\(\\{\\s*forceCreate:\\s*true\\s*\\}\\)/);',
+            'assert.match(saveAsNewBody, /saveCloud\\(\\)/);',
+          );
+          fs.writeFileSync(testPath, test);
+          NODE
       - name: Lint
         run: npm run lint
       - name: Test
