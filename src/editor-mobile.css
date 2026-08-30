@@ -120,7 +120,7 @@
   .app-header-actions-v2 {
     grid-area: actions;
     display: grid;
-    grid-template-columns: repeat(4, 44px);
+    grid-template-columns: repeat(6, 36px);
     align-items: center;
     gap: 3px;
     min-width: 0;
@@ -129,9 +129,9 @@
   .app-header-actions-v2 > .button,
   .app-header-actions-v2 .export-menu-v2,
   .app-header-actions-v2 .export-menu-v2 > .button {
-    width: 44px;
-    min-width: 44px;
-    max-width: 44px;
+    width: 36px;
+    min-width: 36px;
+    max-width: 36px;
   }
 
   .app-header-v2 .app-header-actions-v2 > .button,
@@ -147,7 +147,7 @@
     white-space: nowrap;
   }
 
-  .app-header-actions-v2 > button:first-of-type::after {
+  .app-header-actions-v2 .open-project-button-v2::after {
     content: "Откр.";
     font-size: 9px;
   }
@@ -162,9 +162,14 @@
     font-size: 9px;
   }
 
-  .app-header-actions-v2 > button:last-of-type::after {
+  .app-header-actions-v2 .account-button-v2::after {
     content: "Акк.";
     font-size: 9px;
+  }
+
+  .app-header-v2 .app-header-actions-v2 .history-button-v2 {
+    font-size: 17px !important;
+    padding: 0 !important;
   }
 
   .export-popover-v2 {

@@ -5,6 +5,7 @@ import {
   buildGridLayout,
   clamp,
   ensureLayout,
+  fitFramesToPadding,
   framesFromLayout,
   getColumnHandles,
   getRowHandles,
@@ -65,6 +66,14 @@ import {
   settingsForPage,
 } from './editor/pageModel';
 import { movePageOrder, pageNumberToIndex, swapPageOrder } from './editor/pageOrder';
+import {
+  commitProjectHistory,
+  createProjectHistory,
+  createProjectHistorySnapshot,
+  redoProjectHistory,
+  sameProjectHistorySnapshot,
+  undoProjectHistory,
+} from './editor/projectHistory';
 import {
   applyPhotoToFrames,
   bringFrameToFront,
@@ -1392,6 +1401,13 @@ export default function App() {
   const photoProgressTimerRef = useRef(null);
   const saveInFlightRef = useRef(null);
   const exportInFlightRef = useRef(false);
+  const projectHistoryRef = useRef(null);
+  const projectHistoryLiveRef = useRef(null);
+  const projectHistoryTimerRef = useRef(null);
+  const projectHistoryPendingRef = useRef(false);
+  const projectHistoryRestoringRef = useRef(false);
+  const projectHistoryResetRef = useRef(false);
+  const [, bumpProjectHistory] = useState(0);
 
   const [album, setAlbum] = useState(() => createInitialAlbum(DEFAULT_CANVAS, DEFAULT_SETTINGS));
   const [library, setLibrary] = useState([]);
@@ -1447,6 +1463,62 @@ export default function App() {
   const [leftPanel, setLeftPanel] = useState('photos');
   const [inspectorTab, setInspectorTab] = useState('object');
 
+  const liveProjectHistorySnapshot = createProjectHistorySnapshot({
+    pages: album.pages,
+    currentPageId: album.currentPageId,
+    library,
+    hiddenLibraryPhotoIds,
+    canvas,
+    settings,
+    extraLayers,
+    bookletSheetsPerBlock,
+    bookletPrintSettings,
+  });
+  projectHistoryLiveRef.current = liveProjectHistorySnapshot;
+  if (!projectHistoryRef.current) projectHistoryRef.current = createProjectHistory(liveProjectHistorySnapshot);
+
+  useEffect(() => {
+    const nextSnapshot = projectHistoryLiveRef.current;
+    window.clearTimeout(projectHistoryTimerRef.current);
+
+    if (projectHistoryResetRef.current) {
+      projectHistoryResetRef.current = false;
+      projectHistoryPendingRef.current = false;
+      projectHistoryRef.current = createProjectHistory(nextSnapshot);
+      bumpProjectHistory((value) => value + 1);
+      return undefined;
+    }
+
+    if (projectHistoryRestoringRef.current) {
+      projectHistoryRestoringRef.current = false;
+      projectHistoryPendingRef.current = false;
+      bumpProjectHistory((value) => value + 1);
+      return undefined;
+    }
+
+    const history = projectHistoryRef.current ?? createProjectHistory(nextSnapshot);
+    projectHistoryRef.current = history;
+    if (sameProjectHistorySnapshot(history.current, nextSnapshot)) {
+      if (history.current?.currentPageId !== nextSnapshot.currentPageId) {
+        projectHistoryRef.current = {
+          ...history,
+          current: { ...history.current, currentPageId: nextSnapshot.currentPageId },
+        };
+      }
+      return undefined;
+    }
+
+    projectHistoryPendingRef.current = true;
+    bumpProjectHistory((value) => value + 1);
+    projectHistoryTimerRef.current = window.setTimeout(() => {
+      projectHistoryRef.current = commitProjectHistory(projectHistoryRef.current, projectHistoryLiveRef.current);
+      projectHistoryPendingRef.current = false;
+      bumpProjectHistory((value) => value + 1);
+    }, 320);
+
+    return () => window.clearTimeout(projectHistoryTimerRef.current);
+  }, [album.pages, album.currentPageId, library, hiddenLibraryPhotoIds, canvas, settings, extraLayers, bookletSheetsPerBlock, bookletPrintSettings]);
+
   useEffect(() => {
     const next = normalizeAlbumEditorMode(albumMode);
     if (document.body?.dataset) document.body.dataset.albumMode = next;
@@ -1460,6 +1532,7 @@ export default function App() {
   useEffect(() => () => {
     releaseAllPhotoRuntimeUrls();
     window.clearTimeout(photoProgressTimerRef.current);
+    window.clearTimeout(projectHistoryTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -1758,6 +1831,81 @@ export default function App() {
     noticeTimerRef.current = setTimeout(() => setNotice(''), 2500);
   }
 
+  function flushPendingProjectHistory() {
+    window.clearTimeout(projectHistoryTimerRef.current);
+    if (!projectHistoryPendingRef.current) return projectHistoryRef.current;
+    projectHistoryRef.current = commitProjectHistory(projectHistoryRef.current, projectHistoryLiveRef.current);
+    projectHistoryPendingRef.current = false;
+    bumpProjectHistory((value) => value + 1);
+    return projectHistoryRef.current;
+  }
+
+  function restoreProjectHistorySnapshot(snapshot) {
+    if (!snapshot) return;
+    window.clearTimeout(projectHistoryTimerRef.current);
+    projectHistoryPendingRef.current = false;
+    projectHistoryRestoringRef.current = true;
+
+    setAlbum((current) => {
+      const pagesForRestore = snapshot.pages ?? [];
+      const snapshotPageExists = pagesForRestore.some((page) => page.id === snapshot.currentPageId);
+      const currentPageExists = pagesForRestore.some((page) => page.id === current.currentPageId);
+      const currentPageId = snapshotPageExists
+        ? snapshot.currentPageId
+        : currentPageExists
+          ? current.currentPageId
+          : pagesForRestore[0]?.id ?? null;
+      return { pages: pagesForRestore, currentPageId };
+    });
+    setLibrary(snapshot.library ?? []);
+    setHiddenLibraryPhotoIds(snapshot.hiddenLibraryPhotoIds ?? new Set());
+    setCanvas(snapshot.canvas ?? DEFAULT_CANVAS);
+    setSettings(snapshot.settings ?? DEFAULT_SETTINGS);
+    setExtraLayers(snapshot.extraLayers ?? normalizeExtraLayers(null));
+    setBookletSheetsPerBlock(snapshot.bookletSheetsPerBlock ?? DEFAULT_SHEETS_PER_BLOCK);
+    setBookletPrintSettings(snapshot.bookletPrintSettings ?? DEFAULT_BOOKLET_PRINT_SETTINGS);
+    setSelectedFrameId(null);
+    setSelectedPhotoId(null);
+    setSelectedTextId(null);
+    setSelectedDrawingId(null);
+    setMoveFrameWithPhotoId(null);
+    setFrameSnapGuides(null);
+    setBookletSideId(null);
+    setPrintBookletSideId(null);
+    setDragPageIndex(null);
+    setDragOverPageIndex(null);
+  }
+
+  function undoProjectChange() {
+    const history = flushPendingProjectHistory();
+    const result = undoProjectHistory(history);
+    if (!result.target) return;
+    projectHistoryRef.current = result.history;
+    restoreProjectHistorySnapshot(result.target);
+    bumpProjectHistory((value) => value + 1);
+    show('Последнее изменение отменено');
+  }
+
+  function redoProjectChange() {
+    const history = flushPendingProjectHistory();
+    const result = redoProjectHistory(history);
+    if (!result.target) return;
+    projectHistoryRef.current = result.history;
+    restoreProjectHistorySnapshot(result.target);
+    bumpProjectHistory((value) => value + 1);
+    show('Изменение возвращено');
+  }
+
+  function resetProjectHistoryForLoad() {
+    window.clearTimeout(projectHistoryTimerRef.current);
+    projectHistoryPendingRef.current = false;
+    projectHistoryResetRef.current = true;
+    bumpProjectHistory((value) => value + 1);
+  }
+
+  const canUndoProject = projectHistoryPendingRef.current || Boolean(projectHistoryRef.current?.past?.length);
+  const canRedoProject = !projectHistoryPendingRef.current && Boolean(projectHistoryRef.current?.future?.length);
+
   function updateExtraLayers(updater) {
     setExtraLayers((current) => normalizeExtraLayers(typeof updater === 'function' ? updater(normalizeExtraLayers(current)) : updater));
   }
@@ -1995,6 +2143,30 @@ export default function App() {
     }
 
     rebuildAll(canvas, next);
+  }
+
+  function fitCurrentPageFramesToPadding() {
+    if (!currentPage || currentPage.isBlankPage) return show('На пустой странице нет фото-окон');
+    const sourceFrames = Array.isArray(currentPage.frames) ? currentPage.frames : [];
+    if (!sourceFrames.length) return show('На странице нет фото-окон');
+
+    const padding = Math.max(0, Math.round(Number(settings.padding) || 0));
+    const fittedFrames = fitFramesToPadding(sourceFrames, canvas, padding)
+      .map((frame) => ({ ...frame, freeLayoutPadding: padding }));
+
+    if (settings.frameMode !== 'free') setSettings((current) => ({ ...current, frameMode: 'free' }));
+    setAlbum((current) => ({
+      ...current,
+      pages: current.pages.map((page) => (
+        page.id === currentPage.id
+          ? { ...page, frameCount: fittedFrames.length, layout: null, frames: fittedFrames }
+          : page
+      )),
+    }));
+    setSelectedFrameId(null);
+    setMoveFrameWithPhotoId(null);
+    setFrameSnapGuides(null);
+    show('Окна подогнаны к полям страницы');
   }
 
   function updatePageNumbering(key, value) {
@@ -2870,6 +3042,7 @@ export default function App() {
     });
     const runtimePrepared = await hydratePhotoProject(prepared);
     releaseUnusedPhotoRuntimeUrls(runtimePrepared.library.map((photo) => photo?.assetId));
+    resetProjectHistoryForLoad();
 
     setCanvas(runtimePrepared.canvas);
     setSettings(runtimePrepared.settings);
@@ -3761,7 +3934,9 @@ export default function App() {
         </div>
 
         <div className="app-header-actions-v2 file-actions">
-          <button className="button" type="button" onClick={loadSaved}>Открыть</button>
+          <button className="button history-button-v2" type="button" aria-label="Отменить" title="Отменить последнее изменение" disabled={!canUndoProject} onClick={undoProjectChange}>↶</button>
+          <button className="button history-button-v2" type="button" aria-label="Вернуть" title="Вернуть отменённое изменение" disabled={!canRedoProject} onClick={redoProjectChange}>↷</button>
+          <button className="button open-project-button-v2" type="button" onClick={loadSaved}>Открыть</button>
           <div className="export-menu-v2">
             <button className="button" type="button" aria-expanded={exportMenuOpen} onClick={() => setExportMenuOpen((open) => !open)}>Экспорт ▾</button>
             {exportMenuOpen && (
@@ -3779,7 +3954,7 @@ export default function App() {
             )}
           </div>
           <button className="button primary-save-v2" type="button" disabled={saving} onClick={save}>{saving ? 'Сохраняю…' : 'Сохранить'}</button>
-          <button className="button" type="button" onClick={() => document.querySelector('.cloud-auth-toggle')?.click()}>Аккаунт</button>
+          <button className="button account-button-v2" type="button" onClick={() => document.querySelector('.cloud-auth-toggle')?.click()}>Аккаунт</button>
           <input className="hidden-input project-storage-json-input" type="file" accept="application/json" onChange={importJson} />
         </div>
       </header>
@@ -3868,6 +4043,8 @@ export default function App() {
               <p className="hint">Добавление и удаление в свободном режиме не меняют положение и размеры остальных окон.</p>
               <label className="field"><span>Зазор</span><SoftNumberInput min={0} max={200} value={settings.gap} onValue={(value) => updateSetting('gap', value)} /></label>
               <label className="field"><span>Поля макета</span><SoftNumberInput min={0} max={300} value={settings.padding} onValue={(value) => updateSetting('padding', value)} /></label>
+              <button className="button full" onClick={fitCurrentPageFramesToPadding} disabled={Boolean(currentPage?.isBlankPage) || currentPageFrameCount <= 0}>Подогнать окна к полям</button>
+              <p className="hint">Подтягивает крайние фото-окна к заданным полям страницы. Это та самая подгонка всей композиции к краям.</p>
               <button className={`button full ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>{locked ? 'Сетка окон включена' : 'Свободные окна'}</button>
               <button className={`button full ${settings.smartSnap !== false ? 'active-mode' : ''}`} onClick={() => updateSetting('smartSnap', settings.smartSnap === false)} disabled={locked}>Умная привязка</button>
               <p className="hint">При движении и изменении размера края и центры окон мягко прилипают друг к другу. Розовая линия показывает выравнивание.</p>
@@ -4116,6 +4293,7 @@ export default function App() {
                 <label className="field"><span>Фото-окон</span><select value={currentPage?.isBlankPage ? 0 : currentPageFrameCount} disabled={Boolean(currentPage?.isBlankPage)} onChange={(event) => updateSetting('frameCount', Number(event.target.value))}>{currentPage?.isBlankPage ? <option value={0}>пустая</option> : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => <option key={count} value={count}>{count === 0 ? 'нет' : count}</option>)}</select></label>
                 <label className="field"><span>Зазор</span><SoftNumberInput min={0} max={200} value={settings.gap} onValue={(value) => updateSetting('gap', value)} /></label>
                 <label className="field"><span>Поля макета</span><SoftNumberInput min={0} max={300} value={settings.padding} onValue={(value) => updateSetting('padding', value)} /></label>
+                <button className="button full" onClick={fitCurrentPageFramesToPadding} disabled={Boolean(currentPage?.isBlankPage) || currentPageFrameCount <= 0}>Подогнать окна к полям</button>
                 <button className={`button full ${settings.showGuides ? 'active-mode' : ''}`} onClick={() => updateSetting('showGuides', !settings.showGuides)}>Направляющие</button>
                 <button className={`button full ${locked ? 'active-mode' : ''}`} onClick={() => updateSetting('frameMode', locked ? 'free' : 'locked')}>Сетка окон</button>
               </div>}

@@ -755,3 +755,17 @@ body[data-album-mode='templates'] .editor-workspace-v2 > .album-mode-inspector {
   padding-inline: 12px;
   white-space: nowrap;
 }
+
+
+.history-button-v2 {
+  min-width: 34px;
+  width: 34px;
+  padding-inline: 0 !important;
+  font-size: 18px !important;
+  line-height: 1;
+}
+
+.history-button-v2:disabled {
+  opacity: .38;
+  cursor: default;
+}
