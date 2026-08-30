@@ -11,9 +11,26 @@ import {
 const TURN_MS = 760;
 const TURN_COMMIT_PROGRESS = 0.2;
 const MAX_STACK_LAYERS = 8;
+const MIN_VIEWER_ZOOM = 1;
+const MAX_VIEWER_ZOOM = 3.4;
 
 function clamp01(value) {
   return Math.min(1, Math.max(0, Number(value) || 0));
+}
+
+function clampRange(value, min, max) {
+  return Math.min(max, Math.max(min, Number(value) || 0));
+}
+
+function pointerDistance(left, right) {
+  return Math.hypot(right.x - left.x, right.y - left.y);
+}
+
+function pointerMidpoint(left, right) {
+  return {
+    x: (left.x + right.x) / 2,
+    y: (left.y + right.y) / 2,
+  };
 }
 
 function easeInOutCubic(value) {
@@ -142,10 +159,15 @@ export default function AlbumFlipPreview({
   const [turn, setTurn] = useState(null);
   const [turnProgress, setTurnProgress] = useState(0);
   const [zoomed, setZoomed] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1);
+  const [zoomPan, setZoomPan] = useState({ x: 0, y: 0 });
   const animationRef = useRef(0);
   const requestTurnRef = useRef(null);
   const dragRef = useRef(null);
+  const zoomPointersRef = useRef(new Map());
+  const zoomGestureRef = useRef(null);
   const dialogRef = useRef(null);
+  const sceneRef = useRef(null);
   const bookRef = useRef(null);
 
   function commitProgress(value) {
@@ -155,6 +177,46 @@ export default function AlbumFlipPreview({
   function stopAnimation() {
     window.cancelAnimationFrame(animationRef.current);
     animationRef.current = 0;
+  }
+
+  function defaultZoomScale() {
+    return window.matchMedia?.('(max-width: 760px)').matches ? 2.15 : 1.7;
+  }
+
+  function clampZoomPan(nextPan, scale = zoomScale) {
+    const scene = sceneRef.current;
+    const book = bookRef.current;
+    if (!scene || !book) return nextPan;
+    const scaledWidth = book.offsetWidth * scale;
+    const scaledHeight = book.offsetHeight * scale;
+    const allowanceX = Math.max(0, (scaledWidth - scene.clientWidth) / 2) + 28;
+    const allowanceY = Math.max(0, (scaledHeight - scene.clientHeight) / 2) + 28;
+    return {
+      x: clampRange(nextPan.x, -allowanceX, allowanceX),
+      y: clampRange(nextPan.y, -allowanceY, allowanceY),
+    };
+  }
+
+  function resetZoom() {
+    zoomPointersRef.current.clear();
+    zoomGestureRef.current = null;
+    setZoomed(false);
+    setZoomScale(1);
+    setZoomPan({ x: 0, y: 0 });
+  }
+
+  function enableZoom() {
+    if (!allowZoom) return;
+    zoomPointersRef.current.clear();
+    zoomGestureRef.current = null;
+    setZoomed(true);
+    setZoomScale(defaultZoomScale());
+    setZoomPan({ x: 0, y: 0 });
+  }
+
+  function toggleZoom() {
+    if (zoomed) resetZoom();
+    else enableZoom();
   }
 
   function finishTurn(direction) {
@@ -202,7 +264,7 @@ export default function AlbumFlipPreview({
   }
 
   function requestTurn(direction) {
-    if (turn) return;
+    if (turn || zoomed) return;
     const forward = direction === 'next';
     if (forward && spreadIndex >= maxSpread) return;
     if (!forward && spreadIndex <= 0) return;
@@ -219,6 +281,10 @@ export default function AlbumFlipPreview({
     setTurn(null);
     setTurnProgress(0);
     setZoomed(false);
+    setZoomScale(1);
+    setZoomPan({ x: 0, y: 0 });
+    zoomPointersRef.current.clear();
+    zoomGestureRef.current = null;
   }, [open, startPageIndex, pageCount]);
 
   useEffect(() => () => {
@@ -230,7 +296,8 @@ export default function AlbumFlipPreview({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKeyDown = (event) => {
-      if (event.key === 'Escape' && !standalone) onClose?.();
+      if (event.key === 'Escape' && zoomed) resetZoom();
+      else if (event.key === 'Escape' && !standalone) onClose?.();
       if (event.key === 'ArrowRight') requestTurnRef.current?.('next');
       if (event.key === 'ArrowLeft') requestTurnRef.current?.('prev');
     };
@@ -240,7 +307,7 @@ export default function AlbumFlipPreview({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [open, onClose, standalone]);
+  }, [open, onClose, standalone, zoomed]);
 
   const current = useMemo(() => albumSpreadPages(spreadIndex, pageCount), [spreadIndex, pageCount]);
   const previous = useMemo(() => albumSpreadPages(spreadIndex - 1, pageCount), [spreadIndex, pageCount]);
@@ -249,7 +316,7 @@ export default function AlbumFlipPreview({
   if (!open) return null;
 
   function beginSwipe(event) {
-    if (zoomed || turn || event.button > 0 || event.target.closest?.('button, input')) return;
+    if (turn || event.button > 0 || event.target.closest?.('button, input')) return;
     const rect = bookRef.current?.getBoundingClientRect();
     if (!rect || event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return;
     const direction = event.clientX >= rect.left + rect.width / 2 ? 'next' : 'prev';
@@ -302,6 +369,121 @@ export default function AlbumFlipPreview({
     animateTurn(drag.direction, drag.progress, 0, { commit: false });
   }
 
+  function beginZoomGesture(event) {
+    if (event.button > 0 || event.target.closest?.('button, input')) return;
+    event.preventDefault();
+    const pointers = zoomPointersRef.current;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    if (pointers.size >= 2) {
+      const [left, right] = [...pointers.values()].slice(0, 2);
+      zoomGestureRef.current = {
+        type: 'pinch',
+        startDistance: Math.max(1, pointerDistance(left, right)),
+        startMidpoint: pointerMidpoint(left, right),
+        startScale: zoomScale,
+        startPan: zoomPan,
+      };
+      return;
+    }
+
+    zoomGestureRef.current = {
+      type: 'pan',
+      pointerId: event.pointerId,
+      startPoint: { x: event.clientX, y: event.clientY },
+      startPan: zoomPan,
+    };
+  }
+
+  function moveZoomGesture(event) {
+    const pointers = zoomPointersRef.current;
+    if (!pointers.has(event.pointerId)) return;
+    event.preventDefault();
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointers.size >= 2) {
+      const [left, right] = [...pointers.values()].slice(0, 2);
+      let gesture = zoomGestureRef.current;
+      if (!gesture || gesture.type !== 'pinch') {
+        gesture = {
+          type: 'pinch',
+          startDistance: Math.max(1, pointerDistance(left, right)),
+          startMidpoint: pointerMidpoint(left, right),
+          startScale: zoomScale,
+          startPan: zoomPan,
+        };
+        zoomGestureRef.current = gesture;
+      }
+      const distance = Math.max(1, pointerDistance(left, right));
+      const midpoint = pointerMidpoint(left, right);
+      const nextScale = clampRange(
+        gesture.startScale * (distance / gesture.startDistance),
+        MIN_VIEWER_ZOOM,
+        MAX_VIEWER_ZOOM,
+      );
+      const nextPan = clampZoomPan({
+        x: gesture.startPan.x + midpoint.x - gesture.startMidpoint.x,
+        y: gesture.startPan.y + midpoint.y - gesture.startMidpoint.y,
+      }, nextScale);
+      setZoomScale(nextScale);
+      setZoomPan(nextPan);
+      return;
+    }
+
+    const gesture = zoomGestureRef.current;
+    if (!gesture || gesture.type !== 'pan' || gesture.pointerId !== event.pointerId) return;
+    setZoomPan(clampZoomPan({
+      x: gesture.startPan.x + event.clientX - gesture.startPoint.x,
+      y: gesture.startPan.y + event.clientY - gesture.startPoint.y,
+    }));
+  }
+
+  function finishZoomGesture(event) {
+    const pointers = zoomPointersRef.current;
+    pointers.delete(event.pointerId);
+    if (!pointers.size) {
+      zoomGestureRef.current = null;
+      return;
+    }
+    const [remaining] = [...pointers.entries()];
+    zoomGestureRef.current = {
+      type: 'pan',
+      pointerId: remaining[0],
+      startPoint: remaining[1],
+      startPan: zoomPan,
+    };
+  }
+
+  function handlePointerDown(event) {
+    if (zoomed) beginZoomGesture(event);
+    else beginSwipe(event);
+  }
+
+  function handlePointerMove(event) {
+    if (zoomed) moveZoomGesture(event);
+    else moveSwipe(event);
+  }
+
+  function handlePointerUp(event) {
+    if (zoomed) finishZoomGesture(event);
+    else finishSwipe();
+  }
+
+  function handlePointerCancel(event) {
+    if (zoomed) finishZoomGesture(event);
+    else cancelSwipe();
+  }
+
+  function handleWheel(event) {
+    if (!zoomed || !allowZoom) return;
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.1 : 0.9;
+    const nextScale = clampRange(zoomScale * factor, MIN_VIEWER_ZOOM, MAX_VIEWER_ZOOM);
+    setZoomScale(nextScale);
+    setZoomPan((currentPan) => clampZoomPan(currentPan, nextScale));
+  }
+
   const baseLeft = turn === 'prev' ? previous.left : current.left;
   const baseRight = turn === 'next' ? next.right : current.right;
   const adjacent = turn === 'next' ? next : previous;
@@ -325,19 +507,33 @@ export default function AlbumFlipPreview({
 
         <div
           className="album-flip-scene"
+          ref={sceneRef}
           style={{
             '--album-page-aspect': String(safeAspect),
             '--album-book-aspect': String(bookAspect),
             '--album-book-width-by-height': `${74 * bookAspect}dvh`,
             '--album-book-mobile-width-by-height': `${68 * bookAspect}dvh`,
+            touchAction: zoomed ? 'none' : undefined,
+            overflow: zoomed ? 'hidden' : undefined,
           }}
-          onPointerDown={beginSwipe}
-          onPointerMove={moveSwipe}
-          onPointerUp={finishSwipe}
-          onPointerCancel={cancelSwipe}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onWheel={handleWheel}
+          onDoubleClick={allowZoom ? toggleZoom : undefined}
         >
           <div className="album-flip-book-shadow" aria-hidden="true" />
-          <div className="album-flip-book" ref={bookRef}>
+          <div
+            className="album-flip-book"
+            ref={bookRef}
+            style={zoomed ? {
+              transform: `translate3d(${zoomPan.x}px, ${zoomPan.y}px, 0) rotateX(1deg) scale(${zoomScale})`,
+              transition: 'none',
+              cursor: 'grab',
+              willChange: 'transform',
+            } : undefined}
+          >
             <div className="album-flip-cover-back" aria-hidden="true" />
             <PaperStack side="left" depth={leftStackDepth} />
             <PaperStack side="right" depth={rightStackDepth} />
@@ -346,12 +542,12 @@ export default function AlbumFlipPreview({
             <TurningLeaf turn={turn} progress={turnProgress} current={current} adjacent={adjacent} renderPage={renderPage} />
             <div className="album-flip-spine" aria-hidden="true" />
           </div>
-          <button type="button" className="album-flip-hit album-flip-hit-prev" onClick={() => requestTurn('prev')} disabled={spreadIndex <= 0 || Boolean(turn)} aria-label="Предыдущий разворот">‹</button>
-          <button type="button" className="album-flip-hit album-flip-hit-next" onClick={() => requestTurn('next')} disabled={spreadIndex >= maxSpread || Boolean(turn)} aria-label="Следующий разворот">›</button>
+          <button type="button" className="album-flip-hit album-flip-hit-prev" onClick={() => requestTurn('prev')} disabled={zoomed || spreadIndex <= 0 || Boolean(turn)} aria-label="Предыдущий разворот">‹</button>
+          <button type="button" className="album-flip-hit album-flip-hit-next" onClick={() => requestTurn('next')} disabled={zoomed || spreadIndex >= maxSpread || Boolean(turn)} aria-label="Следующий разворот">›</button>
         </div>
 
         <footer className="album-flip-footer">
-          <button type="button" onClick={() => requestTurn('prev')} disabled={spreadIndex <= 0 || Boolean(turn)}>← Назад</button>
+          <button type="button" onClick={() => requestTurn('prev')} disabled={zoomed || spreadIndex <= 0 || Boolean(turn)}>← Назад</button>
           <label className="album-flip-progress">
             <span>{progress}%</span>
             <input
@@ -359,15 +555,15 @@ export default function AlbumFlipPreview({
               min="0"
               max={Math.max(0, maxSpread)}
               value={spreadIndex}
-              disabled={Boolean(turn)}
+              disabled={zoomed || Boolean(turn)}
               onChange={(event) => setSpreadIndex(Number(event.target.value))}
               aria-label="Перейти к развороту"
             />
           </label>
-          {allowZoom && <button type="button" className="album-flip-zoom-toggle" onClick={() => setZoomed((value) => !value)}>{zoomed ? 'Уменьшить' : 'Увеличить'}</button>}
-          <button type="button" onClick={() => requestTurn('next')} disabled={spreadIndex >= maxSpread || Boolean(turn)}>Вперёд →</button>
+          {allowZoom && <button type="button" className="album-flip-zoom-toggle" onClick={toggleZoom}>{zoomed ? 'Уменьшить' : 'Увеличить'}</button>}
+          <button type="button" onClick={() => requestTurn('next')} disabled={zoomed || spreadIndex >= maxSpread || Boolean(turn)}>Вперёд →</button>
         </footer>
-        <p className="album-flip-help">{zoomed ? 'Перемещай увеличенный альбом пальцем. Нажми «Уменьшить», чтобы снова листать.' : 'Потяни внешний край листа или листай свайпом. Для деталей можно увеличить альбом.'}</p>
+        <p className="album-flip-help">{zoomed ? 'Двигай увеличенный альбом одним пальцем. Двумя пальцами можно менять масштаб.' : 'Потяни внешний край листа или листай свайпом. Для деталей можно увеличить альбом.'}</p>
       </div>
     </div>
   );
