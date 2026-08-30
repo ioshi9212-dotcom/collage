@@ -32,6 +32,8 @@ import {
 import PhotoLibraryThumbnail from './editor/PhotoLibraryThumbnail';
 import PhotoImportReport from './editor/PhotoImportReport';
 import CollagePresetPicker from './editor/CollagePresetPicker';
+import DrawingImageLayer from './editor/DrawingImageLayer';
+import { deleteDrawingCatalogAsset, loadDrawingCatalog, uploadDrawingCatalogAsset } from './editor/drawingCatalog';
 import {
   createLocalPhotoProject,
   createPortablePhotoProject,
@@ -1289,6 +1291,18 @@ function ExtraPageLayers({
   return (
     <Group x={x} y={y} listening={!printMode}>
       {drawings.map((item) => {
+        if (item?.type === 'image') {
+          return (
+            <DrawingImageLayer
+              key={item.id ?? `${pageIndex}-image-${item.x}-${item.y}`}
+              item={item}
+              selected={item.id === selectedDrawingId}
+              editable={canEditDrawings}
+              onSelect={onSelectDrawing}
+              onChange={onDrawingDragEnd}
+            />
+          );
+        }
         if (item?.type !== 'line') return null;
         const length = Math.max(1, Number(item.length) || 300);
         const strokeWidth = Math.max(1, Number(item.strokeWidth) || 4);
@@ -1445,6 +1459,8 @@ export default function App() {
   const [extraLayers, setExtraLayers] = useState(() => normalizeExtraLayers(null));
   const [selectedTextId, setSelectedTextId] = useState(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState(null);
+  const [drawingCatalog, setDrawingCatalog] = useState([]);
+  const [drawingCatalogLoading, setDrawingCatalogLoading] = useState(false);
   const [templateRecords, setTemplateRecords] = useState(() => {
     try {
       const raw = localStorage.getItem(TEMPLATE_STORAGE_KEY);
@@ -1916,6 +1932,7 @@ export default function App() {
     if (next !== 'collage') setSelectedFrameId(null);
     if (next !== 'text') setSelectedTextId(null);
     if (next !== 'drawings') setSelectedDrawingId(null);
+    if (next === 'drawings') refreshDrawingCatalog();
     if (next !== 'collage') setInspectorTab('object');
   }
 
@@ -2008,6 +2025,71 @@ export default function App() {
     setSelectedDrawingId(item.id);
     setInspectorTab('object');
     show(angle === 90 ? 'Вертикальная линия добавлена.' : 'Линия добавлена. Настройки открыты справа.');
+  }
+
+  async function refreshDrawingCatalog() {
+    if (!window.__collageCloudAuth?.isAuthenticated?.()) {
+      setDrawingCatalog([]);
+      return;
+    }
+    setDrawingCatalogLoading(true);
+    try {
+      setDrawingCatalog(await loadDrawingCatalog());
+    } catch (error) {
+      if (error?.status !== 401) show(error?.message || 'Не удалось загрузить PNG-рисунки');
+    } finally {
+      setDrawingCatalogLoading(false);
+    }
+  }
+
+  async function uploadDrawingFiles(files) {
+    const list = [...(files || [])].filter((file) => String(file.type).toLowerCase() === 'image/png');
+    if (!list.length) return show('Выбери PNG-файл.');
+    setDrawingCatalogLoading(true);
+    try {
+      for (const file of list) await uploadDrawingCatalogAsset(file);
+      setDrawingCatalog(await loadDrawingCatalog());
+      show(list.length === 1 ? 'PNG добавлен в рисунки.' : `PNG добавлены: ${list.length}`);
+    } catch (error) {
+      show(error?.message || 'Не удалось загрузить PNG');
+    } finally {
+      setDrawingCatalogLoading(false);
+    }
+  }
+
+  function addDrawingAsset(asset) {
+    if (!asset?.src) return;
+    const sourceWidth = Math.max(1, Number(asset.width) || 300);
+    const sourceHeight = Math.max(1, Number(asset.height) || 300);
+    const maxSize = Math.min(460, canvas.width * 0.38, canvas.height * 0.38);
+    const scale = Math.min(1, maxSize / sourceWidth, maxSize / sourceHeight);
+    const item = {
+      id: makeId(), type: 'image', assetId: asset.id, name: asset.name || 'PNG-рисунок',
+      cloudKey: asset.cloudKey || '', src: asset.src,
+      x: Math.round(canvas.width / 2), y: Math.round(canvas.height / 2),
+      width: Math.max(40, Math.round(sourceWidth * scale)), height: Math.max(40, Math.round(sourceHeight * scale)),
+      rotation: 0, flipX: false, flipY: false, color: '#000000', opacity: 1,
+    };
+    updateExtraLayers((layers) => {
+      const { next, page } = createPageLayerDraft(layers, activePageNumber());
+      page.drawings.push(item);
+      return next;
+    });
+    setSelectedTextId(null);
+    setSelectedDrawingId(item.id);
+    setInspectorTab('object');
+    show('PNG добавлен на страницу.');
+  }
+
+  async function removeDrawingCatalogAsset(asset) {
+    if (!asset?.id || !confirm(`Удалить «${asset.name || 'рисунок'}» из каталога? Уже вставленные в альбом копии останутся.`)) return;
+    try {
+      await deleteDrawingCatalogAsset(asset.id);
+      setDrawingCatalog((current) => current.filter((item) => item.id !== asset.id));
+      show('Рисунок удалён из каталога.');
+    } catch (error) {
+      show(error?.message || 'Не удалось удалить рисунок');
+    }
   }
 
   function updateDrawing(id, patch) {
@@ -3802,7 +3884,29 @@ export default function App() {
     if (albumMode === 'drawings') {
       return (
         <>
-          <div className="panel-title compact"><div><h2>Рисунки</h2><p>Линии и простой декор текущей страницы.</p></div><span>{currentDrawings.length}</span></div>
+          <div className="panel-title compact"><div><h2>Рисунки</h2><p>PNG-декор и линии. Категории добавим позже.</p></div><span>{currentDrawings.length}</span></div>
+          <div className="drawing-catalog-actions">
+            <label className="button full accent drawing-upload-button">
+              {drawingCatalogLoading ? 'Загружаю…' : '+ Загрузить PNG'}
+              <input type="file" accept="image/png" multiple disabled={drawingCatalogLoading} onChange={(event) => { const files = event.target.files; event.target.value = ''; uploadDrawingFiles(files); }} />
+            </label>
+            <button className="button full" disabled={drawingCatalogLoading} onClick={refreshDrawingCatalog}>Обновить рисунки</button>
+          </div>
+          {!window.__collageCloudAuth?.isAuthenticated?.() ? <div className="empty-state small-empty"><p>Войди в аккаунт, чтобы хранить свою библиотеку PNG.</p></div> : null}
+          {drawingCatalog.length ? (
+            <div className="drawing-catalog-grid">
+              {drawingCatalog.map((asset) => (
+                <div className="drawing-catalog-card" key={asset.id}>
+                  <button className="drawing-catalog-preview" onClick={() => addDrawingAsset(asset)} title={asset.name}>
+                    <img src={asset.src} alt="" />
+                    <span>{asset.name}</span>
+                  </button>
+                  <button className="drawing-catalog-delete" onClick={() => removeDrawingCatalogAsset(asset)} title="Удалить из каталога">×</button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="panel-subtitle-v3">Линии</div>
           <div className="insert-tool-grid-v3">
             <button className="button full accent" onClick={() => addLine(0)}>+ Горизонтальная линия</button>
             <button className="button full" onClick={() => addLine(90)}>+ Вертикальная линия</button>
@@ -3811,9 +3915,9 @@ export default function App() {
             <div className="layer-list">
               {currentDrawings.map((item, index) => (
                 <button key={item.id} className={`layer-card line-layer-card ${item.id === selectedDrawingId ? 'active' : ''}`} onClick={() => { setSelectedDrawingId(item.id); setSelectedTextId(null); }}>
-                  <i style={{ background: item.color || '#6f6862' }} />
-                  <strong>Линия {index + 1}</strong>
-                  <small>{Math.round(Number(item.strokeWidth) || 4)} px · {Math.round(Number(item.length) || 300)} px</small>
+                  {item.type === 'image' ? <img className="drawing-layer-thumb" src={item.src} alt="" /> : <i style={{ background: item.color || '#6f6862' }} />}
+                  <strong>{item.type === 'image' ? (item.name || `PNG ${index + 1}`) : `Линия ${index + 1}`}</strong>
+                  <small>{item.type === 'image' ? `${Math.round(Number(item.width) || 0)} × ${Math.round(Number(item.height) || 0)} px` : `${Math.round(Number(item.strokeWidth) || 4)} px · ${Math.round(Number(item.length) || 300)} px`}</small>
                 </button>
               ))}
             </div>
@@ -3873,10 +3977,28 @@ export default function App() {
       );
     }
     if (albumMode === 'drawings') {
+      const imageDrawing = selectedDrawing?.type === 'image';
       return (
         <>
-          <div className="panel-title compact"><div><h2>Настройки линии</h2><p>{selectedDrawing ? 'Длина, угол, толщина и цвет.' : 'Выбери линию или добавь новую.'}</p></div><span>{selectedDrawing ? 'выбрана' : 'нет'}</span></div>
-          {!selectedDrawing ? <div className="empty-state small-empty"><p>Фото-окна в этом режиме только видны.</p></div> : (
+          <div className="panel-title compact"><div><h2>{imageDrawing ? 'Настройки PNG' : 'Настройки линии'}</h2><p>{selectedDrawing ? (imageDrawing ? 'Размер, поворот, отражение, цвет и прозрачность.' : 'Длина, угол, толщина и цвет.') : 'Выбери рисунок или добавь новый.'}</p></div><span>{selectedDrawing ? 'выбран' : 'нет'}</span></div>
+          {!selectedDrawing ? <div className="empty-state small-empty"><p>Фото-окна в этом режиме только видны.</p></div> : imageDrawing ? (
+            <>
+              <div className="inspector-block"><h3>Внешний вид</h3>
+                <label className="field"><span>Цвет</span><input type="color" value={selectedDrawing.color || '#000000'} onChange={(event) => updateDrawing(selectedDrawing.id, { color: event.target.value })} /></label>
+                <label className="field"><span>Прозрачность</span><SoftNumberInput min={0} max={1} step={0.05} value={Number(selectedDrawing.opacity ?? 1)} onValue={(value) => updateDrawing(selectedDrawing.id, { opacity: value })} /></label>
+              </div>
+              <div className="inspector-block"><h3>Размер и угол</h3><div className="geometry-grid">
+                <label className="field"><span>Ширина</span><SoftNumberInput min={20} max={10000} value={Math.round(Number(selectedDrawing.width) || 300)} onValue={(value) => updateDrawing(selectedDrawing.id, { width: value })} /></label>
+                <label className="field"><span>Высота</span><SoftNumberInput min={20} max={10000} value={Math.round(Number(selectedDrawing.height) || 300)} onValue={(value) => updateDrawing(selectedDrawing.id, { height: value })} /></label>
+                <label className="field"><span>Поворот</span><SoftNumberInput min={-360} max={360} value={Math.round(Number(selectedDrawing.rotation) || 0)} onValue={(value) => updateDrawing(selectedDrawing.id, { rotation: value })} /></label>
+              </div></div>
+              <div className="inspector-block"><h3>Отражение</h3><div className="inspector-actions-grid">
+                <button className={`button ${selectedDrawing.flipX ? 'accent' : ''}`} onClick={() => updateDrawing(selectedDrawing.id, { flipX: !selectedDrawing.flipX })}>↔ По горизонтали</button>
+                <button className={`button ${selectedDrawing.flipY ? 'accent' : ''}`} onClick={() => updateDrawing(selectedDrawing.id, { flipY: !selectedDrawing.flipY })}>↕ По вертикали</button>
+              </div></div>
+              <button className="button full danger-button" onClick={() => deleteDrawing(selectedDrawing.id)}>Удалить PNG со страницы</button>
+            </>
+          ) : (
             <>
               <div className="inspector-block"><h3>Линия</h3>
                 <label className="field"><span>Цвет</span><input type="color" value={selectedDrawing.color || '#6f6862'} onChange={(event) => updateDrawing(selectedDrawing.id, { color: event.target.value })} /></label>
