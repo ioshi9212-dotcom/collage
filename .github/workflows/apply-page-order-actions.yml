@@ -42,3 +42,5 @@ jobs:
           git add src/AppLive.jsx src/editor/extraLayers.js src/editor/extraLayers.test.mjs src/editor/pageOrder.js src/editor/pageOrder.test.mjs e2e/page-order-actions.spec.js package.json
           git commit -m 'Add page move and swap actions'
           git push
+
+# retry after migration runner syntax fix
