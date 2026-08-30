@@ -39,7 +39,6 @@ assert.equal(albumTurningLeafVisibleFace(0.499), 'front');
 assert.equal(albumTurningLeafVisibleFace(0.5), 'back');
 assert.equal(albumTurningLeafVisibleFace(1), 'back');
 
-
 const editorSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8');
 assert.ok(editorSource.includes("albumSpreadForPage(currentPageIndex, pages.length)"), 'editor spread must use book spread numbering');
 assert.ok(editorSource.includes("albumSpreadPages(spreadIndex, pages.length)"), 'editor spread must share the album spread model');
@@ -47,6 +46,8 @@ assert.ok(editorSource.includes("spreadPageIndexes.map((pageIndex, position)"), 
 assert.ok(editorSource.includes("pageNumber % 2 === 0 ? 'левая' : 'правая'"), 'even book pages must be left and odd pages must be right');
 assert.ok(editorSource.includes("width={canvas.width * spreadPageCount}"), 'spread export width must support a single opening page');
 assert.ok(!editorSource.includes("currentPageIndex % 2 === 0 ? currentPageIndex : currentPageIndex - 1"), 'legacy 1-2 / 3-4 spread pairing must be removed');
+assert.match(editorSource, /publishAlbumForClient/);
+assert.match(editorSource, /Поделиться/);
 
 const previewSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreview.jsx'), 'utf8');
 assert.match(previewSource, /function PaperStack/);
@@ -58,16 +59,32 @@ assert.match(previewSource, /data-album-leaf-side="front"/);
 assert.match(previewSource, /data-album-leaf-side="back"/);
 assert.match(previewSource, /visibility: visibleFace === 'front'/);
 assert.match(previewSource, /visibility: visibleFace === 'back'/);
+assert.match(previewSource, /standalone = false/);
+assert.match(previewSource, /album-flip-standalone/);
 
 const hostSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreviewHost.jsx'), 'utf8');
 assert.match(hostSource, /Листать альбом/);
 assert.match(hostSource, /<AlbumFlipPreview/);
 assert.match(hostSource, /window\.__collageApp\?\.getProject/);
-assert.match(hostSource, /<PreviewPageNumber/);
+assert.match(hostSource, /<AlbumPageCanvas/);
+
+const pageCanvasSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumPageCanvas.jsx'), 'utf8');
+assert.match(pageCanvasSource, /function PreviewFrame/);
+assert.match(pageCanvasSource, /function PreviewExtraLayers/);
+assert.match(pageCanvasSource, /export function PreviewPageNumber/);
+assert.match(pageCanvasSource, /<Stage className="album-page-canvas album-flip-stage"/);
+
+const publicViewerSource = readFileSync(resolve(process.cwd(), 'src/editor/PublicAlbumViewer.jsx'), 'utf8');
+assert.match(publicViewerSource, /MobilePublicAlbum/);
+assert.match(publicViewerSource, /двумя пальцами можно увеличить/);
+assert.match(publicViewerSource, /standalone/);
 
 const mainSource = readFileSync(resolve(process.cwd(), 'src/main.jsx'), 'utf8');
 assert.match(mainSource, /album-flip-preview\.css/);
 assert.match(mainSource, /album-flip-leaf-surface\.css/);
+assert.match(mainSource, /public-album\.css/);
+assert.match(mainSource, /publicAlbumTokenFromPath/);
+assert.match(mainSource, /<PublicAlbumViewer/);
 assert.match(mainSource, /<AlbumFlipPreviewHost\s*\/>/);
 
 const cssSource = readFileSync(resolve(process.cwd(), 'src/album-flip-preview.css'), 'utf8');
@@ -75,6 +92,10 @@ assert.match(cssSource, /\.album-flip-paper-stack/);
 assert.match(cssSource, /\.album-flip-turning-inner/);
 assert.match(cssSource, /\.album-flip-leaf-curl/);
 assert.match(cssSource, /repeating-linear-gradient\(0deg, #d8d0c6/);
+
+const publicCss = readFileSync(resolve(process.cwd(), 'src/public-album.css'), 'utf8');
+assert.match(publicCss, /body\.public-album-route > :not\(#root\)/);
+assert.match(publicCss, /touch-action: pan-y pinch-zoom/);
 
 const surfaceSource = readFileSync(resolve(process.cwd(), 'src/album-flip-leaf-surface.css'), 'utf8');
 assert.match(surfaceSource, /\.album-flip-turning-inner::before/);
