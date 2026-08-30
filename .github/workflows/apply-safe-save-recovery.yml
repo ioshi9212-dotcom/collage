@@ -1,0 +1,42 @@
+name: Apply safe save recovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/apply-safe-save-recovery.mjs'
+      - '.github/workflows/apply-safe-save-recovery.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply safe-save migration
+        run: node scripts/apply-safe-save-recovery.mjs
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Commit verified implementation and clean helpers
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/apply-safe-save-recovery.mjs .github/workflows/apply-safe-save-recovery.yml
+          git add server.js server/projectVersioning.js server/projectVersioning.test.mjs server/safeProjectVersions.js server/safeProjectVersions.test.mjs src/editor/cloudProjects.js public/cloud-auth.js tests/cloud-auth.test.mjs package.json
+          git commit -m 'Add safe project versions and recovery'
+          git push origin HEAD:main
