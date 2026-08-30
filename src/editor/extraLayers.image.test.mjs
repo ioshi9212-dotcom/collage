@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { cloneExtraLayerPage, sanitizeExtraLayers } from './extraLayers.js';
+const layers = sanitizeExtraLayers({ pages: { 1: { drawings: [{ id: 'png', type: 'image', assetId: 'asset', name: 'Ветка', cloudKey: 'users/1/photos/a/original.png', src: '/api/photo-assets/file?key=x', x: 200, y: 300, width: 420, height: 180, rotation: 17, flipX: true, flipY: false, color: '#aa8877', opacity: 0.42 }] } } }, { idFactory: () => 'fresh' });
+const item = layers.pages[1].drawings[0];
+assert.equal(item.type, 'image');
+assert.equal(item.assetId, 'asset');
+assert.equal(item.width, 420);
+assert.equal(item.rotation, 17);
+assert.equal(item.flipX, true);
+assert.equal(item.color, '#aa8877');
+assert.equal(item.opacity, 0.42);
+let n = 0;
+const cloned = cloneExtraLayerPage(layers.pages[1], () => 'clone-' + ++n);
+assert.equal(cloned.drawings[0].id, 'clone-1');
+assert.equal(cloned.drawings[0].cloudKey, item.cloudKey);
+console.log('PNG drawing extra-layer checks passed');

@@ -78,7 +78,27 @@ function sanitizeTextLayer(item, usedIds, idFactory) {
 
 function sanitizeDrawingLayer(item, usedIds, idFactory) {
   const source = objectValue(item);
-  if (!source || source.type !== 'line') return null;
+  if (!source) return null;
+  if (source.type === 'image') {
+    return {
+      id: uniqueLayerId(source.id, usedIds, idFactory),
+      type: 'image',
+      assetId: cleanString(source.assetId, '', MAX_LAYER_ID_LENGTH),
+      name: cleanString(source.name, 'PNG-рисунок', 500),
+      cloudKey: cleanString(source.cloudKey, '', 2_000),
+      src: cleanString(source.src, '', 4_000),
+      x: cleanNumber(source.x, 0, -10_000, 10_000),
+      y: cleanNumber(source.y, 0, -10_000, 10_000),
+      width: cleanNumber(source.width, 300, 20, 10_000),
+      height: cleanNumber(source.height, 300, 20, 10_000),
+      rotation: cleanNumber(source.rotation, 0, -3_600, 3_600),
+      flipX: source.flipX === true,
+      flipY: source.flipY === true,
+      color: cleanString(source.color, '#000000', MAX_COLOR_LENGTH),
+      opacity: cleanNumber(source.opacity, 1, 0, 1),
+    };
+  }
+  if (source.type !== 'line') return null;
   return {
     id: uniqueLayerId(source.id, usedIds, idFactory),
     type: 'line',

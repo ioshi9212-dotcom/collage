@@ -32,6 +32,7 @@ import { applySecurityHeaders } from './server/securityHeaders.js';
 import { describeSessionSecretState, resolveSessionSecret } from './server/sessionSecret.js';
 import { createPublicAlbumToken, referencedPublicPhotoKey, rewritePublicAlbumProject } from './server/publicAlbumModel.js';
 import { handleSafeProjectVersionApi } from './server/safeProjectVersions.js';
+import { drawingCatalogAsset, normalizeDrawingCatalogDimensions, normalizeDrawingCatalogKey } from './server/drawingCatalog.js';
 
 const { Pool } = pg;
 
@@ -362,6 +363,21 @@ async function ensureDb() {
 
       CREATE INDEX IF NOT EXISTS photo_assets_user_status_idx
         ON photo_assets(user_id, status, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS drawing_assets (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        object_key TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT 'PNG-рисунок',
+        width_px INTEGER NOT NULL DEFAULT 1,
+        height_px INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, object_key)
+      );
+
+      CREATE INDEX IF NOT EXISTS drawing_assets_user_created_idx
+        ON drawing_assets(user_id, created_at DESC);
     `).then(async () => {
       try {
         await backfillLegacyPhotoAssets();
@@ -535,6 +551,72 @@ async function handleApi(request, response) {
     const user = { id: row.id, email: row.email };
     authRateLimiter.clearEmail(email);
     sendJson(response, 200, { user }, { 'Set-Cookie': sessionCookie(makeToken(user)) });
+    return true;
+  }
+
+  if (method === 'GET' && path === '/api/drawing-assets') {
+    const user = await requireUser(request, response);
+    if (!user) return true;
+    const result = await pool.query(
+      'SELECT id, name, object_key, width_px, height_px, created_at FROM drawing_assets WHERE user_id = $1 ORDER BY created_at DESC',
+      [user.id],
+    );
+    sendJson(response, 200, { assets: result.rows.map(drawingCatalogAsset) });
+    return true;
+  }
+
+  if (method === 'POST' && path === '/api/drawing-assets') {
+    const user = await requireUser(request, response);
+    if (!user) return true;
+    const body = await readBody(request, authJsonLimitBytes);
+    const key = normalizeDrawingCatalogKey(user.id, body.cloudKey);
+    if (!key) {
+      sendJson(response, 403, { error: 'drawing_asset_access_denied', message: 'Нет доступа к этому PNG' });
+      return true;
+    }
+    const owned = await pool.query(
+      `SELECT object_key, name, content_type FROM photo_assets
+        WHERE user_id = $1 AND object_key = $2 AND status = 'ready'`,
+      [user.id, key],
+    );
+    if (!owned.rows[0]) {
+      sendJson(response, 404, { error: 'drawing_asset_not_found', message: 'PNG не найден в облачном хранилище' });
+      return true;
+    }
+    if (String(owned.rows[0].content_type).toLowerCase() !== 'image/png') {
+      sendJson(response, 415, { error: 'drawing_asset_png_required', message: 'Для рисунков поддерживается только PNG' });
+      return true;
+    }
+    const dimensions = normalizeDrawingCatalogDimensions(body.width, body.height);
+    const name = String(body.name || owned.rows[0].name || 'PNG-рисунок').slice(0, 500);
+    const id = randomUUID();
+    const created = await pool.query(
+      `INSERT INTO drawing_assets(id, user_id, object_key, name, width_px, height_px)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id, object_key) DO UPDATE
+         SET name = EXCLUDED.name, width_px = EXCLUDED.width_px, height_px = EXCLUDED.height_px, updated_at = NOW()
+       RETURNING id, name, object_key, width_px, height_px, created_at`,
+      [id, user.id, key, name, dimensions.width, dimensions.height],
+    );
+    sendJson(response, 200, { asset: drawingCatalogAsset(created.rows[0]) });
+    return true;
+  }
+
+  const drawingAssetMatch = path.match(/^\/api\/drawing-assets\/([^/]+)$/);
+  if (method === 'DELETE' && drawingAssetMatch) {
+    const user = await requireUser(request, response);
+    if (!user) return true;
+    const id = decodeURIComponent(drawingAssetMatch[1]);
+    const deleted = await pool.query(
+      'DELETE FROM drawing_assets WHERE id = $1 AND user_id = $2 RETURNING object_key',
+      [id, user.id],
+    );
+    if (!deleted.rows[0]) {
+      sendJson(response, 404, { error: 'drawing_asset_not_found', message: 'Рисунок уже удалён' });
+      return true;
+    }
+    const cleanup = await photoAssetGateway.cleanupUnreferenced({ userId: user.id, keys: [deleted.rows[0].object_key] });
+    sendJson(response, 200, { ok: true, fileDeleted: cleanup.deleted > 0 });
     return true;
   }
 
