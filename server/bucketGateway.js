@@ -215,7 +215,7 @@ async function proxyUpload({
   assetStore,
   uploadLimiter,
 }) {
-  const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+  const requestUrl = new URL(request.url || '/', `http://${request.headers?.host || 'localhost'}`);
   const type = normalizeImageType(request.headers['content-type']);
   const size = Number(request.headers['content-length']);
   const name = String(requestUrl.searchParams.get('name') || 'Фото').slice(0, 500);
@@ -317,7 +317,7 @@ async function proxyUpload({
 }
 
 async function proxyDownload({ request, response, user, config, fetchImpl, assetStore }) {
-  const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+  const requestUrl = new URL(request.url || '/', `http://${request.headers?.host || 'localhost'}`);
   const key = String(requestUrl.searchParams.get('key') || '');
   if (!isOwnedPhotoKey(user.id, key)) {
     sendBucketError(response, 403, 'photo_access_denied', 'Нет доступа к этой фотографии.');
@@ -427,7 +427,7 @@ export function createPhotoAssetGateway({
   }
 
   async function handle(request, response) {
-    const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+    const requestUrl = new URL(request.url || '/', `http://${request.headers?.host || 'localhost'}`);
     if (!requestUrl.pathname.startsWith('/api/photo-assets/')) return false;
 
     if (request.method === 'GET' && requestUrl.pathname === '/api/photo-assets/status') {
