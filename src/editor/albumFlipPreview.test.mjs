@@ -51,13 +51,19 @@ assert.ok(!editorSource.includes("currentPageIndex % 2 === 0 ? currentPageIndex 
 const previewSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreview.jsx'), 'utf8');
 assert.match(previewSource, /function PaperStack/);
 assert.match(previewSource, /album-flip-leaf-curl/);
-assert.match(previewSource, /onPointerMove=\{moveSwipe\}/);
+assert.match(previewSource, /onPointerMove=\{handlePointerMove\}/);
 assert.match(previewSource, /TURN_COMMIT_PROGRESS/);
 assert.match(previewSource, /Потяни внешний край листа/);
 assert.match(previewSource, /data-album-leaf-side="front"/);
 assert.match(previewSource, /data-album-leaf-side="back"/);
 assert.match(previewSource, /visibility: visibleFace === 'front'/);
 assert.match(previewSource, /visibility: visibleFace === 'back'/);
+assert.match(previewSource, /MAX_VIEWER_ZOOM = 3\.4/);
+assert.match(previewSource, /type: 'pinch'/);
+assert.match(previewSource, /pointers\.size >= 2/);
+assert.match(previewSource, /translate3d\(\$\{zoomPan\.x\}px, \$\{zoomPan\.y\}px, 0\)/);
+assert.match(previewSource, /touchAction: zoomed \? 'none'/);
+assert.match(previewSource, /disabled=\{zoomed \|\| spreadIndex/);
 
 const hostSource = readFileSync(resolve(process.cwd(), 'src/editor/AlbumFlipPreviewHost.jsx'), 'utf8');
 assert.match(hostSource, /Листать альбом/);
