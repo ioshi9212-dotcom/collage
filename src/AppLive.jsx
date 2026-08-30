@@ -23,6 +23,7 @@ import {
   getBookletSide,
 } from './editor/booklet';
 import { saveCloudProject } from './editor/cloudProjects';
+import PublicAlbumShareControl from './editor/PublicAlbumShareControl';
 import {
   createCloudPhotoProject,
   deleteCloudPhotoAssets,
@@ -3953,6 +3954,7 @@ export default function App() {
               </div>
             )}
           </div>
+          <PublicAlbumShareControl saveProject={save} showNotice={show} />
           <button className="button primary-save-v2" type="button" disabled={saving} onClick={save}>{saving ? 'Сохраняю…' : 'Сохранить'}</button>
           <button className="button account-button-v2" type="button" onClick={() => document.querySelector('.cloud-auth-toggle')?.click()}>Аккаунт</button>
           <input className="hidden-input project-storage-json-input" type="file" accept="application/json" onChange={importJson} />

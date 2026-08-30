@@ -28,6 +28,10 @@ import {
 } from './server/photoAssetStore.js';
 import { createFixedWindowRateLimiter } from './server/rateLimit.js';
 import { createHeicConversionHandler } from './server/heicConversion.js';
+import {
+  ensurePublicAlbumSchema,
+  handlePublicAlbumRequest,
+} from './server/publicAlbumRoutes.js';
 import { applySecurityHeaders } from './server/securityHeaders.js';
 import { describeSessionSecretState, resolveSessionSecret } from './server/sessionSecret.js';
 
@@ -345,6 +349,7 @@ async function ensureDb() {
       CREATE INDEX IF NOT EXISTS photo_assets_user_status_idx
         ON photo_assets(user_id, status, updated_at DESC);
     `).then(async () => {
+      await ensurePublicAlbumSchema(pool);
       try {
         await backfillLegacyPhotoAssets();
       } catch (error) {
@@ -419,6 +424,18 @@ async function handleApi(request, response) {
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   const path = url.pathname;
   const method = request.method || 'GET';
+
+  if (await handlePublicAlbumRequest({
+    request,
+    response,
+    pool,
+    photoAssetGateway,
+    requireUser,
+    readBody,
+    authJsonLimitBytes,
+  })) {
+    return true;
+  }
 
   if (method === 'GET' && path === '/api/health') {
     sendJson(response, 200, {

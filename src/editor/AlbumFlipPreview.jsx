@@ -133,6 +133,7 @@ export default function AlbumFlipPreview({
   pageAspect = 0.705,
   renderPage,
   onClose,
+  standalone = false,
 }) {
   const maxSpread = albumMaxSpread(pageCount);
   const [spreadIndex, setSpreadIndex] = useState(() => albumSpreadForPage(startPageIndex, pageCount));
@@ -225,7 +226,7 @@ export default function AlbumFlipPreview({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose?.();
+      if (event.key === 'Escape' && !standalone) onClose?.();
       if (event.key === 'ArrowRight') requestTurnRef.current?.('next');
       if (event.key === 'ArrowLeft') requestTurnRef.current?.('prev');
     };
@@ -235,7 +236,7 @@ export default function AlbumFlipPreview({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [open, onClose]);
+  }, [open, onClose, standalone]);
 
   const current = useMemo(() => albumSpreadPages(spreadIndex, pageCount), [spreadIndex, pageCount]);
   const previous = useMemo(() => albumSpreadPages(spreadIndex - 1, pageCount), [spreadIndex, pageCount]);
@@ -308,14 +309,14 @@ export default function AlbumFlipPreview({
   const rightStackDepth = Math.max(0, maxSpread - virtualSpread);
 
   return (
-    <div className="album-flip-overlay" role="dialog" aria-modal="true" aria-label="Просмотр альбома">
+    <div className={`album-flip-overlay ${standalone ? 'album-flip-standalone' : ''}`} role={standalone ? 'region' : 'dialog'} aria-modal={standalone ? undefined : true} aria-label="Просмотр альбома">
       <div className="album-flip-dialog" ref={dialogRef} tabIndex={-1}>
         <header className="album-flip-header">
           <div>
             <strong>Альбом</strong>
             <span>{albumVisiblePageLabel(spreadIndex, pageCount)} · всего {pageCount}</span>
           </div>
-          <button type="button" className="album-flip-close" onClick={onClose} aria-label="Закрыть просмотр">×</button>
+          {!standalone && <button type="button" className="album-flip-close" onClick={onClose} aria-label="Закрыть просмотр">×</button>}
         </header>
 
         <div
