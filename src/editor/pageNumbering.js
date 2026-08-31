@@ -18,7 +18,6 @@ export const DEFAULT_PAGE_NUMBERING = Object.freeze({
   opacity: 0.65,
   edgeOffset: 56,
   firstPage: 2,
-  firstNumber: 1,
 });
 
 function boundedNumber(value, fallback, min, max) {
@@ -48,7 +47,6 @@ export function normalizePageNumbering(value = {}) {
     opacity: boundedNumber(source.opacity, DEFAULT_PAGE_NUMBERING.opacity, 0.1, 1),
     edgeOffset: boundedNumber(source.edgeOffset, DEFAULT_PAGE_NUMBERING.edgeOffset, 16, 300),
     firstPage: Math.round(boundedNumber(source.firstPage, DEFAULT_PAGE_NUMBERING.firstPage, 1, 9999)),
-    firstNumber: Math.round(boundedNumber(source.firstNumber, DEFAULT_PAGE_NUMBERING.firstNumber, 0, 9999)),
   };
 }
 
@@ -58,7 +56,7 @@ export function pageNumberValue(pageIndex, settings) {
   if (!normalized.enabled || normalizedPageIndex == null) return null;
   const physicalPage = normalizedPageIndex + 1;
   if (physicalPage < normalized.firstPage) return null;
-  return normalized.firstNumber + physicalPage - normalized.firstPage;
+  return physicalPage;
 }
 
 export function pageNumberPlacement(pageIndex, canvas, settings) {

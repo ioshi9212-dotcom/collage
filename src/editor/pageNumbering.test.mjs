@@ -9,13 +9,13 @@ import {
 } from './pageNumbering.js';
 
 assert.equal(pageNumberValue(0, DEFAULT_PAGE_NUMBERING), null, 'numbering is opt-in');
-assert.equal(pageNumberValue(0, { enabled: true, firstPage: 2, firstNumber: 1 }), null);
-assert.equal(pageNumberValue(1, { enabled: true, firstPage: 2, firstNumber: 1 }), 1);
-assert.equal(pageNumberValue(9, { enabled: true, firstPage: 3, firstNumber: 7 }), 14);
-assert.equal(pageNumberValue(0, { enabled: true, firstPage: 1, firstNumber: 0 }), 0, 'zero is a valid page number');
+assert.equal(pageNumberValue(0, { enabled: true, firstPage: 2 }), null);
+assert.equal(pageNumberValue(1, { enabled: true, firstPage: 2 }), 2, 'page 2 must display 2');
+assert.equal(pageNumberValue(9, { enabled: true, firstPage: 3 }), 10, 'page numbers match physical pages');
+assert.equal(pageNumberValue(0, { enabled: true, firstPage: 1 }), 1, 'page 1 must display 1');
 
 // Missing and virtual spread pages must never produce a decorative number without a digit.
-const enabledNumbering = { enabled: true, firstPage: 1, firstNumber: 1 };
+const enabledNumbering = { enabled: true, firstPage: 1 };
 assert.equal(pageNumberValue(undefined, enabledNumbering), null, 'a missing page index must not render an empty ornament');
 assert.equal(pageNumberValue(null, enabledNumbering), null);
 assert.equal(pageNumberValue('', enabledNumbering), null);
@@ -70,6 +70,11 @@ assert.match(
   appSource,
   /\{showPageLabel && pageIndex >= 0 && <Text/,
   'the empty half of an odd spread must not show a fake guide page number',
+);
+assert.doesNotMatch(
+  appSource,
+  /firstNumber/,
+  'the editor must not expose a separate number offset',
 );
 
 console.log('page numbering checks passed');
