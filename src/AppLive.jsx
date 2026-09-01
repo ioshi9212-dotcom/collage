@@ -296,6 +296,22 @@ function cloneDeep(value) {
 }
 
 
+function frameAtLocation(pages, pageId, frameId) {
+  const page = (Array.isArray(pages) ? pages : []).find((item) => item?.id === pageId);
+  return page?.frames?.find((frame) => frame?.id === frameId) ?? null;
+}
+
+function photoForFrameTransfer(photo, sourceFrame, targetFrame) {
+  if (!photo) return null;
+  const next = cloneDeep(photo);
+  const sourceWidth = Math.round(Number(sourceFrame?.width) || 0);
+  const sourceHeight = Math.round(Number(sourceFrame?.height) || 0);
+  const targetWidth = Math.round(Number(targetFrame?.width) || 0);
+  const targetHeight = Math.round(Number(targetFrame?.height) || 0);
+  if (sourceWidth === targetWidth && sourceHeight === targetHeight) return next;
+  return { ...next, zoom: 1, offsetX: 0, offsetY: 0 };
+}
+
 function formatNumberDraft(value, fallback = 0) {
   const number = Number(value);
   if (!Number.isFinite(number)) return String(fallback);
@@ -902,7 +918,7 @@ function FrameBorder({ frame, style }) {
   );
 }
 
-function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, snapFrames = [], smartSnap = true, collagePreviewOnly = false, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onSnapGuidesChange = () => {} }) {
+function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, borderColor, printMode, canvas, pageOffsetX, moveFrameWithPhoto, snapFrames = [], smartSnap = true, collagePreviewOnly = false, onSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onContextMenu, onSnapGuidesChange = () => {} }) {
   const photoSource = frame.photo?.src || '';
   const [loadedPhoto, setLoadedPhoto] = useState({ src: '', image: null });
   const image = loadedPhoto.src === photoSource ? loadedPhoto.image : null;
@@ -910,7 +926,7 @@ function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, bor
   const frameRectRef = useRef(null);
   const transformerRef = useRef(null);
   const rect = coverPhotoRect(image, frame, frame.photo);
-  const canDragFrame = !collagePreviewOnly && !printMode && !locked;
+  const canDragFrame = !collagePreviewOnly && !printMode && !locked && (!frame.photo || moveFrameWithPhoto);
   const frameStyle = normalizeFrameStyle(frame, { borderWidth, borderColor });
 
   useEffect(() => {
@@ -964,7 +980,7 @@ function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, bor
   }
 
   function commitFrameDrag(event) {
-    if (collagePreviewOnly || printMode || locked) return;
+    if (!canDragFrame) return;
     const node = event.target;
     clampFrameNode(node, true);
     onFrameChange(frame.id, { x: node.x(), y: node.y() });
@@ -1019,6 +1035,14 @@ function CollageFrame({ frame, photoIdentity, selected, locked, borderWidth, bor
         draggable={canDragFrame}
         onMouseDown={onSelect}
         onTap={onSelect}
+        onContextMenu={(event) => {
+          event.evt?.preventDefault?.();
+          event.cancelBubble = true;
+          onContextMenu?.({
+            x: Number(event.evt?.clientX) || 0,
+            y: Number(event.evt?.clientY) || 0,
+          });
+        }}
         onDragStart={(event) => {
           event.cancelBubble = true;
           onSelect();
@@ -1202,7 +1226,7 @@ function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, 
   );
 }
 
-function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, snapGuides = null, smartSnap = true, printMode = false, collagePreviewOnly = false, hideGuidePageLabel = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onSnapGuidesChange, onColumnResize, onRowResize, onActivatePage }) {
+function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, snapGuides = null, smartSnap = true, printMode = false, collagePreviewOnly = false, hideGuidePageLabel = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onFrameContextMenu, onSnapGuidesChange, onColumnResize, onRowResize, onActivatePage }) {
   const locked = settings.frameMode === 'locked';
   const layoutInset = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
   const printGuide = getPrintGuideGeometry(canvas, settings);
@@ -1239,6 +1263,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
           smartSnap={smartSnap}
           onSnapGuidesChange={(guides) => !collagePreviewOnly && !printMode && onSnapGuidesChange?.(page.id, guides)}
           onSelect={() => !collagePreviewOnly && !printMode && onFrameSelect(page.id, frame.id)}
+          onContextMenu={(position) => !collagePreviewOnly && !printMode && onFrameContextMenu?.(page.id, frame.id, position)}
           onPhotoMove={(frameId, patch) => !collagePreviewOnly && !printMode && onPhotoMove(page.id, frameId, patch)}
           onFrameChange={(frameId, patch) => !collagePreviewOnly && !printMode && onFrameChange(page.id, frameId, patch)}
           onFrameDragFinish={() => !collagePreviewOnly && !printMode && onFrameDragFinish?.(frame.id)}
@@ -1444,6 +1469,9 @@ export default function App() {
   });
   const [photoImportReport, setPhotoImportReport] = useState(null);
   const [moveFrameWithPhotoId, setMoveFrameWithPhotoId] = useState(null);
+  const [frameClipboard, setFrameClipboard] = useState(null);
+  const [frameSwapSource, setFrameSwapSource] = useState(null);
+  const [frameContextMenu, setFrameContextMenu] = useState(null);
   const [frameSnapGuides, setFrameSnapGuides] = useState(null);
   const [viewMode, setViewMode] = useState('spread');
   const [bookletSheetsPerBlock, setBookletSheetsPerBlock] = useState(DEFAULT_SHEETS_PER_BLOCK);
@@ -1561,6 +1589,23 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templateRecords)); } catch { /* ignore localStorage errors */ }
   }, [templateRecords]);
+
+  useEffect(() => {
+    if (!frameContextMenu) return undefined;
+    const closeMenu = (event) => {
+      if (event.target?.closest?.('[data-frame-context-menu="true"]')) return;
+      setFrameContextMenu(null);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setFrameContextMenu(null);
+    };
+    window.addEventListener('pointerdown', closeMenu);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('pointerdown', closeMenu);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [frameContextMenu]);
 
   useEffect(() => {
     const node = canvasAreaRef.current;
@@ -1757,6 +1802,9 @@ export default function App() {
       : [{ page: currentPage, pageIndex: currentPageIndex, x: 0 }];
 
   const selectedFrame = useMemo(() => currentPage?.frames.find((frame) => frame.id === selectedFrameId) ?? null, [currentPage, selectedFrameId]);
+  const contextFrame = frameContextMenu
+    ? frameAtLocation(pages, frameContextMenu.pageId, frameContextMenu.frameId)
+    : null;
 
   useEffect(() => {
     if (!selectedFrame) return;
@@ -1885,6 +1933,9 @@ export default function App() {
     setSelectedTextId(null);
     setSelectedDrawingId(null);
     setMoveFrameWithPhotoId(null);
+    setFrameClipboard(null);
+    setFrameSwapSource(null);
+    setFrameContextMenu(null);
     setFrameSnapGuides(null);
     setBookletSideId(null);
     setPrintBookletSideId(null);
@@ -2120,6 +2171,130 @@ export default function App() {
       ...current,
       pages: current.pages.map((page) => (page.id === pageId ? { ...page, frames: typeof updater === 'function' ? updater(page.frames) : updater } : page)),
     }));
+  }
+
+  function openFrameContextMenu(pageId, frameId, position) {
+    if (locked || collagePreviewOnly) return;
+    setSelectedPhotoId(null);
+    setAlbum((current) => ({ ...current, currentPageId: pageId }));
+    setSelectedFrameId(frameId);
+    setInspectorTab('object');
+    setMoveFrameWithPhotoId(null);
+    setFrameContextMenu({
+      pageId,
+      frameId,
+      x: Math.max(8, Number(position?.x) || 0),
+      y: Math.max(8, Number(position?.y) || 0),
+    });
+  }
+
+  function copyFramePhoto(mode = 'copy') {
+    if (!frameContextMenu) return;
+    const frame = frameAtLocation(album.pages, frameContextMenu.pageId, frameContextMenu.frameId);
+    if (!frame?.photo) {
+      setFrameContextMenu(null);
+      show('В этом окне нет фото');
+      return;
+    }
+    const nextMode = mode === 'cut' ? 'cut' : 'copy';
+    setFrameClipboard({
+      mode: nextMode,
+      pageId: frameContextMenu.pageId,
+      frameId: frameContextMenu.frameId,
+      photo: cloneDeep(frame.photo),
+      sourceFrame: { width: frame.width, height: frame.height },
+    });
+    setFrameContextMenu(null);
+    show(nextMode === 'cut'
+      ? 'Фото готово к переносу. Правой кнопкой по другому окну → «Вставить фото»'
+      : 'Фото скопировано. Правой кнопкой по окну → «Вставить фото»');
+  }
+
+  function pasteFramePhoto() {
+    if (!frameClipboard || !frameContextMenu) return;
+    const clipboard = frameClipboard;
+    const destination = frameContextMenu;
+    const sameFrame = clipboard.pageId === destination.pageId && clipboard.frameId === destination.frameId;
+    if (clipboard.mode === 'cut' && sameFrame) {
+      setFrameContextMenu(null);
+      show('Это то же самое окно');
+      return;
+    }
+
+    setAlbum((current) => {
+      const targetFrame = frameAtLocation(current.pages, destination.pageId, destination.frameId);
+      if (!targetFrame) return current;
+      const transferredPhoto = photoForFrameTransfer(clipboard.photo, clipboard.sourceFrame, targetFrame);
+      const nextPages = current.pages.map((page) => ({
+        ...page,
+        frames: (page.frames || []).map((frame) => {
+          const isTarget = page.id === destination.pageId && frame.id === destination.frameId;
+          const isCutSource = clipboard.mode === 'cut' && page.id === clipboard.pageId && frame.id === clipboard.frameId;
+          if (isTarget) return { ...frame, photo: transferredPhoto };
+          if (isCutSource) return { ...frame, photo: null };
+          return frame;
+        }),
+      }));
+      return { ...current, pages: nextPages, currentPageId: destination.pageId };
+    });
+
+    setSelectedFrameId(destination.frameId);
+    setMoveFrameWithPhotoId(null);
+    setFrameContextMenu(null);
+    if (clipboard.mode === 'cut') setFrameClipboard(null);
+    show(clipboard.mode === 'cut' ? 'Фото перенесено' : 'Фото вставлено');
+  }
+
+  function chooseFrameForSwap() {
+    if (!frameContextMenu) return;
+    setFrameSwapSource({ pageId: frameContextMenu.pageId, frameId: frameContextMenu.frameId });
+    setFrameContextMenu(null);
+    show('Первое окно выбрано. Правой кнопкой по второму → «Поменять местами»');
+  }
+
+  function swapFramePhotosFromMenu() {
+    if (!frameSwapSource || !frameContextMenu) return;
+    const sourceLocation = frameSwapSource;
+    const targetLocation = frameContextMenu;
+    const sameFrame = sourceLocation.pageId === targetLocation.pageId && sourceLocation.frameId === targetLocation.frameId;
+    if (sameFrame) {
+      setFrameSwapSource(null);
+      setFrameContextMenu(null);
+      show('Обмен отменён');
+      return;
+    }
+
+    const sourcePreview = frameAtLocation(album.pages, sourceLocation.pageId, sourceLocation.frameId);
+    const targetPreview = frameAtLocation(album.pages, targetLocation.pageId, targetLocation.frameId);
+    if (!sourcePreview || !targetPreview) {
+      setFrameSwapSource(null);
+      setFrameContextMenu(null);
+      show('Одно из окон уже не существует');
+      return;
+    }
+
+    setAlbum((current) => {
+      const sourceFrame = frameAtLocation(current.pages, sourceLocation.pageId, sourceLocation.frameId);
+      const targetFrame = frameAtLocation(current.pages, targetLocation.pageId, targetLocation.frameId);
+      if (!sourceFrame || !targetFrame) return current;
+      const photoForSource = photoForFrameTransfer(targetFrame.photo, targetFrame, sourceFrame);
+      const photoForTarget = photoForFrameTransfer(sourceFrame.photo, sourceFrame, targetFrame);
+      const nextPages = current.pages.map((page) => ({
+        ...page,
+        frames: (page.frames || []).map((frame) => {
+          if (page.id === sourceLocation.pageId && frame.id === sourceLocation.frameId) return { ...frame, photo: photoForSource };
+          if (page.id === targetLocation.pageId && frame.id === targetLocation.frameId) return { ...frame, photo: photoForTarget };
+          return frame;
+        }),
+      }));
+      return { ...current, pages: nextPages, currentPageId: targetLocation.pageId };
+    });
+
+    setSelectedFrameId(targetLocation.frameId);
+    setMoveFrameWithPhotoId(null);
+    setFrameSwapSource(null);
+    setFrameContextMenu(null);
+    show('Фото поменялись местами');
   }
 
   function changeFrame(pageId, frameId, patch) {
@@ -3643,6 +3818,7 @@ export default function App() {
         onPhotoMove={updatePhoto}
         onFrameChange={changeFrame}
         onFrameDragFinish={() => setMoveFrameWithPhotoId(null)}
+        onFrameContextMenu={openFrameContextMenu}
         onSnapGuidesChange={updateFrameSnapGuides}
         onColumnResize={resizeGridColumn}
         onRowResize={resizeGridRow}
@@ -4083,6 +4259,52 @@ export default function App() {
       </header>
 
       {notice && <div className="notice">{notice}</div>}
+
+      {frameContextMenu && contextFrame && (
+        <div
+          data-frame-context-menu="true"
+          role="menu"
+          aria-label="Действия с фото в окне"
+          onContextMenu={(event) => event.preventDefault()}
+          style={{
+            position: 'fixed',
+            left: Math.max(12, Math.min(frameContextMenu.x, window.innerWidth - 252)),
+            top: Math.max(12, Math.min(frameContextMenu.y, window.innerHeight - 300)),
+            zIndex: 10000,
+            width: 240,
+            padding: 8,
+            display: 'grid',
+            gap: 4,
+            border: '1px solid #d8c7b9',
+            borderRadius: 12,
+            background: '#fffdf9',
+            boxShadow: '0 16px 42px rgba(44, 35, 30, 0.22)',
+          }}
+        >
+          <div style={{ padding: '7px 10px 5px', fontSize: 12, fontWeight: 700, color: '#75675d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {contextFrame.photo?.name || 'Пустое фото-окно'}
+          </div>
+          {contextFrame.photo && (
+            <>
+              <button type="button" role="menuitem" onClick={() => copyFramePhoto('copy')} style={{ border: 0, borderRadius: 8, background: 'transparent', padding: '10px 12px', textAlign: 'left', font: 'inherit', cursor: 'pointer' }}>Копировать фото</button>
+              <button type="button" role="menuitem" onClick={() => copyFramePhoto('cut')} style={{ border: 0, borderRadius: 8, background: 'transparent', padding: '10px 12px', textAlign: 'left', font: 'inherit', cursor: 'pointer' }}>Вырезать фото</button>
+            </>
+          )}
+          {frameClipboard && (
+            <button type="button" role="menuitem" onClick={pasteFramePhoto} style={{ border: 0, borderRadius: 8, background: '#f2e8df', padding: '10px 12px', textAlign: 'left', font: 'inherit', fontWeight: 700, cursor: 'pointer' }}>Вставить фото</button>
+          )}
+          <div style={{ height: 1, margin: '4px 6px', background: '#eadfd6' }} />
+          {!frameSwapSource && (
+            <button type="button" role="menuitem" onClick={chooseFrameForSwap} style={{ border: 0, borderRadius: 8, background: 'transparent', padding: '10px 12px', textAlign: 'left', font: 'inherit', cursor: 'pointer' }}>Поменять местами…</button>
+          )}
+          {frameSwapSource && frameSwapSource.pageId === frameContextMenu.pageId && frameSwapSource.frameId === frameContextMenu.frameId && (
+            <button type="button" role="menuitem" onClick={() => { setFrameSwapSource(null); setFrameContextMenu(null); show('Обмен отменён'); }} style={{ border: 0, borderRadius: 8, background: 'transparent', padding: '10px 12px', textAlign: 'left', font: 'inherit', cursor: 'pointer' }}>Отменить обмен</button>
+          )}
+          {frameSwapSource && (frameSwapSource.pageId !== frameContextMenu.pageId || frameSwapSource.frameId !== frameContextMenu.frameId) && (
+            <button type="button" role="menuitem" onClick={swapFramePhotosFromMenu} style={{ border: 0, borderRadius: 8, background: '#e6f1eb', padding: '10px 12px', textAlign: 'left', font: 'inherit', fontWeight: 700, cursor: 'pointer' }}>Поменять местами</button>
+          )}
+        </div>
+      )}
 
 
       <section className="workspace editor-workspace-v2">
