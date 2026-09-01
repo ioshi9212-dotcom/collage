@@ -15,7 +15,7 @@ test('HEIC is converted once and then enters the original local upload flow', as
   });
 
   await openEditor(page);
-  const input = page.locator('.upload-box input[type="file"][accept="image/*"]');
+  const input = page.locator('.photo-panel-actions-v3 input[type="file"][accept="image/*"]');
   await input.setInputFiles({
     name: 'IMG_2048.HEIC',
     mimeType: 'image/heic',

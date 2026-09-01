@@ -1457,6 +1457,7 @@ export default function App() {
   const [frameStyleScope, setFrameStyleScope] = useState('frame');
   const [frameStyleDraft, setFrameStyleDraft] = useState(DEFAULT_FRAME_STYLE);
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
+  const [photoLibraryView, setPhotoLibraryView] = useState('unused');
   const [photoImporting, setPhotoImporting] = useState(false);
   const [photoImportProgress, setPhotoImportProgress] = useState({
     visible: false,
@@ -1815,7 +1816,7 @@ export default function App() {
     const used = new Set();
     pages.forEach((page) => {
       page.frames?.forEach((frame) => {
-        if (frame.photo?.id) used.add(frame.photo.id);
+        if (frame.photo?.id) used.add(String(frame.photo.id));
       });
     });
     return used;
@@ -1823,6 +1824,19 @@ export default function App() {
   const visibleLibrary = useMemo(
     () => library.filter((photo) => !hiddenLibraryPhotoIds.has(String(photo.id))),
     [library, hiddenLibraryPhotoIds],
+  );
+  const usedLibraryPhotos = useMemo(
+    () => visibleLibrary.filter((photo) => usedPhotoIds.has(String(photo.id))),
+    [visibleLibrary, usedPhotoIds],
+  );
+  const unusedLibraryPhotos = useMemo(
+    () => visibleLibrary.filter((photo) => !usedPhotoIds.has(String(photo.id))),
+    [visibleLibrary, usedPhotoIds],
+  );
+  const photoLibraryItems = photoLibraryView === 'used' ? usedLibraryPhotos : unusedLibraryPhotos;
+  const photoOrderById = useMemo(
+    () => new Map(visibleLibrary.map((photo, index) => [String(photo.id), index + 1])),
+    [visibleLibrary],
   );
 
   async function recoverPhotos(event) {
@@ -4318,47 +4332,103 @@ export default function App() {
         </nav>
         <aside className="sidebar editor-left-panel-v2">
           {leftPanel === 'photos' && (
-            <>
-              <div className="panel-title"><div><h2>Фото</h2><p>В списке: {visibleLibrary.length} · в альбоме: {usedPhotoIds.size}</p></div><span>{visibleLibrary.length}</span></div>
-              <label className={`upload-box ${photoImporting ? 'disabled-upload-box' : ''}`}><strong>{photoImporting ? 'Загружаю фото…' : 'Загрузить фото'}</strong><small>{photoImporting ? 'Оригиналы сохраняются по очереди' : 'Можно сразу несколько'}</small><input type="file" accept="image/*" multiple disabled={photoImporting} onChange={uploadPhotos} /></label>
-              <label className={`button full photo-recovery-button ${photoImporting ? 'disabled' : ''}`}>
-                Восстановить фотографии
-                <input className="hidden-input" type="file" accept="image/*,.heic,.heif" multiple disabled={photoImporting} onChange={recoverPhotos} />
-              </label>
-              {photoImportProgress.visible && (
-                <div className={`photo-upload-progress ${photoImportProgress.status}`} aria-live="polite">
-                  <div className="photo-upload-progress-head">
-                    <strong>{photoImportProgress.label}</strong>
-                    <span>{photoImportProgress.percent}%</span>
-                  </div>
-                  <div
-                    className="photo-upload-progress-track"
-                    role="progressbar"
-                    aria-label={photoImportProgress.label || 'Загрузка фотографий'}
-                    aria-valuemin="0"
-                    aria-valuemax="100"
-                    aria-valuenow={photoImportProgress.percent}
-                    aria-valuetext={photoImportProgress.detail}
-                  >
-                    <i style={{ width: `${photoImportProgress.percent}%` }} />
-                  </div>
-                  <small>{photoImportProgress.detail}</small>
+            <div className="photo-panel-v3">
+              <div className="photo-panel-header-v3">
+                <div className="panel-title compact photo-panel-title-v3">
+                  <div><h2>Фото</h2><p>{visibleLibrary.length} загружено</p></div>
+                  <span>{visibleLibrary.length}</span>
                 </div>
-              )}
-              <PhotoImportReport report={photoImportReport} onClose={() => setPhotoImportReport(null)} />
-              <button className="button full" onClick={clearPhotoLibraryPanel} disabled={visibleLibrary.length === 0 || photoImporting}>Очистить список фото</button>
-              {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
-              {visibleLibrary.length === 0 ? <div className="empty-state"><p>Список пуст. Фото, размещённые в альбоме, сохранены внутри проекта.</p></div> : <div className="photo-grid">{visibleLibrary.map((photo) => {
-                const isUsed = usedPhotoIds.has(photo.id);
-                return (
-                  <button key={photo.id} type="button" className={`photo-card ${photo.id === selectedPhotoId ? 'selected-photo-card' : ''} ${isUsed ? 'used-photo-card' : ''}`} draggable onClick={() => { setSelectedPhotoId(photo.id); show(isUsed ? 'Фото уже есть в альбоме. Можно вставить ещё раз.' : 'Фото выбрано'); }} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }}>
-                    <PhotoLibraryThumbnail photo={photo} />
-                    {isUsed && <small className="photo-used-badge">В альбоме</small>}
-                    <span>{photo.name}</span>
+
+                <div className="photo-panel-actions-v3">
+                  <label className={'button photo-panel-action-v3 ' + (photoImporting ? 'disabled' : '')}>
+                    <strong>{photoImporting ? 'Загрузка…' : '+ Загрузить'}</strong>
+                    <input className="hidden-input" type="file" accept="image/*" multiple disabled={photoImporting} onChange={uploadPhotos} />
+                  </label>
+                  <label className={'button photo-panel-action-v3 ' + (photoImporting ? 'disabled' : '')}>
+                    <strong>Восстановить</strong>
+                    <input className="hidden-input" type="file" accept="image/*,.heic,.heif" multiple disabled={photoImporting} onChange={recoverPhotos} />
+                  </label>
+                </div>
+
+                {photoImportProgress.visible && (
+                  <div className={'photo-upload-progress ' + photoImportProgress.status} aria-live="polite">
+                    <div className="photo-upload-progress-head">
+                      <strong>{photoImportProgress.label}</strong>
+                      <span>{photoImportProgress.percent}%</span>
+                    </div>
+                    <div
+                      className="photo-upload-progress-track"
+                      role="progressbar"
+                      aria-label={photoImportProgress.label || 'Загрузка фотографий'}
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      aria-valuenow={photoImportProgress.percent}
+                      aria-valuetext={photoImportProgress.detail}
+                    >
+                      <i style={{ width: String(photoImportProgress.percent) + '%' }} />
+                    </div>
+                    <small>{photoImportProgress.detail}</small>
+                  </div>
+                )}
+                <PhotoImportReport report={photoImportReport} onClose={() => setPhotoImportReport(null)} />
+
+                <div className="photo-library-tabs-v3" role="tablist" aria-label="Фильтр фотографий">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={photoLibraryView === 'unused'}
+                    className={photoLibraryView === 'unused' ? 'active' : ''}
+                    onClick={() => { setPhotoLibraryView('unused'); setSelectedPhotoId(null); }}
+                  >
+                    Не использованы <b>{unusedLibraryPhotos.length}</b>
                   </button>
-                );
-              })}</div>}
-            </>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={photoLibraryView === 'used'}
+                    className={photoLibraryView === 'used' ? 'active' : ''}
+                    onClick={() => { setPhotoLibraryView('used'); setSelectedPhotoId(null); }}
+                  >
+                    В альбоме <b>{usedLibraryPhotos.length}</b>
+                  </button>
+                </div>
+
+                <button
+                  className="photo-panel-clear-v3"
+                  type="button"
+                  onClick={clearPhotoLibraryPanel}
+                  disabled={visibleLibrary.length === 0 || photoImporting}
+                >
+                  Очистить список загруженных фото
+                </button>
+              </div>
+
+              <div className="photo-panel-list-v3">
+                {selectedPhoto && <div className="mobile-pick-hint">Выбрано фото. Теперь нажми рамку на странице.</div>}
+                {photoLibraryItems.length === 0 ? (
+                  <div className="empty-state photo-panel-empty-v3">
+                    <p>{photoLibraryView === 'used' ? 'В альбоме пока нет фотографий из этого списка.' : 'Все загруженные фотографии уже используются в альбоме.'}</p>
+                  </div>
+                ) : (
+                  <div className="photo-grid photo-library-grid-v3">
+                    {photoLibraryItems.map((photo) => (
+                      <button
+                        key={photo.id}
+                        type="button"
+                        className={'photo-card ' + (photo.id === selectedPhotoId ? 'selected-photo-card' : '')}
+                        draggable
+                        onClick={() => { setSelectedPhotoId(photo.id); show(photoLibraryView === 'used' ? 'Фото уже есть в альбоме. Можно вставить ещё раз.' : 'Фото выбрано'); }}
+                        onDragStart={(event) => { event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('photo-id', photo.id); }}
+                      >
+                        <small className="photo-order-badge-v3">{photoOrderById.get(String(photo.id))}</small>
+                        <PhotoLibraryThumbnail photo={photo} />
+                        <span className="photo-card-name-v3">{photo.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {leftPanel === 'pages' && (

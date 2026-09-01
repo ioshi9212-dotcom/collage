@@ -13,7 +13,7 @@ test('photo import report keeps exact skipped file reasons visible', async ({ pa
   });
 
   await openEditor(page);
-  const input = page.locator('.upload-box input[type="file"][accept="image/*"]');
+  const input = page.locator('.photo-panel-actions-v3 input[type="file"][accept="image/*"]');
   await input.setInputFiles([
     {
       name: 'good.png',

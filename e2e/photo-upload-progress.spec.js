@@ -8,7 +8,7 @@ test('shows percentage and a progress bar while a HEIC photo is processed', asyn
   });
 
   await openEditor(page);
-  const input = page.locator('.upload-box input[type="file"][accept="image/*"]');
+  const input = page.locator('.photo-panel-actions-v3 input[type="file"][accept="image/*"]');
   await input.setInputFiles({ name: 'IMG_PROGRESS.HEIC', mimeType: 'image/heic', buffer: Buffer.from('fake-heic-progress-payload') });
 
   const progress = page.locator('.photo-upload-progress');

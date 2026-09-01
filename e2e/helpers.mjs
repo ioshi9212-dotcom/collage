@@ -21,7 +21,7 @@ export async function openEditor(page) {
 }
 
 export async function uploadTinyPhoto(page, name = 'tiny.png') {
-  await page.locator('.upload-box input[type="file"][accept="image/*"]').setInputFiles(tinyPngUpload(name));
+  await page.locator('.photo-panel-actions-v3 input[type="file"][accept="image/*"]').setInputFiles(tinyPngUpload(name));
   await page.waitForFunction(() => window.__collageApp?.getProject?.().library?.length === 1);
   return page.evaluate(() => window.__collageApp.getProject().library[0]);
 }
