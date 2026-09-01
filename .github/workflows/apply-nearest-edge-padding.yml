@@ -1,0 +1,45 @@
+name: Apply nearest-edge page padding
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-nearest-edge-padding.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply nearest-edge padding patch
+        run: node scripts/patch-nearest-edge-padding.mjs
+      - name: Remove one-time patch helper
+        run: git rm scripts/patch-nearest-edge-padding.mjs
+      - name: Lint
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run editor regression smoke
+        run: npx playwright test e2e/global-history.spec.js e2e/editor-regression-smoke.spec.js
+      - name: Commit verified nearest-edge padding and remove workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/apply-nearest-edge-padding.yml
+          git add src/editor/layout.js src/editor/layout.test.mjs src/AppLive.jsx
+          git commit -m 'Align free frames to their nearest page edges'
+          git push
