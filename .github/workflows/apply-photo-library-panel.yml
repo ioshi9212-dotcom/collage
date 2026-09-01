@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Apply photo panel patch
-        run: node scripts/patch-photo-library-panel.mjs
+        run: node scripts/patch-photo-library-panel-v2.mjs
       - name: Lint
         run: npm run lint
       - name: Unit and integration tests
@@ -37,7 +37,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm scripts/patch-photo-library-panel.mjs .github/workflows/apply-photo-library-panel.yml
+          git rm scripts/patch-photo-library-panel.mjs scripts/patch-photo-library-panel-v2.mjs .github/workflows/apply-photo-library-panel.yml
           git add src/AppLive.jsx src/main.jsx src/photo-library-panel.css e2e/photo-library-tabs.spec.js
           git commit -m 'Compact photo library and add usage tabs'
           git push
