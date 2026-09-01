@@ -23,6 +23,8 @@ jobs:
         run: npm ci
       - name: Apply photo panel patch
         run: node scripts/patch-photo-library-panel-v2.mjs
+      - name: Remove one-time patch helpers
+        run: git rm scripts/patch-photo-library-panel.mjs scripts/patch-photo-library-panel-v2.mjs
       - name: Lint
         run: npm run lint
       - name: Unit and integration tests
@@ -33,11 +35,11 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run photo panel regressions
         run: npx playwright test e2e/photo-library-tabs.spec.js e2e/photo-import-report.spec.js e2e/photo-duplicate-upload.spec.js
-      - name: Commit verified panel and remove one-time helpers
+      - name: Commit verified panel and remove one-time workflow
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm scripts/patch-photo-library-panel.mjs scripts/patch-photo-library-panel-v2.mjs .github/workflows/apply-photo-library-panel.yml
+          git rm .github/workflows/apply-photo-library-panel.yml
           git add src/AppLive.jsx src/main.jsx src/photo-library-panel.css e2e/photo-library-tabs.spec.js
           git commit -m 'Compact photo library and add usage tabs'
           git push
