@@ -90,7 +90,14 @@ const indexedDB = {
   },
 };
 
-const window = { requestAnimationFrame: (callback) => callback() };
+const intervals = [];
+const window = {
+  requestAnimationFrame: (callback) => callback(),
+  setInterval(callback, delay) {
+    intervals.push({ callback, delay });
+    return intervals.length;
+  },
+};
 const document = {
   readyState: 'complete',
   querySelector() { return null; },
@@ -99,10 +106,12 @@ const document = {
   createElement() { return { style: {}, remove() {} }; },
 };
 
+const localStorage = new FakeStorage();
+
 const context = vm.createContext({
   window,
   document,
-  localStorage: new FakeStorage(),
+  localStorage,
   indexedDB,
   JSON: json,
   File: class {},
@@ -116,6 +125,9 @@ const context = vm.createContext({
 vm.runInContext(source, context, { filename: 'project-storage.js' });
 const storage = window.__collageProjectStorage;
 assert.ok(storage);
+assert.equal(storage.autosaveIntervalMs, 5 * 60 * 1000, 'autosave interval must be exactly five minutes');
+assert.equal(intervals.length, 1, 'autosave timer must be installed once');
+assert.equal(intervals[0].delay, 5 * 60 * 1000, 'autosave timer must run every five minutes');
 
 function snapshot(marker) {
   return {
@@ -145,6 +157,14 @@ const readBack = await storage.readLatest();
 assert.equal(readBack.data.marker, 'latest');
 assert.equal(databaseOpenCount, 1, 'reads must reuse the same IndexedDB connection');
 
+window.__collageApp = { getProject: () => snapshot('autosave') };
+const autosaveResult = await storage.autosaveNow();
+assert.equal(autosaveResult.saved, true, 'autosave must persist the current editor project');
+const autosaved = await storage.readLatest();
+assert.equal(autosaved.data.marker, 'autosave', 'autosave must overwrite the same latest-local slot');
+assert.equal(autosaved.source, 'autosave', 'autosave source must be recorded');
+assert.equal(JSON.parse(localStorage.getItem('collage-creator-album-live-v11-preserve-mode-layout')).marker, 'autosave', 'autosave must refresh the localStorage fallback');
+
 assert.doesNotMatch(source, /projectSignature|structuredClone|writeQueue\s*=\s*Promise/, 'old clone/stringify pipeline must be removed');
 const saveClickBlock = source.match(/if \(label === 'Сохранить'\) \{([\s\S]*?)\n {6}\}/)?.[1] || '';
 assert.ok(saveClickBlock, 'storage click listener must keep a save branch');
@@ -162,6 +182,8 @@ assert.match(appSource, /describeSaveResult\(\{ local, indexedDb, cloud, cloudEr
 assert.doesNotMatch(source, /function cloudProjectCardIndex|function openCloudProject/, 'storage must not duplicate cloud project opening');
 assert.doesNotMatch(source, /cloud-project-actions/, 'cloud card clicks must remain owned by cloud-auth.js');
 assert.match(source, /function clearCloudProjectBinding\(\)/, 'local imports must have an explicit cloud unlink operation');
+assert.match(source, /AUTOSAVE_INTERVAL_MS = 5 \* 60 \* 1000/, 'autosave cadence must stay at five minutes');
+assert.match(source, /persistProjectSnapshot\(snapshot, \{ source: 'autosave' \}\)/, 'autosave must write the latest-local IndexedDB slot');
 assert.match(source, /clearCloudProjectBinding\(\);\s*importIntoEditor\(record\.data\)/, 'opening a local project must unlink it before importing');
 assert.match(source, /input\?\.closest\?\.\('\.file-actions'\)[\s\S]{0,180}clearCloudProjectBinding\(\)/, 'manual project JSON imports must unlink the previous cloud project');
 assert.match(source, /LEGACY_STORAGE_PREFIX[\s\S]{0,5000}findLatestLocalStorageProject/, 'local opening must retain legacy-project discovery');

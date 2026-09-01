@@ -8,9 +8,12 @@
   const ALBUM_LAYERS_KEY = 'collage-album-extra-layers-v1';
   const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
   const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';
+  const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000;
 
   let databasePromise = null;
   let writeInFlight = false;
+  let autosaveInFlight = false;
+  let autosaveTimer = null;
   const pendingWrites = new Map();
 
   function readLegacyExtraLayers() {
@@ -307,6 +310,33 @@
     return persistProjectSnapshot(snapshot, { source });
   }
 
+  async function autosaveCurrentEditorProject() {
+    if (autosaveInFlight) return { saved: false, skipped: true };
+    const bridge = window.__collageApp;
+    if (!bridge || typeof bridge.getProject !== 'function') return { saved: false, skipped: true };
+    autosaveInFlight = true;
+    try {
+      const snapshot = await getFreshEditorSnapshot();
+      const result = await persistProjectSnapshot(snapshot, { source: 'autosave' });
+      try {
+        localStorage.setItem(CURRENT_STORAGE_KEY, JSON.stringify(snapshot));
+      } catch (error) {
+        console.warn('Автосохранение записано в IndexedDB, но резервный localStorage недоступен', error);
+      }
+      return result;
+    } catch (error) {
+      console.warn('Не удалось выполнить автосохранение проекта', error);
+      return { saved: false, error };
+    } finally {
+      autosaveInFlight = false;
+    }
+  }
+
+  function installAutosave() {
+    if (autosaveTimer !== null || typeof window.setInterval !== 'function') return;
+    autosaveTimer = window.setInterval(() => { void autosaveCurrentEditorProject(); }, AUTOSAVE_INTERVAL_MS);
+  }
+
   async function persistMigratedRecord(record, source) {
     const attached = attachLegacyExtraLayers(record?.data);
     if (!attached.migrated) return record;
@@ -404,7 +434,11 @@
     storeSnapshot: (data, options = {}) => persistProjectSnapshot(data, options),
     openLocalProject,
     readLatest: () => readProject(LATEST_LOCAL_KEY),
+    autosaveNow: autosaveCurrentEditorProject,
+    autosaveIntervalMs: AUTOSAVE_INTERVAL_MS,
   };
+
+  installAutosave();
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => void migrateCurrentLocalProject(), { once: true });
