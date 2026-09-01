@@ -1,0 +1,43 @@
+name: Apply frame photo clipboard fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-frame-photo-clipboard.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply frame photo patch
+        run: node scripts/patch-frame-photo-clipboard.mjs
+      - name: Lint
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run frame interaction regressions
+        run: npx playwright test e2e/smart-frame-snapping.spec.js e2e/frame-photo-context-menu.spec.js
+      - name: Commit verified fix and remove one-time helpers
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/patch-frame-photo-clipboard.mjs .github/workflows/apply-frame-photo-clipboard.yml
+          git add src/AppLive.jsx e2e/frame-photo-context-menu.spec.js
+          git commit -m 'Fix frame photo dragging and add photo clipboard'
+          git push
