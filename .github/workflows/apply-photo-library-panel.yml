@@ -27,8 +27,10 @@ jobs:
         run: node scripts/patch-photo-library-contract.mjs
       - name: Update browser test selectors
         run: node scripts/patch-photo-library-e2e-selectors.mjs
+      - name: Update final browser contract
+        run: node scripts/patch-photo-library-final-e2e-contract.mjs
       - name: Remove one-time patch helpers
-        run: git rm scripts/patch-photo-library-panel.mjs scripts/patch-photo-library-panel-v2.mjs scripts/patch-photo-library-contract.mjs scripts/patch-photo-library-e2e-selectors.mjs
+        run: git rm scripts/patch-photo-library-panel.mjs scripts/patch-photo-library-panel-v2.mjs scripts/patch-photo-library-contract.mjs scripts/patch-photo-library-e2e-selectors.mjs scripts/patch-photo-library-final-e2e-contract.mjs
       - name: Lint
         run: npm run lint
       - name: Unit and integration tests
