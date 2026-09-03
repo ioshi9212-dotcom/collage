@@ -135,18 +135,41 @@ assertFramesInsideCanvas(framesFromLayout(preserved), { width: 600, height: 600 
     { id: 'b', x: 500, y: 200, width: 400, height: 500, borderWidth: 6, zIndex: 5 },
   ];
   const fitted = fitFramesToPadding(frames, canvas, 50);
-  const left = Math.min(...fitted.map((frame) => frame.x));
-  const top = Math.min(...fitted.map((frame) => frame.y));
-  const right = Math.max(...fitted.map((frame) => frame.x + frame.width));
-  const bottom = Math.max(...fitted.map((frame) => frame.y + frame.height));
-  assert.equal(left, 50, 'free composition must touch the requested left inset');
-  assert.equal(top, 50, 'free composition must touch the requested top inset');
-  assert.equal(right, 950, 'free composition must touch the requested right inset');
-  assert.equal(bottom, 750, 'free composition must touch the requested bottom inset');
+  assert.deepEqual(
+    fitted.map(({ x, y, width, height }) => ({ x, y, width, height })),
+    [
+      { x: 50, y: 50, width: 350, height: 300 },
+      { x: 500, y: 200, width: 450, height: 550 },
+    ],
+    'only the page-facing edge of each outer frame may move; the opposite edge must stay fixed',
+  );
+  assert.equal(fitted[0].x + fitted[0].width, 400, 'left frame right edge must stay unchanged');
+  assert.equal(fitted[0].y + fitted[0].height, 350, 'top frame bottom edge must stay unchanged');
+  assert.equal(fitted[1].x, 500, 'right frame left edge must stay unchanged');
+  assert.equal(fitted[1].y, 200, 'bottom frame top edge must stay unchanged');
   assert.deepEqual(fitted[0].photo, frames[0].photo, 'photo assignment must survive fitting');
   assert.equal(fitted[1].borderWidth, 6, 'frame style must survive fitting');
   assert.equal(fitted[1].zIndex, 5, 'z order must survive fitting');
   assert.deepEqual(frames[0], { id: 'a', x: 100, y: 100, width: 300, height: 250, photo: { id: 'photo-a' }, zIndex: 2 }, 'fitting must not mutate source frames');
+}
+
+{
+  const canvas = { width: 1200, height: 900 };
+  const frames = [
+    { id: 'left', x: 120, y: 250, width: 240, height: 260 },
+    { id: 'middle', x: 470, y: 300, width: 220, height: 220 },
+    { id: 'right', x: 820, y: 270, width: 240, height: 260 },
+  ];
+  const fitted = fitFramesToPadding(frames, canvas, 60);
+  assert.equal(fitted[0].x, 60, 'left outer edge must move to the requested field');
+  assert.equal(fitted[0].x + fitted[0].width, 360, 'left frame far edge must stay fixed');
+  assert.deepEqual(
+    { x: fitted[1].x, y: fitted[1].y, width: fitted[1].width, height: fitted[1].height },
+    { x: 470, y: 300, width: 220, height: 220 },
+    'an interior frame must stay completely unchanged',
+  );
+  assert.equal(fitted[2].x, 820, 'right frame far edge must stay fixed');
+  assert.equal(fitted[2].x + fitted[2].width, 1140, 'right outer edge must move to the requested field');
 }
 
 {
@@ -165,24 +188,23 @@ assertFramesInsideCanvas(framesFromLayout(preserved), { width: 600, height: 600 
     { id: 'a', x: 100, y: 100, width: 300, height: 250, freeLayoutPadding: 70 },
     { id: 'b', x: 500, y: 200, width: 400, height: 500, freeLayoutPadding: 70 },
   ];
-  const fitted = buildGridLayout(canvas, {
+  const afterPaddingSettingChange = buildGridLayout(canvas, {
     frameCount: 2,
     padding: 90,
     gap: 28,
     frameMode: 'free',
   }, source);
-  assert.equal(fitted.layout, null, 'changing padding in free mode must preserve the composition instead of rebuilding a grid');
-  assert.equal(Math.min(...fitted.frames.map((frame) => frame.x)), 90);
-  assert.equal(Math.max(...fitted.frames.map((frame) => frame.x + frame.width)), 910);
-  assert.ok(fitted.frames.every((frame) => frame.freeLayoutPadding === 90));
+  assert.equal(afterPaddingSettingChange.layout, null, 'editing the padding setting must not rebuild a free composition');
+  assert.deepEqual(afterPaddingSettingChange.frames, source, 'editing the padding value alone must not alter existing free pages');
 
-  const rebuilt = buildGridLayout(canvas, {
+  const samePadding = buildGridLayout(canvas, {
     frameCount: 2,
     padding: 70,
     gap: 28,
     frameMode: 'free',
   }, source);
-  assert.equal(rebuilt.layout?.type, 'grid', 'same padding must retain the existing rebuild-grid behavior');
+  assert.equal(samePadding.layout, null, 'existing free composition must stay free');
+  assert.deepEqual(samePadding.frames, source, 'existing free geometry must stay unchanged until explicit fitting');
 }
 
 console.log('layout boundary checks passed');
