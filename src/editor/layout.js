@@ -51,11 +51,6 @@ function requestedPaddingValue(value) {
   return Math.max(0, Math.round(Number(value) || 0));
 }
 
-function freeLayoutPaddingMarker(frame) {
-  const value = Number(frame?.freeLayoutPadding);
-  return Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
-}
-
 function markFreeLayoutPadding(frames, padding) {
   const marker = requestedPaddingValue(padding);
   return frames.map((frame) => ({ ...frame, freeLayoutPadding: marker }));
@@ -169,37 +164,47 @@ export function fitFramesToPadding(frames, canvas, requestedPadding) {
 
   const width = safeCanvasSize(canvas?.width);
   const height = safeCanvasSize(canvas?.height);
+  const padding = requestedPaddingValue(requestedPadding);
   const normalized = items.map((frame) => cleanFrame(frame, { width, height }));
   const minX = Math.min(...normalized.map((frame) => frame.x));
   const minY = Math.min(...normalized.map((frame) => frame.y));
   const maxX = Math.max(...normalized.map((frame) => frame.x + frame.width));
   const maxY = Math.max(...normalized.map((frame) => frame.y + frame.height));
-  const boundsWidth = Math.max(1, maxX - minX);
-  const boundsHeight = Math.max(1, maxY - minY);
-
-  const requiredTargetWidth = Math.max(...normalized.map((frame) => MIN_FRAME * (boundsWidth / frame.width)));
-  const requiredTargetHeight = Math.max(...normalized.map((frame) => MIN_FRAME * (boundsHeight / frame.height)));
-  const maxPaddingX = Math.floor((width - requiredTargetWidth) / 2);
-  const maxPaddingY = Math.floor((height - requiredTargetHeight) / 2);
-  const maxPadding = Math.max(0, Math.min(maxPaddingX, maxPaddingY, Math.floor((width - MIN_FRAME) / 2), Math.floor((height - MIN_FRAME) / 2)));
-  const padding = Math.min(requestedPaddingValue(requestedPadding), maxPadding);
-  const targetWidth = Math.max(MIN_FRAME, width - padding * 2);
-  const targetHeight = Math.max(MIN_FRAME, height - padding * 2);
-  const scaleX = targetWidth / boundsWidth;
-  const scaleY = targetHeight / boundsHeight;
 
   return normalized.map((frame) => {
-    const left = Math.round(padding + (frame.x - minX) * scaleX);
-    const top = Math.round(padding + (frame.y - minY) * scaleY);
-    const right = Math.round(padding + (frame.x + frame.width - minX) * scaleX);
-    const bottom = Math.round(padding + (frame.y + frame.height - minY) * scaleY);
-    return cleanFrame({
+    const originalLeft = frame.x;
+    const originalTop = frame.y;
+    const originalRight = frame.x + frame.width;
+    const originalBottom = frame.y + frame.height;
+    const leftDistance = originalLeft;
+    const rightDistance = Math.max(0, width - originalRight);
+    const topDistance = originalTop;
+    const bottomDistance = Math.max(0, height - originalBottom);
+
+    let left = originalLeft;
+    let right = originalRight;
+    let top = originalTop;
+    let bottom = originalBottom;
+
+    if (originalLeft === minX && leftDistance <= rightDistance) {
+      left = clamp(padding, 0, Math.max(0, originalRight - MIN_FRAME));
+    } else if (originalRight === maxX && rightDistance < leftDistance) {
+      right = clamp(width - padding, originalLeft + MIN_FRAME, width);
+    }
+
+    if (originalTop === minY && topDistance <= bottomDistance) {
+      top = clamp(padding, 0, Math.max(0, originalBottom - MIN_FRAME));
+    } else if (originalBottom === maxY && bottomDistance < topDistance) {
+      bottom = clamp(height - padding, originalTop + MIN_FRAME, height);
+    }
+
+    return {
       ...frame,
       x: left,
       y: top,
-      width: Math.max(MIN_FRAME, right - left),
-      height: Math.max(MIN_FRAME, bottom - top),
-    }, { width, height });
+      width: right - left,
+      height: bottom - top,
+    };
   });
 }
 
@@ -207,17 +212,16 @@ export function buildGridLayout(canvas, settings, previousFrames = []) {
   const requestedFrameCount = Number(settings.frameCount) || 5;
   const freeMode = settings?.frameMode === 'free';
   const padding = requestedPaddingValue(settings?.padding);
-  const previousPadding = freeLayoutPaddingMarker(previousFrames[0]);
-  const shouldFitFreeComposition = freeMode
+  const canPreserveFreeComposition = freeMode
     && previousFrames.length > 0
-    && previousFrames.length === requestedFrameCount
-    && previousPadding !== null
-    && previousPadding !== padding;
+    && previousFrames.length === requestedFrameCount;
 
-  if (shouldFitFreeComposition) {
+  if (canPreserveFreeComposition) {
+    const width = safeCanvasSize(canvas?.width);
+    const height = safeCanvasSize(canvas?.height);
     return {
       layout: null,
-      frames: markFreeLayoutPadding(fitFramesToPadding(previousFrames, canvas, padding), padding),
+      frames: previousFrames.map((frame) => cleanFrame(frame, { width, height })),
     };
   }
 
