@@ -23,7 +23,6 @@
 }
 
 .stage-frame.preview-scroll-enabled {
-  display: block;
   overflow: auto !important;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -182,14 +181,6 @@
     padding-right: 10px;
     padding-left: 10px;
     font-size: 11.5px;
-  }
-
-  /* Keep the visible working area at the fitted size while the inner paper can grow. */
-  .stage-frame.preview-scroll-enabled {
-    width: min(100%, calc(var(--stage-viewport-width) + 2px)) !important;
-    height: calc(var(--stage-viewport-height) + 2px) !important;
-    max-width: 100%;
-    max-height: 100%;
   }
 }
 
