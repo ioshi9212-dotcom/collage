@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva';
+import { Ellipse, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva';
 import AlbumFlipPreview from './AlbumFlipPreview';
+import DrawingImageLayer from './DrawingImageLayer';
 import { hydratePhotoProject } from './photoAssets';
 import { loadCachedImage as loadImage } from './imageCache';
 import { coverPhotoRect } from './frameModel';
@@ -56,7 +57,7 @@ function PreviewFrameBorder({ frame, style }) {
     cornerRadius: radius,
     stroke: style.borderColor,
     strokeWidth: style.borderWidth,
-    strokeScaleEnabled: false,
+    strokeScaleEnabled: true,
     dash: borderDashFor(style.borderStyle, style.borderWidth),
     lineCap: style.borderStyle === 'dotted' ? 'round' : 'butt',
     listening: false,
@@ -111,29 +112,77 @@ function PreviewFrame({ frame, settings }) {
   );
 }
 
-function PreviewExtraLayers({ project, pageIndex }) {
-  const texts = textLayersForPage(project.extraLayers, pageIndex);
-  const drawings = drawingLayersForPage(project.extraLayers, pageIndex);
+function previewOpacity(value) {
+  return Math.max(0, Math.min(1, Number(value ?? 1)));
+}
+
+function PreviewLineDrawing({ item, pageIndex }) {
+  return (
+    <Line
+      key={item.id ?? `${pageIndex}-line-${item.x}-${item.y}`}
+      x={Number(item.x) || 0}
+      y={Number(item.y) || 0}
+      points={[0, 0, Math.max(1, Number(item.length) || 300), 0]}
+      rotation={Number(item.angle) || 0}
+      stroke={item.color || '#6f6862'}
+      strokeWidth={Math.max(1, Number(item.strokeWidth) || 4)}
+      opacity={previewOpacity(item.opacity)}
+      lineCap="round"
+      listening={false}
+    />
+  );
+}
+
+function PreviewShapeDrawing({ item, pageIndex }) {
+  const width = Math.max(20, Number(item.width) || 320);
+  const height = Math.max(20, Number(item.height) || 320);
+  const fill = item.fillEnabled !== false ? (item.fillColor || '#e7d6c6') : undefined;
+  const stroke = item.strokeEnabled === true ? (item.strokeColor || '#6f6862') : undefined;
+  const strokeWidth = item.strokeEnabled === true ? Math.max(1, Number(item.strokeWidth) || 4) : 0;
+  const common = {
+    fill,
+    stroke,
+    strokeWidth,
+    opacity: previewOpacity(item.opacity),
+    listening: false,
+  };
+
+  return (
+    <Group key={item.id ?? `${pageIndex}-shape-${item.x}-${item.y}`} x={Number(item.x) || 0} y={Number(item.y) || 0} listening={false}>
+      {item.shapeKind === 'ellipse' ? (
+        <Ellipse x={width / 2} y={height / 2} radiusX={width / 2} radiusY={height / 2} {...common} />
+      ) : (
+        <Rect x={0} y={0} width={width} height={height} {...common} />
+      )}
+    </Group>
+  );
+}
+
+function PreviewDrawing({ item, pageIndex }) {
+  if (item?.type === 'image') {
+    return <DrawingImageLayer key={item.id ?? `${pageIndex}-image-${item.x}-${item.y}`} item={item} editable={false} selected={false} />;
+  }
+  if (item?.type === 'shape') return <PreviewShapeDrawing item={item} pageIndex={pageIndex} />;
+  if (item?.type === 'line') return <PreviewLineDrawing item={item} pageIndex={pageIndex} />;
+  return null;
+}
+
+function PreviewDrawingPlane({ project, pageIndex, plane }) {
+  const drawings = drawingLayersForPage(project.extraLayers, pageIndex)
+    .filter((item) => (item?.plane === 'back' ? 'back' : 'front') === plane);
 
   return (
     <Group listening={false}>
-      {drawings.map((item) => {
-        if (item?.type !== 'line') return null;
-        return (
-          <Line
-            key={item.id ?? `${pageIndex}-line-${item.x}-${item.y}`}
-            x={Number(item.x) || 0}
-            y={Number(item.y) || 0}
-            points={[0, 0, Math.max(1, Number(item.length) || 300), 0]}
-            rotation={Number(item.angle) || 0}
-            stroke={item.color || '#6f6862'}
-            strokeWidth={Math.max(1, Number(item.strokeWidth) || 4)}
-            opacity={Number(item.opacity ?? 1)}
-            lineCap="round"
-            listening={false}
-          />
-        );
-      })}
+      {drawings.map((item) => <PreviewDrawing key={item.id} item={item} pageIndex={pageIndex} />)}
+    </Group>
+  );
+}
+
+function PreviewTextLayers({ project, pageIndex }) {
+  const texts = textLayersForPage(project.extraLayers, pageIndex);
+
+  return (
+    <Group listening={false}>
       {texts.map((item) => (
         <Text
           key={item.id ?? `${pageIndex}-text-${item.x}-${item.y}`}
@@ -204,8 +253,10 @@ export function AlbumPagePreview({ project, pageIndex }) {
     <Stage className="album-flip-stage" width={PREVIEW_WIDTH} height={height} listening={false}>
       <Layer scaleX={scale} scaleY={scale} listening={false}>
         <Rect width={canvas.width} height={canvas.height} fill={settings.borderColor || '#ffffff'} listening={false} />
+        <PreviewDrawingPlane project={project} pageIndex={pageIndex} plane="back" />
         {!page?.isBlankPage && frames.map((frame) => <PreviewFrame key={frame.id} frame={frame} settings={settings} />)}
-        <PreviewExtraLayers project={project} pageIndex={pageIndex} />
+        <PreviewDrawingPlane project={project} pageIndex={pageIndex} plane="front" />
+        <PreviewTextLayers project={project} pageIndex={pageIndex} />
         <PreviewPageNumber pageIndex={pageIndex} canvas={canvas} settings={settings.pageNumbering} />
       </Layer>
     </Stage>
