@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { countFramesInLayout } from './pageModel.js';
 import { addFreeFrameToPage, removeFreeFrameFromPage } from './freeFrameActions.js';
 
 const canvas = { width: 1480, height: 2100 };
@@ -12,7 +11,7 @@ const page = { id: 'page-1', frameCount: 2, layout: null, frames: [first, second
   const result = addFreeFrameToPage(page, canvas, settings, () => 'new-frame');
   assert.equal(result.page.frames.length, 3);
   assert.equal(result.page.frameCount, 3);
-  assert.equal(countFramesInLayout(result.page.layout), 3);
+  assert.equal(result.page.layout, null, 'free mode must keep a free composition instead of recreating a grid');
   assert.equal(result.page.frames[0], first, 'adding a frame must preserve the first frame object');
   assert.equal(result.page.frames[1], second, 'adding a frame must preserve the second frame object');
   assert.deepEqual(result.page.frames[0], first, 'manual geometry and photo crop must stay unchanged');
@@ -28,7 +27,7 @@ const page = { id: 'page-1', frameCount: 2, layout: null, frames: [first, second
   const next = removeFreeFrameFromPage(page, 'second', canvas, settings);
   assert.equal(next.frames.length, 1);
   assert.equal(next.frameCount, 1);
-  assert.equal(countFramesInLayout(next.layout), 1);
+  assert.equal(next.layout, null, 'free mode must stay layout-free after deleting a frame');
   assert.equal(next.frames[0], first, 'deleting another frame must preserve object identity');
   assert.deepEqual(next.frames[0], first, 'deleting another frame must preserve geometry and photo crop');
 }
