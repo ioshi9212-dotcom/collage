@@ -1,0 +1,48 @@
+name: Apply drawing layers and shapes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-drawing-layers-shapes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Stabilize album preview zoom
+        run: node scripts/fix-preview-zoom-layout.mjs
+      - name: Add drawing layers and shapes
+        run: node scripts/add-drawing-layers-shapes.mjs
+      - name: Lint
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify drawing tools and preview zoom
+        run: npx playwright test e2e/drawing-shapes.spec.mjs e2e/preview-zoom-pan.spec.mjs
+      - name: Commit verified editor changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/fix-preview-zoom-layout.mjs
+          git rm scripts/add-drawing-layers-shapes.mjs
+          git rm .github/workflows/apply-drawing-layers-shapes.yml
+          git add -A
+          git commit -m 'Add drawing layers and editable shapes'
+          git pull --rebase origin main
+          git push
