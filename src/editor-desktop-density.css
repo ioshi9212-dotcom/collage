@@ -1,0 +1,317 @@
+/* Desktop density pass: keep the canvas visually dominant and make chrome recede.
+   This only changes the on-screen editor shell. Print/export geometry stays untouched. */
+
+@media (min-width: 921px) {
+  .app-shell {
+    font-size: 11px;
+  }
+
+  .app-header-v2 {
+    min-height: 46px;
+    grid-template-columns: minmax(145px, auto) minmax(190px, 1fr) auto;
+    gap: 8px;
+    padding: 4px 8px;
+  }
+
+  .app-brand-v2 { gap: 7px; }
+  .app-brand-mark-v2 {
+    width: 27px;
+    height: 27px;
+    font-size: 10px;
+  }
+  .app-brand-copy-v2 strong {
+    font-size: 12px;
+    font-weight: 750;
+  }
+  .app-brand-copy-v2 span {
+    display: none;
+  }
+
+  .segmented-v2 button,
+  .app-header-actions-v2 .button,
+  .app-header-actions-v2 .small-button {
+    min-height: 28px !important;
+    height: 28px;
+    padding-inline: 8px !important;
+    border-radius: 4px;
+    font-size: 10.5px !important;
+    font-weight: 650 !important;
+  }
+
+  .history-button-v2 {
+    min-width: 28px !important;
+    width: 28px !important;
+    font-size: 15px !important;
+  }
+
+  .primary-save-v2,
+  .button.primary-save-v2 {
+    min-height: 28px !important;
+    font-weight: 750 !important;
+  }
+
+  .editor-workspace-v2 {
+    grid-template-columns: 44px 178px minmax(0, 1fr) 208px !important;
+    grid-template-rows: minmax(0, 1fr) 74px !important;
+  }
+
+  .editor-tool-rail-v2 {
+    gap: 1px;
+    padding: 4px 3px;
+  }
+
+  .editor-tool-button-v2 {
+    min-height: 38px;
+    gap: 1px;
+    padding: 3px 1px;
+    border-radius: 4px;
+    font-size: 7.5px !important;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .editor-tool-button-v2 b {
+    font-size: 12px;
+  }
+  .editor-tool-button-v2.active {
+    box-shadow: inset 2px 0 0 var(--shell-graphite) !important;
+  }
+
+  .editor-left-panel-v2,
+  .workspace > .sidebar,
+  .workspace > .inspector,
+  .workspace > .album-mode-inspector {
+    padding: 7px !important;
+  }
+
+  .editor-left-panel-v2 .panel-title,
+  .workspace > .inspector .panel-title,
+  .workspace > .album-mode-inspector .panel-title {
+    margin-bottom: 7px;
+  }
+  .editor-left-panel-v2 .panel-title h2,
+  .workspace > .inspector .panel-title h2,
+  .workspace > .album-mode-inspector .panel-title h2,
+  .photo-panel-title-v3 h2 {
+    font-size: 13px !important;
+    line-height: 1.05;
+  }
+  .editor-left-panel-v2 .panel-title p,
+  .workspace > .inspector .panel-title p,
+  .workspace > .album-mode-inspector .panel-title p,
+  .photo-panel-title-v3 p {
+    font-size: 9px !important;
+    line-height: 1.15;
+  }
+
+  .editor-workspace-v2 .button,
+  .editor-workspace-v2 .small-button,
+  .editor-left-panel-v2 .photo-panel-action-v3,
+  .photo-library-tabs-v3 button {
+    min-height: 26px !important;
+    height: auto;
+    padding: 3px 6px !important;
+    border-radius: 4px;
+    font-size: 10px !important;
+    font-weight: 650;
+    line-height: 1.05;
+  }
+
+  .field > span,
+  .toggle-row-v3,
+  .hint,
+  .print-settings-details-v2 > summary,
+  .page-numbering-settings > summary,
+  .booklet-export-details-v3 > summary {
+    font-size: 9.5px !important;
+  }
+
+  .inspector-block {
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+  }
+  .inspector-block h3,
+  .panel-subtitle-v3 {
+    font-size: 10px !important;
+    font-weight: 750;
+  }
+
+  .editor-workspace-v2 input[type='number'],
+  .editor-workspace-v2 input[type='text'],
+  .editor-workspace-v2 input[type='email'],
+  .editor-workspace-v2 input[type='password'],
+  .editor-workspace-v2 select,
+  .editor-workspace-v2 textarea {
+    min-height: 26px !important;
+    padding: 3px 6px !important;
+    font-size: 10.5px !important;
+  }
+
+  .editor-workspace-v2 textarea {
+    min-height: 72px !important;
+  }
+
+  .inspector-tabs-v2 {
+    margin-bottom: 6px;
+  }
+  .inspector-tab-v2 {
+    min-height: 27px !important;
+    font-size: 10px !important;
+    font-weight: 700;
+  }
+
+  .canvas-area {
+    padding: 4px 6px 6px !important;
+  }
+  .canvas-toolbar {
+    min-height: 24px !important;
+    margin-bottom: 3px !important;
+    gap: 5px;
+    padding: 0 1px 3px !important;
+  }
+  .canvas-toolbar strong {
+    display: block;
+    min-width: 0;
+    max-width: min(320px, 34vw);
+    overflow: hidden;
+    font-size: 10.5px !important;
+    font-weight: 650;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .preview-zoom-controls {
+    gap: 3px;
+  }
+  .preview-zoom-controls .small-button {
+    min-width: 26px;
+    min-height: 24px !important;
+    padding-inline: 6px !important;
+    font-size: 10px !important;
+  }
+  .preview-zoom-value {
+    min-width: 38px;
+    font-size: 9.5px;
+    font-weight: 700;
+  }
+
+  .page-rail {
+    min-height: 74px !important;
+    max-height: 74px !important;
+    padding: 4px 6px !important;
+  }
+  .page-rail .panel-title {
+    width: 68px;
+    margin-right: 5px;
+  }
+  .page-rail .panel-title h2 {
+    font-size: 11px;
+  }
+  .page-rail-list {
+    gap: 4px;
+    padding-bottom: 3px;
+  }
+  .page-rail-card {
+    flex: 0 0 66px;
+    width: 66px;
+    min-height: 62px;
+    height: 62px;
+    padding: 4px;
+    font-size: 9px;
+  }
+  .page-rail-card strong {
+    font-size: 11px;
+    line-height: 1;
+  }
+  .page-rail-card small,
+  .page-rail-note {
+    font-size: 8.5px;
+    line-height: 1.05;
+  }
+  .page-rail-add-v3 {
+    min-height: 26px !important;
+    padding-inline: 7px !important;
+  }
+
+  .photo-panel-v3 {
+    max-height: calc(100vh - 210px);
+  }
+  .photo-panel-header-v3 {
+    gap: 4px;
+    padding-bottom: 5px;
+  }
+  .photo-panel-title-v3 {
+    min-height: 24px;
+  }
+  .photo-panel-actions-v3,
+  .photo-library-tabs-v3 {
+    gap: 3px;
+  }
+  .photo-library-tabs-v3 button b {
+    min-width: 17px;
+    min-height: 15px;
+    padding-inline: 4px;
+    font-size: 8.5px;
+  }
+  .photo-panel-list-v3 {
+    padding-top: 5px;
+  }
+  .photo-grid.photo-library-grid-v3 {
+    gap: 4px;
+  }
+  .photo-library-grid-v3 .photo-card {
+    padding: 2px;
+  }
+  .photo-card-name-v3 {
+    margin-top: 2px;
+    font-size: 7.5px !important;
+  }
+  .photo-order-badge-v3,
+  .photo-used-badge {
+    min-width: 15px !important;
+    height: 15px !important;
+    padding-inline: 3px !important;
+    font-size: 7px !important;
+  }
+
+  .cloud-auth-panel:not(.collapsed) {
+    top: 52px !important;
+    right: 8px !important;
+    width: 280px !important;
+    max-height: calc(100vh - 60px) !important;
+  }
+  .cloud-auth-head {
+    padding: 7px 8px !important;
+  }
+  .cloud-auth-body {
+    gap: 6px !important;
+    padding: 7px 8px 8px !important;
+  }
+  .cloud-auth-title strong { font-size: 11.5px !important; }
+  .cloud-auth-title span,
+  .cloud-auth-status { font-size: 9.5px !important; }
+  .cloud-auth-field span { font-size: 8.5px !important; }
+  .cloud-auth-field input {
+    min-height: 27px !important;
+    padding-inline: 6px !important;
+    font-size: 10.5px !important;
+  }
+  .cloud-auth-button,
+  .cloud-auth-toggle {
+    min-height: 27px !important;
+    padding-inline: 7px !important;
+    font-size: 10px !important;
+    font-weight: 650 !important;
+  }
+  .cloud-project-list {
+    gap: 4px !important;
+    max-height: 170px !important;
+    padding-top: 6px !important;
+  }
+  .cloud-project-card {
+    gap: 3px !important;
+    padding: 6px !important;
+  }
+  .cloud-project-card strong { font-size: 10.5px !important; }
+  .cloud-project-card small { font-size: 8.5px !important; }
+}
