@@ -1,0 +1,205 @@
+/* Desktop preview zoom + compact editor density. Print/export geometry is untouched. */
+
+.preview-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.preview-zoom-controls .small-button {
+  min-width: 31px;
+  min-height: 29px;
+  padding: 0 8px;
+}
+
+.preview-zoom-value {
+  min-width: 46px;
+  color: var(--shell-text, #272b2e);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.stage-frame.preview-scroll-enabled {
+  display: block;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--shell-line-strong, #adb4b8) transparent;
+}
+
+.stage-frame.preview-scroll-enabled::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.stage-frame.preview-scroll-enabled::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--shell-line-strong, #adb4b8);
+  background-clip: padding-box;
+}
+
+.stage-pan-surface {
+  position: relative;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.stage-pan-surface > .stage-scale-shell {
+  left: 0;
+  top: 0;
+}
+
+.stage-frame.preview-pan-mode {
+  cursor: grab;
+  user-select: none;
+}
+
+.stage-frame.preview-pan-mode:active {
+  cursor: grabbing;
+}
+
+/* In pan mode the viewport owns pointer input, so photos/text cannot move by accident. */
+.stage-frame.preview-pan-mode .stage-pan-surface {
+  pointer-events: none;
+}
+
+@media (min-width: 921px) {
+  .editor-workspace-v2 {
+    grid-template-columns: 54px 204px minmax(0, 1fr) 238px !important;
+    grid-template-rows: minmax(0, 1fr) 90px;
+  }
+
+  .editor-tool-rail-v2 {
+    gap: 2px;
+    padding: 6px 4px;
+  }
+
+  .editor-tool-button-v2 {
+    min-height: 43px;
+    gap: 2px;
+    padding: 4px 2px;
+    font-size: 8.5px;
+  }
+
+  .editor-tool-button-v2 b {
+    font-size: 14px;
+  }
+
+  .editor-left-panel-v2,
+  .workspace > .sidebar,
+  .workspace > .inspector,
+  .workspace > .album-mode-inspector {
+    padding: 8px;
+  }
+
+  .editor-workspace-v2 .button,
+  .editor-workspace-v2 .small-button {
+    min-height: 29px;
+    padding-right: 8px;
+    padding-left: 8px;
+    font-size: 11.5px;
+  }
+
+  .editor-workspace-v2 input[type='number'],
+  .editor-workspace-v2 input[type='text'],
+  .editor-workspace-v2 input[type='email'],
+  .editor-workspace-v2 input[type='password'],
+  .editor-workspace-v2 select,
+  .editor-workspace-v2 textarea {
+    min-height: 29px;
+    padding-right: 7px;
+    padding-left: 7px;
+    font-size: 12px;
+  }
+
+  .editor-workspace-v2 textarea {
+    min-height: 88px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  .inspector-tabs-v2 {
+    margin-bottom: 8px;
+  }
+
+  .inspector-tab-v2 {
+    min-height: 31px;
+    font-size: 11px;
+  }
+
+  .page-settings-panel-v2 {
+    gap: 8px;
+  }
+
+  .page-settings-panel-v2 .inspector-block {
+    padding-bottom: 8px;
+  }
+
+  .canvas-area {
+    padding: 6px 7px 7px;
+  }
+
+  .canvas-toolbar {
+    min-height: 30px;
+    margin-bottom: 5px;
+    padding-bottom: 5px;
+  }
+
+  .canvas-toolbar strong {
+    font-size: 13px;
+  }
+
+  .page-rail {
+    min-height: 90px;
+    max-height: 90px !important;
+    padding: 6px 8px;
+  }
+
+  .page-rail .panel-title {
+    width: 76px;
+    margin-right: 6px;
+  }
+
+  .page-rail-card {
+    flex-basis: 76px;
+    width: 76px;
+    min-height: 72px;
+    padding: 5px;
+  }
+
+  .page-rail-list {
+    gap: 5px;
+  }
+
+  .app-header-actions-v2 .button,
+  .app-header-actions-v2 .small-button,
+  .segmented-v2 button {
+    min-height: 31px;
+    padding-right: 10px;
+    padding-left: 10px;
+    font-size: 11.5px;
+  }
+
+  /* Keep the visible working area at the fitted size while the inner paper can grow. */
+  .stage-frame.preview-scroll-enabled {
+    width: min(100%, calc(var(--stage-viewport-width) + 2px)) !important;
+    height: calc(var(--stage-viewport-height) + 2px) !important;
+    max-width: 100%;
+    max-height: 100%;
+  }
+}
+
+@media (max-width: 920px) {
+  .preview-zoom-controls {
+    width: 100%;
+    margin: 4px 0 0;
+  }
+
+  .preview-zoom-controls .preview-pan-button {
+    margin-left: auto;
+  }
+}
