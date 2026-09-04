@@ -1436,6 +1436,8 @@ export default function App() {
   const jsonRef = useRef(null);
   const noticeTimerRef = useRef(null);
   const canvasAreaRef = useRef(null);
+  const stageFrameRef = useRef(null);
+  const previewPanDragRef = useRef(null);
   const photoUploadInFlightRef = useRef(false);
   const photoProgressTimerRef = useRef(null);
   const saveInFlightRef = useRef(null);
@@ -1504,6 +1506,8 @@ export default function App() {
   const [dragPageIndex, setDragPageIndex] = useState(null);
   const [dragOverPageIndex, setDragOverPageIndex] = useState(null);
   const [previewViewport, setPreviewViewport] = useState({ width: 1220, height: 720 });
+  const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewPanMode, setPreviewPanMode] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [leftPanel, setLeftPanel] = useState('photos');
   const [inspectorTab, setInspectorTab] = useState('object');
@@ -1768,14 +1772,72 @@ export default function App() {
       ? canvas.width * spreadPageCount + SPREAD_GAP * Math.max(0, spreadPageCount - 1)
       : canvas.width;
   const stageRealHeight = isBooklet ? bookletSheetSize.height : canvas.height;
-  const previewScale = getPreviewScale({
+  const fitPreviewScale = getPreviewScale({
     stageWidth: stageRealWidth,
     stageHeight: stageRealHeight,
     viewportWidth: previewViewport.width,
     viewportHeight: previewViewport.height,
   });
+  const previewScale = fitPreviewScale * previewZoom;
+  const fitStageDisplayWidth = stageRealWidth * fitPreviewScale;
+  const fitStageDisplayHeight = stageRealHeight * fitPreviewScale;
   const stageDisplayWidth = stageRealWidth * previewScale;
   const stageDisplayHeight = stageRealHeight * previewScale;
+
+  function applyPreviewZoom(nextValue) {
+    const nextZoom = Math.max(1, Math.min(3, Math.round(Number(nextValue || 1) * 4) / 4));
+    const node = stageFrameRef.current;
+    const currentZoom = Math.max(1, Number(previewZoom) || 1);
+    const centerX = node ? (node.scrollLeft + node.clientWidth / 2) / currentZoom : 0;
+    const centerY = node ? (node.scrollTop + node.clientHeight / 2) / currentZoom : 0;
+
+    setPreviewZoom(nextZoom);
+    if (nextZoom <= 1) setPreviewPanMode(false);
+
+    requestAnimationFrame(() => {
+      const frame = stageFrameRef.current;
+      if (!frame) return;
+      if (nextZoom <= 1) {
+        frame.scrollLeft = 0;
+        frame.scrollTop = 0;
+        return;
+      }
+      frame.scrollLeft = Math.max(0, centerX * nextZoom - frame.clientWidth / 2);
+      frame.scrollTop = Math.max(0, centerY * nextZoom - frame.clientHeight / 2);
+    });
+  }
+
+  function startPreviewPan(event) {
+    if (!previewPanMode || previewZoom <= 1 || event.button !== 0) return;
+    const frame = stageFrameRef.current;
+    if (!frame) return;
+    previewPanDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: frame.scrollLeft,
+      scrollTop: frame.scrollTop,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function movePreviewPan(event) {
+    const drag = previewPanDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const frame = stageFrameRef.current;
+    if (!frame) return;
+    frame.scrollLeft = drag.scrollLeft - (event.clientX - drag.startX);
+    frame.scrollTop = drag.scrollTop - (event.clientY - drag.startY);
+    event.preventDefault();
+  }
+
+  function finishPreviewPan(event) {
+    const drag = previewPanDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    previewPanDragRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }
   const bookletExportSummary = useMemo(() => ({
     pages: pages.length,
     blocks: bookletPlan.blockCount,
@@ -4555,19 +4617,27 @@ export default function App() {
           )}
         </aside>
 
-        <section ref={canvasAreaRef} className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px`, '--stage-display-height': `${stageDisplayHeight}px` }}>
+        <section ref={canvasAreaRef} className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px`, '--stage-display-height': `${stageDisplayHeight}px`, '--stage-viewport-width': `${fitStageDisplayWidth}px`, '--stage-viewport-height': `${fitStageDisplayHeight}px` }}>
           <div className="canvas-toolbar">
             <div>
               <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${stageRealWidth}×${stageRealHeight}px` : isSpread ? `${spreadVisibleLabel} · ${canvas.width}×${canvas.height}px · печать ${activeSpreadPrintGeometry.outputWidthPx}×${activeSpreadPrintGeometry.outputHeightPx}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px · печать ${pagePrintGeometry.outputWidthPx}×${pagePrintGeometry.outputHeightPx}px`}</strong>
               <span>{isBooklet ? 'Просмотр физической стороны А4: слева и справа показаны страницы, которые будут напечатаны рядом.' : locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать и менять размер. Умная привязка выравнивает края и центры, розовая линия показывает совпадение.'}</span>
               <em>{isBooklet ? 'Это режим просмотра и PNG-экспорта брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота сохраняет текущую книжную пару; первая страница сохраняется одна.'}</em>
             </div>
+            <div className="preview-zoom-controls" aria-label="Масштаб просмотра альбома">
+              <button type="button" className="small-button" aria-label="Уменьшить альбом" onClick={() => applyPreviewZoom(previewZoom - 0.25)} disabled={previewZoom <= 1}>−</button>
+              <button type="button" className="small-button" aria-label="По размеру" onClick={() => applyPreviewZoom(1)}>По размеру</button>
+              <span className="preview-zoom-value" aria-live="polite">{Math.round(previewZoom * 100)}%</span>
+              <button type="button" className="small-button" aria-label="Увеличить альбом" onClick={() => applyPreviewZoom(previewZoom + 0.25)} disabled={previewZoom >= 3}>+</button>
+              <button type="button" className={`small-button preview-pan-button ${previewPanMode ? 'active-mode' : ''}`} aria-label="Двигать просмотр" aria-pressed={previewPanMode} onClick={() => setPreviewPanMode((value) => !value)} disabled={previewZoom <= 1}>Двигать</button>
+            </div>
             {!isBooklet && <button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button>}
             {!isBooklet && <button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => clearAllFramePhotos(frames)); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button>}
           </div>
 
-          <div className={`stage-frame ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''}`} onDragOver={(event) => { if (!isBooklet) event.preventDefault(); }} onDrop={isBooklet ? undefined : dropPhoto}>
-            <div className="stage-scale-shell" style={{ width: stageRealWidth, height: stageRealHeight, transform: `scale(${previewScale})` }}>
+          <div ref={stageFrameRef} className={`stage-frame preview-scroll-enabled ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''} ${previewPanMode ? 'preview-pan-mode' : ''}`} onPointerDown={startPreviewPan} onPointerMove={movePreviewPan} onPointerUp={finishPreviewPan} onPointerCancel={finishPreviewPan} onDragOver={(event) => { if (!isBooklet && !previewPanMode) event.preventDefault(); }} onDrop={isBooklet || previewPanMode ? undefined : dropPhoto}>
+            <div className="stage-pan-surface" style={{ width: stageDisplayWidth, height: stageDisplayHeight }}>
+              <div className="stage-scale-shell" style={{ width: stageRealWidth, height: stageRealHeight, transform: `scale(${previewScale})` }}>
               <Stage ref={stageRef} width={stageRealWidth} height={stageRealHeight} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); setFrameSnapGuides(null); setSelectedTextId(null); setSelectedDrawingId(null); } }}>
                 <Layer>
                   {isBooklet && <BookletSheetBackground canvas={canvas} printSettings={normalizedBookletPrintSettings} />}
@@ -4577,6 +4647,7 @@ export default function App() {
                   {isBooklet && <BookletPrintGuides canvas={canvas} printSettings={normalizedBookletPrintSettings} preview />}
                 </Layer>
               </Stage>
+              </div>
             </div>
           </div>
         </section>
