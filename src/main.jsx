@@ -21,6 +21,7 @@ import './editor-mobile-mode-fixes.css';
 import './photo-upload-progress.css';
 import './photo-import-report.css';
 import './photo-library-panel.css';
+import './editor-desktop-density.css';
 import './album-flip-preview.css';
 import './album-flip-leaf-surface.css';
 import { installPageRailBehavior } from './editor/pageRailBehavior';
