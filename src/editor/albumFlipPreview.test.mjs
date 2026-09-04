@@ -39,7 +39,6 @@ assert.equal(albumTurningLeafVisibleFace(0.499), 'front');
 assert.equal(albumTurningLeafVisibleFace(0.5), 'back');
 assert.equal(albumTurningLeafVisibleFace(1), 'back');
 
-
 const editorSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8');
 assert.ok(editorSource.includes("albumSpreadForPage(currentPageIndex, pages.length)"), 'editor spread must use book spread numbering');
 assert.ok(editorSource.includes("albumSpreadPages(spreadIndex, pages.length)"), 'editor spread must share the album spread model');
@@ -70,6 +69,12 @@ assert.match(hostSource, /Листать альбом/);
 assert.match(hostSource, /<AlbumFlipPreview/);
 assert.match(hostSource, /window\.__collageApp\?\.getProject/);
 assert.match(hostSource, /<PreviewPageNumber/);
+assert.match(hostSource, /DrawingImageLayer/, '3D album preview must render PNG drawings');
+assert.match(hostSource, /<Ellipse/, '3D album preview must render ellipse shapes');
+assert.match(hostSource, /function PreviewShapeDrawing/, '3D album preview must render editable shapes');
+assert.match(hostSource, /plane="back"[\s\S]*frames\.map[\s\S]*plane="front"/, '3D album preview must preserve under-photo and over-photo drawing planes');
+assert.match(hostSource, /strokeScaleEnabled: true/, 'frame borders in the 3D album must scale together with the printed page');
+assert.doesNotMatch(hostSource, /if \(item\?\.type !== 'line'\) return null/, '3D album preview must not discard PNG and shape drawings');
 
 const mainSource = readFileSync(resolve(process.cwd(), 'src/main.jsx'), 'utf8');
 assert.match(mainSource, /album-flip-preview\.css/);
