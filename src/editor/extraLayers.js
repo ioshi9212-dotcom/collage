@@ -79,10 +79,12 @@ function sanitizeTextLayer(item, usedIds, idFactory) {
 function sanitizeDrawingLayer(item, usedIds, idFactory) {
   const source = objectValue(item);
   if (!source) return null;
+  const plane = source.plane === 'back' ? 'back' : 'front';
   if (source.type === 'image') {
     return {
       id: uniqueLayerId(source.id, usedIds, idFactory),
       type: 'image',
+      plane,
       assetId: cleanString(source.assetId, '', MAX_LAYER_ID_LENGTH),
       name: cleanString(source.name, 'PNG-рисунок', 500),
       cloudKey: cleanString(source.cloudKey, '', 2_000),
@@ -98,10 +100,29 @@ function sanitizeDrawingLayer(item, usedIds, idFactory) {
       opacity: cleanNumber(source.opacity, 1, 0, 1),
     };
   }
+  if (source.type === 'shape') {
+    return {
+      id: uniqueLayerId(source.id, usedIds, idFactory),
+      type: 'shape',
+      plane,
+      shapeKind: source.shapeKind === 'ellipse' ? 'ellipse' : 'rectangle',
+      x: cleanNumber(source.x, 0, -10_000, 10_000),
+      y: cleanNumber(source.y, 0, -10_000, 10_000),
+      width: cleanNumber(source.width, 320, 20, 10_000),
+      height: cleanNumber(source.height, 320, 20, 10_000),
+      fillEnabled: source.fillEnabled !== false,
+      fillColor: cleanString(source.fillColor, '#e7d6c6', MAX_COLOR_LENGTH),
+      strokeEnabled: source.strokeEnabled === true,
+      strokeColor: cleanString(source.strokeColor, '#6f6862', MAX_COLOR_LENGTH),
+      strokeWidth: cleanNumber(source.strokeWidth, 4, 1, 500),
+      opacity: cleanNumber(source.opacity, 1, 0, 1),
+    };
+  }
   if (source.type !== 'line') return null;
   return {
     id: uniqueLayerId(source.id, usedIds, idFactory),
     type: 'line',
+    plane,
     x: cleanNumber(source.x, 0, -10_000, 10_000),
     y: cleanNumber(source.y, 0, -10_000, 10_000),
     length: cleanNumber(source.length, 300, 1, 10_000),

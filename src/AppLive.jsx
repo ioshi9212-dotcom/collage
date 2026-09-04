@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
+import { Ellipse, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 import {
   MIN_FRAME,
   buildGridLayout,
@@ -1226,7 +1226,7 @@ function PageVisualGuides({ canvas, layoutInset, printGuide, locked, pageIndex, 
   );
 }
 
-function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, snapGuides = null, smartSnap = true, printMode = false, collagePreviewOnly = false, hideGuidePageLabel = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onFrameContextMenu, onSnapGuidesChange, onColumnResize, onRowResize, onActivatePage }) {
+function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, selectedFrameId, moveFrameWithPhotoId, snapGuides = null, smartSnap = true, printMode = false, collagePreviewOnly = false, hideGuidePageLabel = false, onFrameSelect, onPhotoMove, onFrameChange, onFrameDragFinish, onFrameContextMenu, onSnapGuidesChange, onColumnResize, onRowResize, onActivatePage, underlay = null }) {
   const locked = settings.frameMode === 'locked';
   const layoutInset = Math.min(settings.padding, Math.floor(canvas.width / 3), Math.floor(canvas.height / 3));
   const printGuide = getPrintGuideGeometry(canvas, settings);
@@ -1234,6 +1234,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
     return (
       <Group x={x} y={y}>
         <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
+        {underlay}
         {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} layoutInset={layoutInset} printGuide={printGuide} locked={locked} pageIndex={pageIndex} active={page?.id === activePageId} showPageLabel={!hideGuidePageLabel} />}
         {page?.isBlankPage && !printMode && !collagePreviewOnly && (
           <Text x={42} y={78} text="Пустая страница" fontSize={34} fill="#b49a87" fontStyle="bold" opacity={0.62} listening={false} />
@@ -1245,6 +1246,7 @@ function PageLayer({ page, pageIndex, x, y = 0, canvas, settings, activePageId, 
   return (
     <Group x={x} y={y}>
       <Rect name="background" x={0} y={0} width={canvas.width} height={canvas.height} fill={settings.borderColor} />
+        {underlay}
       {!printMode && settings.showGuides && <PageVisualGuides canvas={canvas} layoutInset={layoutInset} printGuide={printGuide} locked={locked} pageIndex={pageIndex} active={page.id === activePageId} showPageLabel={!hideGuidePageLabel} />}
       {orderedFrames.map((frame) => (
         <CollageFrame
@@ -1293,6 +1295,90 @@ function textFontStyle(item) {
   return `${style} ${weight}`;
 }
 
+function DrawingShapeLayer({ item, selected, editable, onSelect, onChange }) {
+  const groupRef = useRef(null);
+  const transformerRef = useRef(null);
+  const width = Math.max(20, Number(item?.width) || 320);
+  const height = Math.max(20, Number(item?.height) || 320);
+  const shapeKind = item?.shapeKind === 'ellipse' ? 'ellipse' : 'rectangle';
+  const fillEnabled = item?.fillEnabled !== false;
+  const strokeEnabled = item?.strokeEnabled === true;
+  const strokeWidth = Math.max(1, Number(item?.strokeWidth) || 4);
+
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    const group = groupRef.current;
+    if (!transformer || !group) return;
+    transformer.nodes(selected && editable ? [group] : []);
+    transformer.getLayer()?.batchDraw();
+  }, [selected, editable, width, height, shapeKind]);
+
+  function commitTransform() {
+    const node = groupRef.current;
+    if (!node || !selected || !editable) return;
+    const scaleX = Math.max(0.01, Math.abs(Number(node.scaleX()) || 1));
+    const scaleY = Math.max(0.01, Math.abs(Number(node.scaleY()) || 1));
+    const next = {
+      x: Math.round(node.x()),
+      y: Math.round(node.y()),
+      width: Math.max(20, Math.round(width * scaleX)),
+      height: Math.max(20, Math.round(height * scaleY)),
+    };
+    node.scaleX(1);
+    node.scaleY(1);
+    onChange(item.id, next);
+  }
+
+  const shapeProps = {
+    fill: fillEnabled ? (item.fillColor || '#e7d6c6') : undefined,
+    stroke: strokeEnabled ? (item.strokeColor || '#6f6862') : undefined,
+    strokeWidth: strokeEnabled ? strokeWidth : 0,
+    strokeScaleEnabled: false,
+  };
+
+  return (
+    <>
+      <Group
+        ref={groupRef}
+        x={Number(item?.x) || 0}
+        y={Number(item?.y) || 0}
+        width={width}
+        height={height}
+        opacity={Number(item?.opacity ?? 1)}
+        draggable={editable && selected}
+        listening={editable}
+        onMouseDown={(event) => { event.cancelBubble = true; onSelect(item.id); }}
+        onTap={(event) => { event.cancelBubble = true; onSelect(item.id); }}
+        onDragEnd={(event) => onChange(item.id, { x: Math.round(event.target.x()), y: Math.round(event.target.y()) })}
+        onTransformEnd={commitTransform}
+      >
+        {shapeKind === 'ellipse' ? (
+          <Ellipse x={width / 2} y={height / 2} radiusX={width / 2} radiusY={height / 2} {...shapeProps} />
+        ) : (
+          <Rect x={0} y={0} width={width} height={height} {...shapeProps} />
+        )}
+      </Group>
+      {selected && editable && (
+        <Transformer
+          ref={transformerRef}
+          rotateEnabled={false}
+          keepRatio={false}
+          flipEnabled={false}
+          ignoreStroke
+          enabledAnchors={['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']}
+          anchorSize={24}
+          anchorCornerRadius={6}
+          borderStroke="#2f7d52"
+          borderStrokeWidth={2}
+          anchorStroke="#2f7d52"
+          anchorFill="#ffffff"
+          boundBoxFunc={(oldBox, newBox) => (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20 ? oldBox : newBox)}
+        />
+      )}
+    </>
+  );
+}
+
 function ExtraPageLayers({
   extraLayers,
   pageIndex,
@@ -1302,13 +1388,18 @@ function ExtraPageLayers({
   selectedTextId = null,
   selectedDrawingId = null,
   printMode = false,
+  drawingPlane = 'all',
+  showTexts = true,
   onSelectText = () => {},
   onSelectDrawing = () => {},
   onTextDragEnd = () => {},
   onDrawingDragEnd = () => {},
 }) {
-  const texts = textLayersForPage(extraLayers, pageIndex);
-  const drawings = drawingLayersForPage(extraLayers, pageIndex);
+  const texts = showTexts ? textLayersForPage(extraLayers, pageIndex) : [];
+  const allDrawings = drawingLayersForPage(extraLayers, pageIndex);
+  const drawings = drawingPlane === 'all'
+    ? allDrawings
+    : allDrawings.filter((item) => (item?.plane === 'back' ? 'back' : 'front') === drawingPlane);
   if (!texts.length && !drawings.length) return null;
   const canEditText = mode === 'text' && !printMode;
   const canEditDrawings = mode === 'drawings' && !printMode;
@@ -1320,6 +1411,18 @@ function ExtraPageLayers({
           return (
             <DrawingImageLayer
               key={item.id ?? `${pageIndex}-image-${item.x}-${item.y}`}
+              item={item}
+              selected={item.id === selectedDrawingId}
+              editable={canEditDrawings}
+              onSelect={onSelectDrawing}
+              onChange={onDrawingDragEnd}
+            />
+          );
+        }
+        if (item?.type === 'shape') {
+          return (
+            <DrawingShapeLayer
+              key={item.id ?? `${pageIndex}-shape-${item.x}-${item.y}`}
               item={item}
               selected={item.id === selectedDrawingId}
               editable={canEditDrawings}
@@ -1778,11 +1881,12 @@ export default function App() {
     viewportWidth: previewViewport.width,
     viewportHeight: previewViewport.height,
   });
-  const previewScale = fitPreviewScale * previewZoom;
-  const fitStageDisplayWidth = stageRealWidth * fitPreviewScale;
-  const fitStageDisplayHeight = stageRealHeight * fitPreviewScale;
-  const stageDisplayWidth = stageRealWidth * previewScale;
-  const stageDisplayHeight = stageRealHeight * previewScale;
+  const effectivePreviewZoom = isBooklet ? 1 : previewZoom;
+  const previewScale = fitPreviewScale * effectivePreviewZoom;
+  const stageDisplayWidth = stageRealWidth * fitPreviewScale;
+  const stageDisplayHeight = stageRealHeight * fitPreviewScale;
+  const zoomedStageDisplayWidth = stageDisplayWidth * effectivePreviewZoom;
+  const zoomedStageDisplayHeight = stageDisplayHeight * effectivePreviewZoom;
 
   function applyPreviewZoom(nextValue) {
     const nextZoom = Math.max(1, Math.min(3, Math.round(Number(nextValue || 1) * 4) / 4));
@@ -1808,7 +1912,7 @@ export default function App() {
   }
 
   function startPreviewPan(event) {
-    if (!previewPanMode || previewZoom <= 1 || event.button !== 0) return;
+    if (isBooklet || !previewPanMode || previewZoom <= 1 || event.button !== 0) return;
     const frame = stageFrameRef.current;
     if (!frame) return;
     previewPanDragRef.current = {
@@ -2128,7 +2232,8 @@ export default function App() {
     return {
       id: makeId(),
       type: 'line',
-      x: Math.round(canvas.width * 0.18),
+      plane: 'front',
+      x: Math.round(canvas.width * 0.26),
       y: Math.round(canvas.height * 0.5),
       length: Math.round((angle === 90 ? canvas.height : canvas.width) * 0.48),
       angle,
@@ -2138,20 +2243,44 @@ export default function App() {
     };
   }
 
-  function addLine(angle = 0) {
-    const item = createLineItem(angle);
+  function createShapeItem(shapeKind = 'rectangle') {
+    const size = Math.round(Math.min(canvas.width, canvas.height) * 0.28);
+    return {
+      id: makeId(),
+      type: 'shape',
+      plane: 'front',
+      shapeKind: shapeKind === 'ellipse' ? 'ellipse' : 'rectangle',
+      x: Math.round((canvas.width - size) / 2),
+      y: Math.round((canvas.height - size) / 2),
+      width: size,
+      height: size,
+      fillEnabled: true,
+      fillColor: '#e7d6c6',
+      strokeEnabled: false,
+      strokeColor: '#6f6862',
+      strokeWidth: 4,
+      opacity: 1,
+    };
+  }
+
+  function insertDrawingItem(item) {
     setLeftPanel('drawings');
     setMode('drawings');
-    updateExtraLayers((layers) => {
-      const { next, page } = createPageLayerDraft(layers, activePageNumber());
+    setExtraLayers((current) => {
+      const { next, page } = createPageLayerDraft(current, activePageNumber());
       page.drawings.push(item);
       return next;
     });
-    setSelectedFrameId(null);
-    setSelectedTextId(null);
     setSelectedDrawingId(item.id);
-    setInspectorTab('object');
-    show(angle === 90 ? 'Вертикальная линия добавлена.' : 'Линия добавлена. Настройки открыты справа.');
+    setSelectedTextId(null);
+  }
+
+  function addLine(angle = 0) {
+    insertDrawingItem(createLineItem(angle));
+  }
+
+  function addShape(shapeKind = 'rectangle') {
+    insertDrawingItem(createShapeItem(shapeKind));
   }
 
   async function refreshDrawingCatalog() {
@@ -3899,6 +4028,18 @@ export default function App() {
         onColumnResize={resizeGridColumn}
         onRowResize={resizeGridRow}
         onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
+        underlay={(
+          <ExtraPageLayers
+            extraLayers={extraLayers}
+            pageIndex={entry.pageIndex}
+            mode={isBooklet ? 'collage' : albumMode}
+            selectedDrawingId={selectedDrawingId}
+            drawingPlane="back"
+            showTexts={false}
+            onSelectDrawing={(id) => { setSelectedDrawingId(id); setSelectedTextId(null); setSelectedFrameId(null); }}
+            onDrawingDragEnd={updateDrawing}
+          />
+        )}
       />
       <ExtraPageLayers
         extraLayers={extraLayers}
@@ -3908,6 +4049,7 @@ export default function App() {
         mode={isBooklet ? 'collage' : albumMode}
         selectedTextId={selectedTextId}
         selectedDrawingId={selectedDrawingId}
+        drawingPlane="front"
         onSelectText={(id) => { setSelectedTextId(id); setSelectedDrawingId(null); setSelectedFrameId(null); }}
         onSelectDrawing={(id) => { setSelectedDrawingId(id); setSelectedTextId(null); setSelectedFrameId(null); }}
         onTextDragEnd={updateText}
@@ -4163,13 +4305,18 @@ export default function App() {
             <button className="button full accent" onClick={() => addLine(0)}>+ Горизонтальная линия</button>
             <button className="button full" onClick={() => addLine(90)}>+ Вертикальная линия</button>
           </div>
+          <div className="panel-subtitle-v3">Фигуры</div>
+          <div className="insert-tool-grid-v3">
+            <button className="button full accent" onClick={() => addShape('ellipse')}>+ Круг / эллипс</button>
+            <button className="button full" onClick={() => addShape('rectangle')}>+ Квадрат / прямоугольник</button>
+          </div>
           {currentDrawings.length === 0 ? <div className="empty-state small-empty"><p>Рисунков на этой странице пока нет.</p></div> : (
             <div className="layer-list">
               {currentDrawings.map((item, index) => (
                 <button key={item.id} className={`layer-card line-layer-card ${item.id === selectedDrawingId ? 'active' : ''}`} onClick={() => { setSelectedDrawingId(item.id); setSelectedTextId(null); }}>
                   {item.type === 'image' ? <img className="drawing-layer-thumb" src={item.src} alt="" /> : <i style={{ background: item.color || '#6f6862' }} />}
-                  <strong>{item.type === 'image' ? (item.name || `PNG ${index + 1}`) : `Линия ${index + 1}`}</strong>
-                  <small>{item.type === 'image' ? `${Math.round(Number(item.width) || 0)} × ${Math.round(Number(item.height) || 0)} px` : `${Math.round(Number(item.strokeWidth) || 4)} px · ${Math.round(Number(item.length) || 300)} px`}</small>
+                  <strong>{item.type === 'image' ? (item.name || `PNG ${index + 1}`) : item.type === 'shape' ? (item.shapeKind === 'ellipse' ? `Круг / эллипс ${index + 1}` : `Прямоугольник ${index + 1}`) : `Линия ${index + 1}`}</strong>
+                  <small>{item.type === 'image' ? `${Math.round(Number(item.width) || 0)} × ${Math.round(Number(item.height) || 0)} px · ${item.plane === 'back' ? 'под фото' : 'поверх фото'}` : item.type === 'shape' ? `${Math.round(Number(item.width) || 0)} × ${Math.round(Number(item.height) || 0)} px · ${item.plane === 'back' ? 'под фото' : 'поверх фото'}` : `${Math.round(Number(item.strokeWidth) || 4)} px · ${Math.round(Number(item.length) || 300)} px · ${item.plane === 'back' ? 'под фото' : 'поверх фото'}`}</small>
                 </button>
               ))}
             </div>
@@ -4230,14 +4377,32 @@ export default function App() {
     }
     if (albumMode === 'drawings') {
       const imageDrawing = selectedDrawing?.type === 'image';
+      const shapeDrawing = selectedDrawing?.type === 'shape';
+      const drawingTitle = imageDrawing ? 'Настройки PNG' : shapeDrawing ? 'Настройки фигуры' : 'Настройки линии';
+      const drawingDescription = imageDrawing
+        ? 'Размер, поворот, слой, цвет и прозрачность.'
+        : shapeDrawing
+          ? 'Размер, заливка, контур, слой и прозрачность.'
+          : 'Длина, угол, толщина, слой и цвет.';
+      const drawingLayerControls = selectedDrawing ? (
+        <div className="inspector-block">
+          <h3>Положение относительно фото</h3>
+          <div className="inspector-actions-grid">
+            <button className={`button ${selectedDrawing.plane !== 'back' ? 'accent' : ''}`} onClick={() => updateDrawing(selectedDrawing.id, { plane: 'front' })}>Поверх фото</button>
+            <button className={`button ${selectedDrawing.plane === 'back' ? 'accent' : ''}`} onClick={() => updateDrawing(selectedDrawing.id, { plane: 'back' })}>Под фото</button>
+          </div>
+          <p className="hint">«Под фото» оставляет рисунок на странице, но фотографии перекрывают его.</p>
+        </div>
+      ) : null;
       return (
         <>
-          <div className="panel-title compact"><div><h2>{imageDrawing ? 'Настройки PNG' : 'Настройки линии'}</h2><p>{selectedDrawing ? (imageDrawing ? 'Размер, поворот, отражение, цвет и прозрачность.' : 'Длина, угол, толщина и цвет.') : 'Выбери рисунок или добавь новый.'}</p></div><span>{selectedDrawing ? 'выбран' : 'нет'}</span></div>
-          {!selectedDrawing ? <div className="empty-state small-empty"><p>Фото-окна в этом режиме только видны.</p></div> : imageDrawing ? (
+          <div className="panel-title compact"><div><h2>{drawingTitle}</h2><p>{selectedDrawing ? drawingDescription : 'Выбери рисунок или добавь новый.'}</p></div><span>{selectedDrawing ? 'выбран' : 'нет'}</span></div>
+          {!selectedDrawing ? <div className="empty-state small-empty"><p>PNG, линии и фигуры можно размещать поверх фотографий или уводить под них.</p></div> : imageDrawing ? (
             <>
+              {drawingLayerControls}
               <div className="inspector-block"><h3>Внешний вид</h3>
                 <label className="field"><span>Цвет</span><input type="color" value={selectedDrawing.color || '#000000'} onChange={(event) => updateDrawing(selectedDrawing.id, { color: event.target.value })} /></label>
-                <label className="field"><span>Прозрачность</span><SoftNumberInput min={0} max={1} step={0.05} value={Number(selectedDrawing.opacity ?? 1)} onValue={(value) => updateDrawing(selectedDrawing.id, { opacity: value })} /></label>
+                <label className="field"><span>Прозрачность, %</span><SoftNumberInput min={0} max={100} value={Math.round(Number(selectedDrawing.opacity ?? 1) * 100)} onValue={(value) => updateDrawing(selectedDrawing.id, { opacity: value / 100 })} /></label>
               </div>
               <div className="inspector-block"><h3>Размер и угол</h3><div className="geometry-grid">
                 <label className="field"><span>Ширина</span><SoftNumberInput min={20} max={10000} value={Math.round(Number(selectedDrawing.width) || 300)} onValue={(value) => updateDrawing(selectedDrawing.id, { width: value })} /></label>
@@ -4250,12 +4415,36 @@ export default function App() {
               </div></div>
               <button className="button full danger-button" onClick={() => deleteDrawing(selectedDrawing.id)}>Удалить PNG со страницы</button>
             </>
+          ) : shapeDrawing ? (
+            <>
+              {drawingLayerControls}
+              <div className="inspector-block"><h3>Фигура</h3>
+                <label className="field"><span>Форма</span><select value={selectedDrawing.shapeKind === 'ellipse' ? 'ellipse' : 'rectangle'} onChange={(event) => updateDrawing(selectedDrawing.id, { shapeKind: event.target.value })}><option value="ellipse">Круг / эллипс</option><option value="rectangle">Квадрат / прямоугольник</option></select></label>
+                <label className="toggle-row-v3"><input aria-label="Заливка" type="checkbox" checked={selectedDrawing.fillEnabled !== false} onChange={(event) => updateDrawing(selectedDrawing.id, { fillEnabled: event.target.checked })} /><span>Заливка</span></label>
+                {selectedDrawing.fillEnabled !== false && <label className="field"><span>Цвет заливки</span><input type="color" value={selectedDrawing.fillColor || '#e7d6c6'} onChange={(event) => updateDrawing(selectedDrawing.id, { fillColor: event.target.value })} /></label>}
+                <label className="toggle-row-v3"><input aria-label="Контур" type="checkbox" checked={selectedDrawing.strokeEnabled === true} onChange={(event) => updateDrawing(selectedDrawing.id, { strokeEnabled: event.target.checked })} /><span>Контур</span></label>
+                {selectedDrawing.strokeEnabled === true && <>
+                  <label className="field"><span>Цвет контура</span><input type="color" value={selectedDrawing.strokeColor || '#6f6862'} onChange={(event) => updateDrawing(selectedDrawing.id, { strokeColor: event.target.value })} /></label>
+                  <label className="field"><span>Толщина контура</span><SoftNumberInput min={1} max={500} value={Math.round(Number(selectedDrawing.strokeWidth) || 4)} onValue={(value) => updateDrawing(selectedDrawing.id, { strokeWidth: value })} /></label>
+                </>}
+                <label className="field"><span>Прозрачность, %</span><SoftNumberInput min={0} max={100} value={Math.round(Number(selectedDrawing.opacity ?? 1) * 100)} onValue={(value) => updateDrawing(selectedDrawing.id, { opacity: value / 100 })} /></label>
+              </div>
+              <div className="inspector-block"><h3>Положение и размер</h3><div className="geometry-grid">
+                <label className="field"><span>X</span><SoftNumberInput value={Math.round(Number(selectedDrawing.x) || 0)} onValue={(value) => updateDrawing(selectedDrawing.id, { x: value })} /></label>
+                <label className="field"><span>Y</span><SoftNumberInput value={Math.round(Number(selectedDrawing.y) || 0)} onValue={(value) => updateDrawing(selectedDrawing.id, { y: value })} /></label>
+                <label className="field"><span>Ширина</span><SoftNumberInput min={20} max={10000} value={Math.round(Number(selectedDrawing.width) || 320)} onValue={(value) => updateDrawing(selectedDrawing.id, { width: value })} /></label>
+                <label className="field"><span>Высота</span><SoftNumberInput min={20} max={10000} value={Math.round(Number(selectedDrawing.height) || 320)} onValue={(value) => updateDrawing(selectedDrawing.id, { height: value })} /></label>
+              </div></div>
+              <p className="hint">Фигуру можно тянуть за маркеры прямо на странице: круг станет эллипсом, квадрат — прямоугольником.</p>
+              <button className="button full danger-button" onClick={() => deleteDrawing(selectedDrawing.id)}>Удалить фигуру</button>
+            </>
           ) : (
             <>
+              {drawingLayerControls}
               <div className="inspector-block"><h3>Линия</h3>
                 <label className="field"><span>Цвет</span><input type="color" value={selectedDrawing.color || '#6f6862'} onChange={(event) => updateDrawing(selectedDrawing.id, { color: event.target.value })} /></label>
                 <label className="field"><span>Толщина</span><SoftNumberInput min={1} max={120} value={Math.round(Number(selectedDrawing.strokeWidth) || 4)} onValue={(value) => updateDrawing(selectedDrawing.id, { strokeWidth: value })} /></label>
-                <label className="field"><span>Прозрачность</span><SoftNumberInput min={0.05} max={1} step={0.05} value={Number(selectedDrawing.opacity ?? 1)} onValue={(value) => updateDrawing(selectedDrawing.id, { opacity: value })} /></label>
+                <label className="field"><span>Прозрачность, %</span><SoftNumberInput min={0} max={100} value={Math.round(Number(selectedDrawing.opacity ?? 1) * 100)} onValue={(value) => updateDrawing(selectedDrawing.id, { opacity: value / 100 })} /></label>
               </div>
               <div className="inspector-block"><h3>Положение</h3><div className="geometry-grid">
                 <label className="field"><span>X</span><SoftNumberInput value={Math.round(Number(selectedDrawing.x) || 0)} onValue={(value) => updateDrawing(selectedDrawing.id, { x: value })} /></label>
@@ -4617,26 +4806,28 @@ export default function App() {
           )}
         </aside>
 
-        <section ref={canvasAreaRef} className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px`, '--stage-display-height': `${stageDisplayHeight}px`, '--stage-viewport-width': `${fitStageDisplayWidth}px`, '--stage-viewport-height': `${fitStageDisplayHeight}px` }}>
+        <section ref={canvasAreaRef} className={`canvas-area ${isSpread || isBooklet ? 'album-mode' : ''} ${isBooklet ? 'booklet-canvas-area' : ''}`} style={{ '--stage-display-width': `${stageDisplayWidth}px`, '--stage-display-height': `${stageDisplayHeight}px` }}>
           <div className="canvas-toolbar">
             <div>
               <strong>{isBooklet ? `${currentBookletSide?.title ?? 'Брошюра'} · ${stageRealWidth}×${stageRealHeight}px` : isSpread ? `${spreadVisibleLabel} · ${canvas.width}×${canvas.height}px · печать ${activeSpreadPrintGeometry.outputWidthPx}×${activeSpreadPrintGeometry.outputHeightPx}px` : `Страница ${currentPageIndex + 1} · ${canvas.width}×${canvas.height}px · печать ${pagePrintGeometry.outputWidthPx}×${pagePrintGeometry.outputHeightPx}px`}</strong>
               <span>{isBooklet ? 'Просмотр физической стороны А4: слева и справа показаны страницы, которые будут напечатаны рядом.' : locked ? 'Сетка: двигай зелёные разделители. Зазор постоянный, окна не выходят за страницу.' : 'Свободный режим: окна можно двигать и менять размер. Умная привязка выравнивает края и центры, розовая линия показывает совпадение.'}</span>
               <em>{isBooklet ? 'Это режим просмотра и PNG-экспорта брошюры. Редактирование страниц делай в режиме Страница или Разворот.' : 'PNG страницы сохраняет одну страницу. PNG разворота сохраняет текущую книжную пару; первая страница сохраняется одна.'}</em>
             </div>
-            <div className="preview-zoom-controls" aria-label="Масштаб просмотра альбома">
-              <button type="button" className="small-button" aria-label="Уменьшить альбом" onClick={() => applyPreviewZoom(previewZoom - 0.25)} disabled={previewZoom <= 1}>−</button>
-              <button type="button" className="small-button" aria-label="По размеру" onClick={() => applyPreviewZoom(1)}>По размеру</button>
-              <span className="preview-zoom-value" aria-live="polite">{Math.round(previewZoom * 100)}%</span>
-              <button type="button" className="small-button" aria-label="Увеличить альбом" onClick={() => applyPreviewZoom(previewZoom + 0.25)} disabled={previewZoom >= 3}>+</button>
-              <button type="button" className={`small-button preview-pan-button ${previewPanMode ? 'active-mode' : ''}`} aria-label="Двигать просмотр" aria-pressed={previewPanMode} onClick={() => setPreviewPanMode((value) => !value)} disabled={previewZoom <= 1}>Двигать</button>
-            </div>
+            {!isBooklet && (
+              <div className="preview-zoom-controls" aria-label="Масштаб просмотра альбома">
+                <button type="button" className="small-button" aria-label="Уменьшить альбом" onClick={() => applyPreviewZoom(previewZoom - 0.25)} disabled={previewZoom <= 1}>−</button>
+                <button type="button" className="small-button" aria-label="По размеру" onClick={() => applyPreviewZoom(1)}>По размеру</button>
+                <span className="preview-zoom-value" aria-live="polite">{Math.round(previewZoom * 100)}%</span>
+                <button type="button" className="small-button" aria-label="Увеличить альбом" onClick={() => applyPreviewZoom(previewZoom + 0.25)} disabled={previewZoom >= 3}>+</button>
+                <button type="button" className={`small-button preview-pan-button ${previewPanMode ? 'active-mode' : ''}`} aria-label="Двигать просмотр" aria-pressed={previewPanMode} onClick={() => setPreviewPanMode((value) => !value)} disabled={previewZoom <= 1}>Двигать</button>
+              </div>
+            )}
             {!isBooklet && <button className="small-button" onClick={() => rebuildPage(album.currentPageId, canvas, settings)}>Перестроить рамки</button>}
             {!isBooklet && <button className="small-button" onClick={() => { updatePageFrames(album.currentPageId, (frames) => clearAllFramePhotos(frames)); setSelectedFrameId(null); setMoveFrameWithPhotoId(null); }}>Очистить фото</button>}
           </div>
 
-          <div ref={stageFrameRef} className={`stage-frame preview-scroll-enabled ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''} ${previewPanMode ? 'preview-pan-mode' : ''}`} onPointerDown={startPreviewPan} onPointerMove={movePreviewPan} onPointerUp={finishPreviewPan} onPointerCancel={finishPreviewPan} onDragOver={(event) => { if (!isBooklet && !previewPanMode) event.preventDefault(); }} onDrop={isBooklet || previewPanMode ? undefined : dropPhoto}>
-            <div className="stage-pan-surface" style={{ width: stageDisplayWidth, height: stageDisplayHeight }}>
+          <div ref={stageFrameRef} className={`stage-frame ${!isBooklet ? 'preview-scroll-enabled' : ''} ${isSpread || isBooklet ? 'album-preview' : ''} ${isBooklet ? 'booklet-stage' : ''} ${!isBooklet && previewPanMode ? 'preview-pan-mode' : ''}`} onPointerDown={startPreviewPan} onPointerMove={movePreviewPan} onPointerUp={finishPreviewPan} onPointerCancel={finishPreviewPan} onDragOver={(event) => { if (!isBooklet && !previewPanMode) event.preventDefault(); }} onDrop={isBooklet || previewPanMode ? undefined : dropPhoto}>
+            <div className="stage-pan-surface" style={{ width: zoomedStageDisplayWidth, height: zoomedStageDisplayHeight }}>
               <div className="stage-scale-shell" style={{ width: stageRealWidth, height: stageRealHeight, transform: `scale(${previewScale})` }}>
               <Stage ref={stageRef} width={stageRealWidth} height={stageRealHeight} onMouseDown={(event) => { if (event.target === event.target.getStage() || event.target.name() === 'background') { setSelectedFrameId(null); setMoveFrameWithPhotoId(null); setFrameSnapGuides(null); setSelectedTextId(null); setSelectedDrawingId(null); } }}>
                 <Layer>
@@ -4826,8 +5017,15 @@ export default function App() {
       {exportStagesActive && <div className="export-stage-holder" aria-hidden="true">
         <Stage ref={printPageRef} width={canvas.width} height={canvas.height}>
           <Layer>
-            <PageLayer key={`print-page-${exportPage?.id ?? exportPageIndex}`} page={exportPage} pageIndex={exportPageIndex} x={0} {...commonPageLayerProps} />
-            <ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} x={0} y={0} printMode />
+            <PageLayer
+              key={`print-page-${exportPage?.id ?? exportPageIndex}`}
+              page={exportPage}
+              pageIndex={exportPageIndex}
+              x={0}
+              {...commonPageLayerProps}
+              underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} drawingPlane="back" showTexts={false} printMode />}
+            />
+            <ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} x={0} y={0} drawingPlane="front" printMode />
             <PageNumberLayer pageIndex={exportPageIndex} canvas={canvas} settings={pageNumbering} />
           </Layer>
         </Stage>
@@ -4835,8 +5033,14 @@ export default function App() {
           <Layer>
             {spreadPageIndexes.map((pageIndex, position) => (
               <React.Fragment key={`print-spread-${pageIndex}`}>
-                <PageLayer page={pages[pageIndex]} pageIndex={pageIndex} x={position * canvas.width} {...commonPageLayerProps} />
-                <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={position * canvas.width} y={0} printMode />
+                <PageLayer
+                  page={pages[pageIndex]}
+                  pageIndex={pageIndex}
+                  x={position * canvas.width}
+                  {...commonPageLayerProps}
+                  underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} drawingPlane="back" showTexts={false} printMode />}
+                />
+                <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={position * canvas.width} y={0} drawingPlane="front" printMode />
                 <PageNumberLayer pageIndex={pageIndex} x={position * canvas.width} canvas={canvas} settings={pageNumbering} />
               </React.Fragment>
             ))}
@@ -4856,8 +5060,9 @@ export default function App() {
                     x={position.x}
                     y={position.y}
                     {...commonPageLayerProps}
+                    underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} drawingPlane="back" showTexts={false} printMode />}
                   />
-                  <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={position.x} y={position.y} printMode />
+                  <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={position.x} y={position.y} drawingPlane="front" printMode />
                   <PageNumberLayer pageIndex={pageIndex} x={position.x} y={position.y} canvas={canvas} settings={pageNumbering} />
                 </React.Fragment>
               );
