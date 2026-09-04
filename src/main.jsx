@@ -14,6 +14,7 @@ import './editor-shell-stage4b-text-rendering.css';
 import './editor-shell-stage6-inspector-context.css';
 import './editor-regression-fixes.css';
 import './editor-shell-stage4c-larger-canvas.css';
+import './editor-preview-zoom.css';
 import './font-picker-live.css';
 import './editor-mobile.css';
 import './editor-mobile-mode-fixes.css';
