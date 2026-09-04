@@ -24,7 +24,7 @@ jobs:
       - name: Stabilize album preview zoom
         run: node scripts/fix-preview-zoom-layout.mjs
       - name: Add drawing layers and shapes
-        run: node scripts/add-drawing-layers-shapes.mjs
+        run: python3 scripts/add-drawing-layers-shapes.py
       - name: Lint
         run: npm run lint
       - name: Unit and integration tests
@@ -40,6 +40,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm scripts/fix-preview-zoom-layout.mjs
+          git rm scripts/add-drawing-layers-shapes.py
           git rm scripts/add-drawing-layers-shapes.mjs
           git rm .github/workflows/apply-drawing-layers-shapes.yml
           git add -A
