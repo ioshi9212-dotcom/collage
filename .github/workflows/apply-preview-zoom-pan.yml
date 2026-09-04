@@ -43,3 +43,5 @@ jobs:
           git add src/AppLive.jsx
           git commit -m 'Add independent album zoom and pannable preview'
           git push
+
+# Retry after aligning the free-mode frame test with the current layout contract.
