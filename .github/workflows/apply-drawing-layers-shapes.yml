@@ -25,6 +25,8 @@ jobs:
         run: node scripts/fix-preview-zoom-layout.mjs
       - name: Add drawing layers and shapes
         run: python3 scripts/add-drawing-layers-shapes.py
+      - name: Restore drawing catalog helpers
+        run: python3 scripts/restore-drawing-catalog-functions.py
       - name: Lint
         run: npm run lint
       - name: Unit and integration tests
@@ -41,7 +43,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm scripts/fix-preview-zoom-layout.mjs
           git rm scripts/add-drawing-layers-shapes.py
-          git rm scripts/add-drawing-layers-shapes.mjs
+          git rm scripts/restore-drawing-catalog-functions.py
           git rm .github/workflows/apply-drawing-layers-shapes.yml
           git add -A
           git commit -m 'Add drawing layers and editable shapes'
