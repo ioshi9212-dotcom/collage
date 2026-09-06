@@ -5,6 +5,7 @@ import {
   ALBUM_LAYERS_KEY,
   ALBUM_MODE_KEY,
   applyAlbumEditorMode,
+  bindExtraLayerPagesToPageIds,
   cloneExtraLayerPage,
   createPageLayerDraft,
   deleteExtraLayerPage,
@@ -199,6 +200,30 @@ const baseLayers = {
   assert.equal(swapped.pages[3], baseLayers.pages[1]);
   assert.equal(swapped.pages.metadata, baseLayers.pages.metadata);
   assert.equal(swapExtraLayerPages(baseLayers, 2, 2, 3), baseLayers, 'no-op swap must preserve the existing state object');
+}
+
+
+{
+  const legacy = {
+    version: 1,
+    pages: {
+      1: { texts: [{ id: 'a' }], drawings: [] },
+      2: { texts: [{ id: 'b' }], drawings: [{ id: 'db' }] },
+    },
+  };
+  const albumPages = [{ id: 'page-a' }, { id: 'page-b' }];
+  const bound = bindExtraLayerPagesToPageIds(legacy, albumPages);
+  assert.equal(bound.pages[1].pageId, 'page-a');
+  assert.equal(bound.pages[2].pageId, 'page-b');
+  assert.deepEqual(textLayersForPage(bound, 0, 'page-b'), [{ id: 'b' }], 'stable pageId must beat a stale physical index');
+  assert.deepEqual(drawingLayersForPage(bound, 0, 'page-b'), [{ id: 'db' }]);
+  assert.equal(bindExtraLayerPagesToPageIds(bound, albumPages), bound, 'already-bound layers must preserve object identity');
+}
+
+{
+  let id = 0;
+  const cloned = cloneExtraLayerPage({ pageId: 'original-page', texts: [{ id: 'old' }], drawings: [], templates: [] }, () => `new-${++id}`);
+  assert.equal(cloned.pageId, undefined, 'duplicated pages must not inherit the source page identity');
 }
 
 const appSource = readFileSync(resolve(process.cwd(), 'src/AppLive.jsx'), 'utf8');

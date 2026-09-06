@@ -158,6 +158,7 @@ function sanitizeLayerList(items, limit, sanitizer, idFactory) {
 function sanitizeLayerPage(page, idFactory) {
   const source = objectValue(page) || {};
   return {
+    pageId: cleanString(source.pageId, '', MAX_LAYER_ID_LENGTH),
     texts: sanitizeLayerList(source.texts, MAX_TEXT_LAYERS_PER_PAGE, sanitizeTextLayer, idFactory),
     drawings: sanitizeLayerList(source.drawings, MAX_DRAWING_LAYERS_PER_PAGE, sanitizeDrawingLayer, idFactory),
     templates: sanitizeLayerList(source.templates, MAX_TEMPLATE_LAYERS_PER_PAGE, sanitizeTemplateLayer, idFactory),
@@ -273,23 +274,55 @@ export function applyAlbumEditorMode(value, fallback = 'collage', options = {}) 
   return nextMode;
 }
 
-export function textLayersForPage(extraLayers, pageIndex) {
+function layerPageForPage(extraLayers, pageIndex, pageId = null) {
+  const pages = extraLayers?.pages && typeof extraLayers.pages === 'object' ? extraLayers.pages : {};
+  const requestedPageId = pageId == null ? '' : String(pageId);
+  if (requestedPageId) {
+    const byId = Object.values(pages).find((page) => page?.pageId === requestedPageId);
+    if (byId) return byId;
+  }
   const pageNumber = pageIndex + 1;
-  const page = extraLayers?.pages?.[String(pageNumber)];
+  return pages[String(pageNumber)];
+}
+
+export function textLayersForPage(extraLayers, pageIndex, pageId = null) {
+  const page = layerPageForPage(extraLayers, pageIndex, pageId);
   return Array.isArray(page?.texts) ? page.texts : [];
 }
 
-export function drawingLayersForPage(extraLayers, pageIndex) {
-  const pageNumber = pageIndex + 1;
-  const page = extraLayers?.pages?.[String(pageNumber)];
+export function drawingLayersForPage(extraLayers, pageIndex, pageId = null) {
+  const page = layerPageForPage(extraLayers, pageIndex, pageId);
   return Array.isArray(page?.drawings) ? page.drawings : [];
 }
 
-export function createPageLayerDraft(layers, pageNumber) {
+export function bindExtraLayerPagesToPageIds(layers, albumPages = []) {
+  const pagesMap = layers?.pages && typeof layers.pages === 'object' && !Array.isArray(layers.pages)
+    ? layers.pages
+    : {};
+  let nextPagesMap = pagesMap;
+  let changed = false;
+
+  (Array.isArray(albumPages) ? albumPages : []).forEach((albumPage, index) => {
+    const pageId = cleanString(albumPage?.id, '', MAX_LAYER_ID_LENGTH);
+    const key = String(index + 1);
+    const layerPage = pagesMap[key];
+    if (!pageId || !layerPage || layerPage.pageId) return;
+    if (!changed) nextPagesMap = { ...pagesMap };
+    nextPagesMap[key] = { ...layerPage, pageId };
+    changed = true;
+  });
+
+  if (!changed) return layers;
+  return { ...layers, version: 1, pages: nextPagesMap };
+}
+
+export function createPageLayerDraft(layers, pageNumber, pageId = null) {
   const key = String(pageNumber);
   const next = cloneDeep(layers) || { version: 1, pages: {} };
   if (!next.pages || typeof next.pages !== 'object' || Array.isArray(next.pages)) next.pages = {};
-  if (!next.pages[key]) next.pages[key] = { texts: [], drawings: [], templates: [] };
+  if (!next.pages[key]) next.pages[key] = { pageId: '', texts: [], drawings: [], templates: [] };
+  const requestedPageId = cleanString(pageId, '', MAX_LAYER_ID_LENGTH);
+  if (requestedPageId) next.pages[key].pageId = requestedPageId;
   if (!Array.isArray(next.pages[key].texts)) next.pages[key].texts = [];
   if (!Array.isArray(next.pages[key].drawings)) next.pages[key].drawings = [];
   if (!Array.isArray(next.pages[key].templates)) next.pages[key].templates = [];
@@ -299,6 +332,7 @@ export function createPageLayerDraft(layers, pageNumber) {
 export function cloneExtraLayerPage(pageLayers, idFactory = makeLayerId) {
   if (!pageLayers) return null;
   const cloned = cloneDeep(pageLayers);
+  delete cloned.pageId;
   ['texts', 'drawings', 'templates'].forEach((key) => {
     if (Array.isArray(cloned?.[key])) {
       cloned[key] = cloned[key].map((item) => ({ ...item, id: idFactory() }));

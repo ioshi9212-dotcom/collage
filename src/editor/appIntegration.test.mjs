@@ -55,3 +55,6 @@ assert.match(stylesSource, /"mode-inspector mode-inspector"/, 'text and drawing 
 assert.match(stylesSource, /@media \(max-width: 980px\)[\s\S]*?\.inspector,[\s\S]*?\.album-mode-inspector[\s\S]*?display:\s*grid !important/, 'inspectors must be visible below the canvas on narrow screens');
 
 console.log('editor integration checks passed');
+
+assert.match(appSource, /bindExtraLayerPagesToPageIds\(extraLayers, pages\)/, 'extra layers must be bound to stable page IDs');
+assert.match(appSource, /pageIndex=\{entry\.pageIndex\} pageId=\{entry\.page\?\.id \?\? null\}/, 'booklet and spread overlays must resolve extra layers by page ID');

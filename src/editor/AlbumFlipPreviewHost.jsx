@@ -168,7 +168,7 @@ function PreviewDrawing({ item, pageIndex }) {
 }
 
 function PreviewDrawingPlane({ project, pageIndex, plane }) {
-  const drawings = drawingLayersForPage(project.extraLayers, pageIndex)
+  const drawings = drawingLayersForPage(project.extraLayers, pageIndex, project.pages?.[pageIndex]?.id ?? null)
     .filter((item) => (item?.plane === 'back' ? 'back' : 'front') === plane);
 
   return (
@@ -179,7 +179,7 @@ function PreviewDrawingPlane({ project, pageIndex, plane }) {
 }
 
 function PreviewTextLayers({ project, pageIndex }) {
-  const texts = textLayersForPage(project.extraLayers, pageIndex);
+  const texts = textLayersForPage(project.extraLayers, pageIndex, project.pages?.[pageIndex]?.id ?? null);
 
   return (
     <Group listening={false}>

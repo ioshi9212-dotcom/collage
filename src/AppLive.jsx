@@ -104,6 +104,7 @@ import {
 import {
   ALBUM_LAYERS_KEY,
   ALBUM_MODE_KEY,
+  bindExtraLayerPagesToPageIds,
   cloneExtraLayerPage,
   createPageLayerDraft,
   deleteExtraLayerPage,
@@ -1389,6 +1390,7 @@ function DrawingShapeLayer({ item, selected, editable, onSelect, onChange }) {
 function ExtraPageLayers({
   extraLayers,
   pageIndex,
+  pageId = null,
   x = 0,
   y = 0,
   mode = 'collage',
@@ -1402,8 +1404,8 @@ function ExtraPageLayers({
   onTextDragEnd = () => {},
   onDrawingDragEnd = () => {},
 }) {
-  const texts = showTexts ? textLayersForPage(extraLayers, pageIndex) : [];
-  const allDrawings = drawingLayersForPage(extraLayers, pageIndex);
+  const texts = showTexts ? textLayersForPage(extraLayers, pageIndex, pageId) : [];
+  const allDrawings = drawingLayersForPage(extraLayers, pageIndex, pageId);
   const drawings = drawingPlane === 'all'
     ? allDrawings
     : allDrawings.filter((item) => (item?.plane === 'back' ? 'back' : 'front') === drawingPlane);
@@ -1781,6 +1783,11 @@ export default function App() {
   const pages = album.pages;
   const currentPageIndex = Math.max(0, pages.findIndex((page) => page.id === album.currentPageId));
   const currentPage = pages[currentPageIndex] ?? pages[0];
+
+  useEffect(() => {
+    const bound = bindExtraLayerPagesToPageIds(extraLayers, pages);
+    if (bound !== extraLayers) setExtraLayers(bound);
+  }, [extraLayers, pages]);
   const exportPageIndex = printAlbumPageIndex ?? currentPageIndex;
   const exportPage = pages[exportPageIndex] ?? currentPage;
   const currentPageFrameCount = resolvePageFrameCount(currentPage, settings);
@@ -2183,6 +2190,10 @@ export default function App() {
     return currentPageIndex + 1;
   }
 
+  function activePageId() {
+    return currentPage?.id ?? null;
+  }
+
   function createTextItem(presetId = DEFAULT_TEXT_PRESET_ID) {
     const preset = presetById(presetId);
     return {
@@ -2279,7 +2290,7 @@ export default function App() {
     setLeftPanel('drawings');
     setMode('drawings');
     setExtraLayers((current) => {
-      const { next, page } = createPageLayerDraft(current, activePageNumber());
+      const { next, page } = createPageLayerDraft(current, activePageNumber(), activePageId());
       page.drawings.push(item);
       return next;
     });
@@ -4059,7 +4070,7 @@ export default function App() {
         underlay={(
           <ExtraPageLayers
             extraLayers={extraLayers}
-            pageIndex={entry.pageIndex}
+            pageIndex={entry.pageIndex} pageId={entry.page?.id ?? null}
             mode={isBooklet ? 'collage' : albumMode}
             selectedDrawingId={selectedDrawingId}
             drawingPlane="back"
@@ -4071,7 +4082,7 @@ export default function App() {
       />
       <ExtraPageLayers
         extraLayers={extraLayers}
-        pageIndex={entry.pageIndex}
+        pageIndex={entry.pageIndex} pageId={entry.page?.id ?? null}
         x={entry.x}
         y={entry.y ?? 0}
         mode={isBooklet ? 'collage' : albumMode}
@@ -4131,10 +4142,8 @@ export default function App() {
   };
 
 
-  const currentLayerPageNumber = activePageNumber();
-  const currentLayerPage = extraLayers.pages?.[String(currentLayerPageNumber)] || { texts: [], drawings: [] };
-  const currentTexts = Array.isArray(currentLayerPage.texts) ? currentLayerPage.texts : [];
-  const currentDrawings = Array.isArray(currentLayerPage.drawings) ? currentLayerPage.drawings : [];
+  const currentTexts = textLayersForPage(extraLayers, currentPageIndex, currentPage?.id ?? null);
+  const currentDrawings = drawingLayersForPage(extraLayers, currentPageIndex, currentPage?.id ?? null);
   const selectedText = Object.values(extraLayers.pages || {}).flatMap((page) => page?.texts || []).find((item) => item.id === selectedTextId) || null;
   const selectedDrawing = Object.values(extraLayers.pages || {}).flatMap((page) => page?.drawings || []).find((item) => item.id === selectedDrawingId) || null;
   const selectedTemplate = templateRecords.find((item) => item.id === selectedTemplateId) || templateRecords[0] || null;
@@ -5060,9 +5069,9 @@ export default function App() {
               pageIndex={exportPageIndex}
               x={0}
               {...commonPageLayerProps}
-              underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} drawingPlane="back" showTexts={false} printMode />}
+              underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} pageId={exportPage?.id ?? null} drawingPlane="back" showTexts={false} printMode />}
             />
-            <ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} x={0} y={0} drawingPlane="front" printMode />
+            <ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} pageId={exportPage?.id ?? null} x={0} y={0} drawingPlane="front" printMode />
             <PageNumberLayer pageIndex={exportPageIndex} canvas={canvas} settings={pageNumbering} />
           </Layer>
         </Stage>
@@ -5075,9 +5084,9 @@ export default function App() {
                   pageIndex={pageIndex}
                   x={position * canvas.width}
                   {...commonPageLayerProps}
-                  underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} drawingPlane="back" showTexts={false} printMode />}
+                  underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} drawingPlane="back" showTexts={false} printMode />}
                 />
-                <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={position * canvas.width} y={0} drawingPlane="front" printMode />
+                <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} x={position * canvas.width} y={0} drawingPlane="front" printMode />
                 <PageNumberLayer pageIndex={pageIndex} x={position * canvas.width} canvas={canvas} settings={pageNumbering} />
               </React.Fragment>
             ))}
@@ -5097,9 +5106,9 @@ export default function App() {
                     x={position.x}
                     y={position.y}
                     {...commonPageLayerProps}
-                    underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} drawingPlane="back" showTexts={false} printMode />}
+                    underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} drawingPlane="back" showTexts={false} printMode />}
                   />
-                  <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} x={position.x} y={position.y} drawingPlane="front" printMode />
+                  <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} x={position.x} y={position.y} drawingPlane="front" printMode />
                   <PageNumberLayer pageIndex={pageIndex} x={position.x} y={position.y} canvas={canvas} settings={pageNumbering} />
                 </React.Fragment>
               );
