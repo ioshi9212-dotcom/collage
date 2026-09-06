@@ -1393,6 +1393,7 @@ function ExtraPageLayers({
   pageId = null,
   x = 0,
   y = 0,
+  canvas = null,
   mode = 'collage',
   selectedTextId = null,
   selectedDrawingId = null,
@@ -1414,7 +1415,15 @@ function ExtraPageLayers({
   const canEditDrawings = mode === 'drawings' && !printMode;
 
   return (
-    <Group x={x} y={y} listening={!printMode}>
+    <Group
+      x={x}
+      y={y}
+      listening={!printMode}
+      clipX={canvas ? 0 : undefined}
+      clipY={canvas ? 0 : undefined}
+      clipWidth={canvas?.width}
+      clipHeight={canvas?.height}
+    >
       {drawings.map((item) => {
         if (item?.type === 'image') {
           return (
@@ -4069,7 +4078,7 @@ export default function App() {
         onActivatePage={(pageId) => setAlbum((current) => ({ ...current, currentPageId: pageId }))}
         underlay={(
           <ExtraPageLayers
-            extraLayers={extraLayers}
+            extraLayers={extraLayers} canvas={canvas}
             pageIndex={entry.pageIndex} pageId={entry.page?.id ?? null}
             mode={isBooklet ? 'collage' : albumMode}
             selectedDrawingId={selectedDrawingId}
@@ -4081,7 +4090,7 @@ export default function App() {
         )}
       />
       <ExtraPageLayers
-        extraLayers={extraLayers}
+        extraLayers={extraLayers} canvas={canvas}
         pageIndex={entry.pageIndex} pageId={entry.page?.id ?? null}
         x={entry.x}
         y={entry.y ?? 0}
@@ -5069,9 +5078,9 @@ export default function App() {
               pageIndex={exportPageIndex}
               x={0}
               {...commonPageLayerProps}
-              underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} pageId={exportPage?.id ?? null} drawingPlane="back" showTexts={false} printMode />}
+              underlay={<ExtraPageLayers extraLayers={extraLayers} canvas={canvas} pageIndex={exportPageIndex} pageId={exportPage?.id ?? null} drawingPlane="back" showTexts={false} printMode />}
             />
-            <ExtraPageLayers extraLayers={extraLayers} pageIndex={exportPageIndex} pageId={exportPage?.id ?? null} x={0} y={0} drawingPlane="front" printMode />
+            <ExtraPageLayers extraLayers={extraLayers} canvas={canvas} pageIndex={exportPageIndex} pageId={exportPage?.id ?? null} x={0} y={0} drawingPlane="front" printMode />
             <PageNumberLayer pageIndex={exportPageIndex} canvas={canvas} settings={pageNumbering} />
           </Layer>
         </Stage>
@@ -5084,9 +5093,9 @@ export default function App() {
                   pageIndex={pageIndex}
                   x={position * canvas.width}
                   {...commonPageLayerProps}
-                  underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} drawingPlane="back" showTexts={false} printMode />}
+                  underlay={<ExtraPageLayers extraLayers={extraLayers} canvas={canvas} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} drawingPlane="back" showTexts={false} printMode />}
                 />
-                <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} x={position * canvas.width} y={0} drawingPlane="front" printMode />
+                <ExtraPageLayers extraLayers={extraLayers} canvas={canvas} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} x={position * canvas.width} y={0} drawingPlane="front" printMode />
                 <PageNumberLayer pageIndex={pageIndex} x={position * canvas.width} canvas={canvas} settings={pageNumbering} />
               </React.Fragment>
             ))}
@@ -5106,9 +5115,9 @@ export default function App() {
                     x={position.x}
                     y={position.y}
                     {...commonPageLayerProps}
-                    underlay={<ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} drawingPlane="back" showTexts={false} printMode />}
+                    underlay={<ExtraPageLayers extraLayers={extraLayers} canvas={canvas} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} drawingPlane="back" showTexts={false} printMode />}
                   />
-                  <ExtraPageLayers extraLayers={extraLayers} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} x={position.x} y={position.y} drawingPlane="front" printMode />
+                  <ExtraPageLayers extraLayers={extraLayers} canvas={canvas} pageIndex={pageIndex} pageId={pages[pageIndex]?.id ?? null} x={position.x} y={position.y} drawingPlane="front" printMode />
                   <PageNumberLayer pageIndex={pageIndex} x={position.x} y={position.y} canvas={canvas} settings={pageNumbering} />
                 </React.Fragment>
               );

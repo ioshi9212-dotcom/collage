@@ -58,3 +58,7 @@ console.log('editor integration checks passed');
 
 assert.match(appSource, /bindExtraLayerPagesToPageIds\(extraLayers, pages\)/, 'extra layers must be bound to stable page IDs');
 assert.match(appSource, /pageIndex=\{entry\.pageIndex\} pageId=\{entry\.page\?\.id \?\? null\}/, 'booklet and spread overlays must resolve extra layers by page ID');
+
+assert.match(appSource, /clipWidth=\{canvas\?\.width\}/, 'extra page layers must be clipped to their owning page width');
+assert.match(appSource, /clipHeight=\{canvas\?\.height\}/, 'extra page layers must be clipped to their owning page height');
+assert.match(appSource, /<ExtraPageLayers[^>]*extraLayers=\{extraLayers\} canvas=\{canvas\}/s, 'extra page layer renderers must receive the page canvas for clipping');
