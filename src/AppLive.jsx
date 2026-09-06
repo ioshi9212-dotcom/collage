@@ -1982,10 +1982,13 @@ export default function App() {
     : null;
 
   useEffect(() => {
-    setLastFrameStyleChange(null);
     if (!selectedFrame) return;
     setFrameStyleDraft(normalizeFrameStyle(selectedFrame, settings));
   }, [selectedFrame, settings]);
+
+  useEffect(() => {
+    setLastFrameStyleChange(null);
+  }, [selectedFrameId]);
   const selectedPhoto = useMemo(() => library.find((photo) => photo.id === selectedPhotoId) ?? null, [library, selectedPhotoId]);
   const usedPhotoIds = useMemo(() => {
     const used = new Set();

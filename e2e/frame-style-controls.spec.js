@@ -87,6 +87,11 @@ test('apply to all changes only the most recently edited frame style property', 
   const applyAll = page.getByRole('button', { name: 'Применить ко всем', exact: true });
   await expect(applyAll).toBeEnabled();
   await expect(page.getByText('Только: скругление', { exact: true })).toBeVisible();
+
+  // Applying to the selected frame first must not forget which property the user changed.
+  await page.getByRole('button', { name: 'Применить оформление', exact: true }).click();
+  await expect(applyAll).toBeEnabled();
+  await expect(page.getByText('Только: скругление', { exact: true })).toBeVisible();
   await applyAll.click();
 
   await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().pages
