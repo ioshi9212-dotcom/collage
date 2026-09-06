@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 
 const STORAGE_PREFIX = 'collage-public-album-share-v1:';
 const CURRENT_PROJECT_ID_KEY = 'collage-cloud-current-project-id';
+const CURRENT_PROJECT_TITLE_KEY = 'collage-cloud-current-project-title';
 
 function storageKey(projectId) { return STORAGE_PREFIX + (projectId || 'local'); }
 function loadSavedShare(projectId) {
@@ -13,6 +14,29 @@ function saveShare(projectId, value) {
 }
 function clearShare(projectId) {
   try { localStorage.removeItem(storageKey(projectId)); } catch { /* ignore */ }
+}
+
+function currentProjectTitle() {
+  const editorTitle = document.querySelector('.cloud-project-title')?.value;
+  const storedTitle = localStorage.getItem(CURRENT_PROJECT_TITLE_KEY);
+  return String(editorTitle || storedTitle || 'Фотоальбом').trim().slice(0, 120) || 'Фотоальбом';
+}
+
+async function updateCurrentCloudProject(projectId, data) {
+  const title = currentProjectTitle();
+  const response = await fetch('/api/projects/' + encodeURIComponent(projectId), {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, data }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.message || payload?.error || 'Не удалось обновить проект в облаке');
+  const project = payload?.project || payload;
+  if (!project?.id) throw new Error('Облако не вернуло сохранённый проект');
+  localStorage.setItem(CURRENT_PROJECT_ID_KEY, project.id);
+  localStorage.setItem(CURRENT_PROJECT_TITLE_KEY, project.title || title);
+  return project;
 }
 
 export default function PublicAlbumShareControls() {
@@ -36,8 +60,25 @@ export default function PublicAlbumShareControls() {
     setError('');
     try {
       const saveResult = await window.__collageApp?.saveProject?.();
-      if (!saveResult?.cloud?.id) throw new Error('Для публикации войди в аккаунт и сохрани проект в облако.');
-      const projectId = String(saveResult.cloud.id);
+      let cloudProject = saveResult?.cloud || null;
+
+      if (!cloudProject?.id) {
+        const cloudError = saveResult?.cloudError || null;
+        const currentProjectId = localStorage.getItem(CURRENT_PROJECT_ID_KEY);
+
+        // Normal saving intentionally creates a new cloud version. When the account has
+        // reached its version/project limit, publishing must still be able to refresh the
+        // cloud project that is already open instead of pretending the user is logged out.
+        if (cloudError?.status === 409 && currentProjectId && saveResult?.data) {
+          cloudProject = await updateCurrentCloudProject(currentProjectId, saveResult.data);
+        } else if (cloudError) {
+          throw cloudError;
+        } else {
+          throw new Error('Для публикации войди в аккаунт и сохрани проект в облако.');
+        }
+      }
+
+      const projectId = String(cloudProject.id);
       const previous = loadSavedShare(projectId);
       const response = await fetch('/api/public-albums', {
         method: 'POST',
@@ -46,7 +87,7 @@ export default function PublicAlbumShareControls() {
         body: JSON.stringify({
           projectId,
           shareToken: previous?.token || share?.token || null,
-          title: saveResult.cloud.title || 'Фотоальбом',
+          title: cloudProject.title || 'Фотоальбом',
           data: saveResult.data,
         }),
       });
