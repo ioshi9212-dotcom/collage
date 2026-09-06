@@ -47,20 +47,16 @@ jobs:
               raise SystemExit(f'ExtraPageLayers signature match count: {text.count(old)}')
           text = text.replace(old, new, 1)
 
-          old_group = """  return (
-            <Group x={x} y={y} listening={!printMode}>
-              {drawings.map((item) => {"""
-          new_group = """  return (
-            <Group
-              x={x}
-              y={y}
-              listening={!printMode}
-              clipX={canvas ? 0 : undefined}
-              clipY={canvas ? 0 : undefined}
-              clipWidth={canvas?.width}
-              clipHeight={canvas?.height}
-            >
-              {drawings.map((item) => {"""
+          old_group = '<Group x={x} y={y} listening={!printMode}>'
+          new_group = """<Group
+                x={x}
+                y={y}
+                listening={!printMode}
+                clipX={canvas ? 0 : undefined}
+                clipY={canvas ? 0 : undefined}
+                clipWidth={canvas?.width}
+                clipHeight={canvas?.height}
+              >"""
           if text.count(old_group) != 1:
               raise SystemExit(f'ExtraPageLayers group match count: {text.count(old_group)}')
           text = text.replace(old_group, new_group, 1)
