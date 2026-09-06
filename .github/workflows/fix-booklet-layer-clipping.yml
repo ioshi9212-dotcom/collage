@@ -1,0 +1,119 @@
+name: Fix booklet layer clipping
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-booklet-layer-clipping.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Clip extra layers to their owning page
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('src/AppLive.jsx')
+          text = path.read_text()
+
+          old = """function ExtraPageLayers({
+            extraLayers,
+            pageIndex,
+            pageId = null,
+            x = 0,
+            y = 0,
+            mode = 'collage',"""
+          new = """function ExtraPageLayers({
+            extraLayers,
+            pageIndex,
+            pageId = null,
+            x = 0,
+            y = 0,
+            canvas = null,
+            mode = 'collage',"""
+          if text.count(old) != 1:
+              raise SystemExit(f'ExtraPageLayers signature match count: {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old_group = """  return (
+            <Group x={x} y={y} listening={!printMode}>
+              {drawings.map((item) => {"""
+          new_group = """  return (
+            <Group
+              x={x}
+              y={y}
+              listening={!printMode}
+              clipX={canvas ? 0 : undefined}
+              clipY={canvas ? 0 : undefined}
+              clipWidth={canvas?.width}
+              clipHeight={canvas?.height}
+            >
+              {drawings.map((item) => {"""
+          if text.count(old_group) != 1:
+              raise SystemExit(f'ExtraPageLayers group match count: {text.count(old_group)}')
+          text = text.replace(old_group, new_group, 1)
+
+          # Every AppLive call site already lives in scope with `canvas`.
+          marker = '<ExtraPageLayers'
+          parts = text.split(marker)
+          rebuilt = [parts[0]]
+          changed = 0
+          for part in parts[1:]:
+              end = part.find('/>')
+              if end == -1:
+                  rebuilt.append(marker + part)
+                  continue
+              tag = part[:end]
+              if 'canvas=' not in tag:
+                  if 'extraLayers={extraLayers}' in tag:
+                      tag = tag.replace('extraLayers={extraLayers}', 'extraLayers={extraLayers} canvas={canvas}', 1)
+                      changed += 1
+              rebuilt.append(marker + tag + part[end:])
+          text = ''.join(rebuilt)
+          if changed < 5:
+              raise SystemExit(f'Expected at least 5 ExtraPageLayers call sites, changed {changed}')
+
+          path.write_text(text)
+
+          test_path = Path('src/editor/appIntegration.test.mjs')
+          test = test_path.read_text()
+          contract = """
+assert.match(appSource, /clipWidth=\\{canvas\\?\\.width\\}/, 'extra page layers must be clipped to their owning page width');
+assert.match(appSource, /clipHeight=\\{canvas\\?\\.height\\}/, 'extra page layers must be clipped to their owning page height');
+assert.match(appSource, /<ExtraPageLayers[^>]*extraLayers=\\{extraLayers\\} canvas=\\{canvas\\}/s, 'extra page layer renderers must receive the page canvas for clipping');
+"""
+          if 'extra page layers must be clipped to their owning page width' not in test:
+              test += contract
+          test_path.write_text(test)
+          PY
+      - name: Lint
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Relevant booklet checks
+        run: npx playwright test e2e/booklet-print.spec.js e2e/editor-shell-v3.spec.js
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          rm .github/workflows/fix-booklet-layer-clipping.yml
+          git config user.name "ioshi9212-dotcom"
+          git config user.email "ioshi9212@gmail.com"
+          git add src/AppLive.jsx src/editor/appIntegration.test.mjs .github/workflows/fix-booklet-layer-clipping.yml
+          git commit -m "Clip text and drawings to booklet pages"
+          git push
