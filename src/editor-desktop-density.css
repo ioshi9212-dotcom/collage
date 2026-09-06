@@ -55,6 +55,13 @@
     grid-template-rows: minmax(0, 1fr) 74px !important;
   }
 
+  /* Booklet adds the virtual-blank-pages note beside the horizontal page scroller.
+     Give that mode enough vertical room for full cards plus the native scrollbar,
+     without making the normal page rail larger. */
+  .editor-workspace-v2:has(> .booklet-page-rail) {
+    grid-template-rows: minmax(0, 1fr) 90px !important;
+  }
+
   .editor-tool-rail-v2 {
     gap: 1px;
     padding: 4px 3px;
@@ -199,6 +206,14 @@
     min-height: 74px !important;
     max-height: 74px !important;
     padding: 4px 6px !important;
+  }
+  .booklet-page-rail {
+    min-height: 90px !important;
+    max-height: 90px !important;
+  }
+  .booklet-page-rail .page-rail-list {
+    min-height: 80px;
+    box-sizing: border-box;
   }
   .page-rail .panel-title {
     width: 68px;
