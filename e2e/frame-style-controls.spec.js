@@ -64,3 +64,42 @@ test('applies borders and rounded corners to a frame, page, or album', async ({ 
     .flatMap((item) => item.frames)
     .every((frame) => frame.borderStyle === 'double'))).toBe(true);
 });
+
+
+test('apply to all changes only the most recently edited frame style property', async ({ page }) => {
+  await openEditor(page);
+  await clickFirstFrame(page);
+
+  await page.getByLabel('Вид рамки').selectOption('double');
+  await page.getByLabel('Цвет рамки').fill('#5a4038');
+  await page.getByLabel('Толщина').fill('12');
+  await page.getByRole('button', { name: 'Применить оформление', exact: true }).click();
+
+  const before = await page.evaluate(() => window.__collageApp.getProject().pages
+    .flatMap((item) => item.frames)
+    .map((frame) => ({
+      borderStyle: frame.borderStyle ?? null,
+      borderWidth: frame.borderWidth ?? null,
+      borderColor: frame.borderColor ?? null,
+    })));
+
+  await page.getByLabel('Скругление').fill('120');
+  const applyAll = page.getByRole('button', { name: 'Применить ко всем', exact: true });
+  await expect(applyAll).toBeEnabled();
+  await expect(page.getByText('Только: скругление', { exact: true })).toBeVisible();
+  await applyAll.click();
+
+  await expect.poll(() => page.evaluate(() => window.__collageApp.getProject().pages
+    .flatMap((item) => item.frames)
+    .every((frame) => frame.cornerRadius === 120))).toBe(true);
+
+  const after = await page.evaluate(() => window.__collageApp.getProject().pages
+    .flatMap((item) => item.frames)
+    .map((frame) => ({
+      borderStyle: frame.borderStyle ?? null,
+      borderWidth: frame.borderWidth ?? null,
+      borderColor: frame.borderColor ?? null,
+    })));
+  expect(after).toEqual(before);
+  await expect(applyAll).toBeDisabled();
+});

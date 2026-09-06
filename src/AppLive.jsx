@@ -96,6 +96,7 @@ import { addFreeFrameToPage, removeFreeFrameFromPage } from './editor/freeFrameA
 import { applyCollagePresetToPage } from './editor/collagePresetCatalog';
 import { hasFrameSnapGuides, snapFramePosition, snapFrameTransformBox } from './editor/frameSnapping';
 import {
+  applyFrameStylePropertyToPages,
   applyFrameStyleToPages,
   borderDashFor,
   normalizeFrameStyle,
@@ -222,6 +223,12 @@ const DEFAULT_FRAME_STYLE = {
   borderWidth: 0,
   borderColor: '#ffffff',
   cornerRadius: 0,
+};
+const FRAME_STYLE_PROPERTY_LABELS = {
+  borderStyle: 'вид рамки',
+  borderWidth: 'толщина',
+  borderColor: 'цвет рамки',
+  cornerRadius: 'скругление',
 };
 
 const DEFAULT_BOOKLET_PRINT_SETTINGS = {
@@ -1561,6 +1568,7 @@ export default function App() {
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [frameStyleScope, setFrameStyleScope] = useState('frame');
   const [frameStyleDraft, setFrameStyleDraft] = useState(DEFAULT_FRAME_STYLE);
+  const [lastFrameStyleChange, setLastFrameStyleChange] = useState(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
   const [photoLibraryView, setPhotoLibraryView] = useState('unused');
   const [photoImporting, setPhotoImporting] = useState(false);
@@ -1974,6 +1982,7 @@ export default function App() {
     : null;
 
   useEffect(() => {
+    setLastFrameStyleChange(null);
     if (!selectedFrame) return;
     setFrameStyleDraft(normalizeFrameStyle(selectedFrame, settings));
   }, [selectedFrame, settings]);
@@ -2507,12 +2516,28 @@ export default function App() {
   }
 
   function updateFrameStyleDraft(key, value) {
+    setLastFrameStyleChange(key);
     setFrameStyleDraft((current) => {
       const next = { ...current, [key]: value };
       if (key === 'borderStyle' && value !== 'none' && current.borderWidth <= 0) next.borderWidth = 6;
       if (key === 'borderWidth') next.borderStyle = Number(value) > 0 && current.borderStyle === 'none' ? 'solid' : current.borderStyle;
       return next;
     });
+  }
+
+  function applyLastFrameStyleToAll() {
+    if (!lastFrameStyleChange) {
+      show('Сначала измени параметр рамки');
+      return;
+    }
+    const property = lastFrameStyleChange;
+    const value = frameStyleDraft[property];
+    setAlbum((current) => ({
+      ...current,
+      pages: applyFrameStylePropertyToPages(current.pages, { property, value }),
+    }));
+    setLastFrameStyleChange(null);
+    show(`Ко всем окнам применено только: ${FRAME_STYLE_PROPERTY_LABELS[property]}`);
   }
 
   function applyFrameStyle() {
@@ -4893,6 +4918,15 @@ export default function App() {
                   <b>{Math.round(frameStyleDraft.cornerRadius)}</b>
                 </label>
                 <button className="button full accent" onClick={applyFrameStyle} disabled={frameStyleScope === 'frame' && !selectedFrame}>Применить оформление</button>
+                <button
+                  className="button full"
+                  onClick={applyLastFrameStyleToAll}
+                  disabled={!lastFrameStyleChange}
+                  title={lastFrameStyleChange ? `Применить ко всем только: ${FRAME_STYLE_PROPERTY_LABELS[lastFrameStyleChange]}` : 'Сначала измени один параметр рамки'}
+                >
+                  Применить ко всем
+                </button>
+                {lastFrameStyleChange ? <small className="hint">Только: {FRAME_STYLE_PROPERTY_LABELS[lastFrameStyleChange]}</small> : null}
               </div>
               {selectedFrame ? (
                 <>

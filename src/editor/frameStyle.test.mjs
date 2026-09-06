@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  applyFrameStylePropertyToPages,
   applyFrameStyleToPages,
   borderDashFor,
   normalizeFrameStyle,
@@ -24,3 +25,23 @@ const album = applyFrameStyleToPages(pages, { scope: 'album', pageId: 'page-1', 
 assert.equal(album.flatMap((item) => item.frames).every((frame) => frame.borderStyle === 'dashed'), true);
 assert.deepEqual(borderDashFor('dotted', 4), [4, 7.2]);
 assert.equal(normalizeFrameStyle({ borderWidth: -5, cornerRadius: 900 }).borderStyle, 'none');
+
+
+const variedFrames = [
+  { id: 'page-a', frames: [
+    { id: 'one', borderStyle: 'double', borderWidth: 11, borderColor: '#111111', cornerRadius: 5 },
+    { id: 'two', borderStyle: 'none', borderWidth: 0, borderColor: '#222222', cornerRadius: 15 },
+  ] },
+  { id: 'page-b', frames: [
+    { id: 'three', borderStyle: 'dashed', borderWidth: 7, borderColor: '#333333', cornerRadius: 25 },
+  ] },
+];
+const beforeOtherStyle = variedFrames.flatMap((item) => item.frames).map(({ borderStyle, borderWidth, borderColor }) => ({ borderStyle, borderWidth, borderColor }));
+const roundedOnly = applyFrameStylePropertyToPages(variedFrames, { property: 'cornerRadius', value: 80 });
+assert.equal(roundedOnly.flatMap((item) => item.frames).every((frame) => frame.cornerRadius === 80), true);
+assert.deepEqual(
+  roundedOnly.flatMap((item) => item.frames).map(({ borderStyle, borderWidth, borderColor }) => ({ borderStyle, borderWidth, borderColor })),
+  beforeOtherStyle,
+  'single-property apply must preserve every other frame style',
+);
+assert.throws(() => applyFrameStylePropertyToPages(variedFrames, { property: 'unknown', value: 1 }), /Unknown frame style property/);

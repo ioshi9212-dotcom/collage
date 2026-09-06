@@ -1,5 +1,6 @@
 export const FRAME_BORDER_STYLES = ['none', 'solid', 'dashed', 'dotted', 'double'];
 export const FRAME_STYLE_SCOPES = ['frame', 'page', 'album'];
+export const FRAME_STYLE_PROPERTIES = ['borderStyle', 'borderWidth', 'borderColor', 'cornerRadius'];
 
 const DEFAULT_STYLE = Object.freeze({
   borderStyle: 'none',
@@ -36,6 +37,26 @@ export function normalizeFrameStyle(frame, fallback = {}) {
 
 export function cleanFrameStylePatch(patch) {
   return normalizeFrameStyle(patch, DEFAULT_STYLE);
+}
+
+function cleanFrameStyleProperty(property, value) {
+  if (property === 'borderStyle') return FRAME_BORDER_STYLES.includes(value) ? value : DEFAULT_STYLE.borderStyle;
+  if (property === 'borderWidth') return Math.max(0, Math.min(80, finiteNumber(value, DEFAULT_STYLE.borderWidth)));
+  if (property === 'borderColor') return cleanColor(value, DEFAULT_STYLE.borderColor);
+  if (property === 'cornerRadius') return Math.max(0, Math.min(500, finiteNumber(value, DEFAULT_STYLE.cornerRadius)));
+  throw new TypeError('Unknown frame style property');
+}
+
+export function applyFrameStylePropertyToPages(pages, { property, value } = {}) {
+  if (!FRAME_STYLE_PROPERTIES.includes(property)) throw new TypeError('Unknown frame style property');
+  const cleanValue = cleanFrameStyleProperty(property, value);
+  return (Array.isArray(pages) ? pages : []).map((page) => {
+    if (!Array.isArray(page?.frames)) return page;
+    return {
+      ...page,
+      frames: page.frames.map((frame) => ({ ...frame, [property]: cleanValue })),
+    };
+  });
 }
 
 export function applyFrameStyleToPages(pages, {
