@@ -65,7 +65,6 @@ jobs:
               raise SystemExit(f'ExtraPageLayers group match count: {text.count(old_group)}')
           text = text.replace(old_group, new_group, 1)
 
-          # Every AppLive call site already lives in scope with `canvas`.
           marker = '<ExtraPageLayers'
           parts = text.split(marker)
           rebuilt = [parts[0]]
@@ -76,10 +75,9 @@ jobs:
                   rebuilt.append(marker + part)
                   continue
               tag = part[:end]
-              if 'canvas=' not in tag:
-                  if 'extraLayers={extraLayers}' in tag:
-                      tag = tag.replace('extraLayers={extraLayers}', 'extraLayers={extraLayers} canvas={canvas}', 1)
-                      changed += 1
+              if 'canvas=' not in tag and 'extraLayers={extraLayers}' in tag:
+                  tag = tag.replace('extraLayers={extraLayers}', 'extraLayers={extraLayers} canvas={canvas}', 1)
+                  changed += 1
               rebuilt.append(marker + tag + part[end:])
           text = ''.join(rebuilt)
           if changed < 5:
@@ -89,11 +87,7 @@ jobs:
 
           test_path = Path('src/editor/appIntegration.test.mjs')
           test = test_path.read_text()
-          contract = """
-assert.match(appSource, /clipWidth=\\{canvas\\?\\.width\\}/, 'extra page layers must be clipped to their owning page width');
-assert.match(appSource, /clipHeight=\\{canvas\\?\\.height\\}/, 'extra page layers must be clipped to their owning page height');
-assert.match(appSource, /<ExtraPageLayers[^>]*extraLayers=\\{extraLayers\\} canvas=\\{canvas\\}/s, 'extra page layer renderers must receive the page canvas for clipping');
-"""
+          contract = "\nassert.match(appSource, /clipWidth=\\{canvas\\?\\.width\\}/, 'extra page layers must be clipped to their owning page width');\nassert.match(appSource, /clipHeight=\\{canvas\\?\\.height\\}/, 'extra page layers must be clipped to their owning page height');\nassert.match(appSource, /<ExtraPageLayers[^>]*extraLayers=\\{extraLayers\\} canvas=\\{canvas\\}/s, 'extra page layer renderers must receive the page canvas for clipping');\n"
           if 'extra page layers must be clipped to their owning page width' not in test:
               test += contract
           test_path.write_text(test)
