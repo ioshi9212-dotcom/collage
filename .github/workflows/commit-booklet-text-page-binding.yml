@@ -1,0 +1,55 @@
+name: Commit booklet text page binding
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/commit-booklet-text-page-binding.yml
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply verified page binding patch
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/fix-booklet-text-page-binding.yml').read_text()
+          marker = "          from pathlib import Path\n          import re\n"
+          start = workflow.index(marker)
+          end = workflow.index("\n          PY\n", start)
+          patch_script = textwrap.dedent(workflow[start:end])
+          exec(compile(patch_script, '<booklet-text-page-binding>', 'exec'))
+          PY
+      - name: Lint
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Relevant booklet browser checks
+        run: npx playwright test e2e/booklet-print.spec.js e2e/editor-shell-v3.spec.js
+      - name: Commit fix
+        shell: bash
+        run: |
+          rm .github/workflows/fix-booklet-text-page-binding.yml
+          rm .github/workflows/commit-booklet-text-page-binding.yml
+          git config user.name "ioshi9212-dotcom"
+          git config user.email "ioshi9212@gmail.com"
+          git add src/AppLive.jsx src/editor/extraLayers.js src/editor/extraLayers.test.mjs src/editor/appIntegration.test.mjs src/editor/AlbumFlipPreviewHost.jsx .github/workflows/fix-booklet-text-page-binding.yml .github/workflows/commit-booklet-text-page-binding.yml
+          git commit -m "Keep text layers attached to booklet pages"
+          git push
