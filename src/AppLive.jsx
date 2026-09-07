@@ -1489,6 +1489,9 @@ function ExtraPageLayers({
         return (
           <Text
             key={item.id ?? `${pageIndex}-${item.x}-${item.y}`}
+            name="extra-text-layer"
+            textLayerId={String(item.id ?? '')}
+            textLayerPageId={String(pageId ?? '')}
             x={Number(item.x) || 0}
             y={Number(item.y) || 0}
             width={width}
@@ -3809,6 +3812,46 @@ export default function App() {
     ));
   }
 
+  function textReferencesForBookletSide(sideData) {
+    return (sideData?.slots ?? []).flatMap((slot) => {
+      const pageIndex = slot?.sourcePageIndex;
+      if (pageIndex == null || pageIndex < 0) return [];
+      const page = pages[pageIndex];
+      const pageId = String(page?.id ?? '');
+      return textLayersForPage(extraLayers, pageIndex, page?.id ?? null)
+        .map((item) => ({ pageId, textId: String(item?.id ?? '') }))
+        .filter((item) => item.textId);
+    });
+  }
+
+  function renderedPrintTextKeys(stageRef) {
+    const stage = stageRef?.current;
+    if (!stage?.find) return new Set();
+    return new Set(Array.from(stage.find('.extra-text-layer') ?? []).map((node) => (
+      `${String(node.getAttr('textLayerPageId') ?? '')}::${String(node.getAttr('textLayerId') ?? '')}`
+    )));
+  }
+
+  async function waitForPrintTexts(stageRef, references, context, timeoutMs = 5000) {
+    const expected = [...new Set((references ?? []).map((item) => `${item.pageId}::${item.textId}`))];
+    if (!expected.length) return;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const rendered = renderedPrintTextKeys(stageRef);
+      if (expected.every((key) => rendered.has(key))) {
+        await waitForFonts();
+        stageRef.current?.batchDraw?.();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        stageRef.current?.draw?.();
+        const finalRendered = renderedPrintTextKeys(stageRef);
+        if (expected.every((key) => finalRendered.has(key))) return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    throw new Error(`Не все надписи успели подготовиться для печати (${context}). Повтори экспорт.`);
+  }
+
+
   async function waitForPrintPhotos(stageRefToExport, photoReferences, label) {
     const references = Array.isArray(photoReferences) ? photoReferences : [];
     const missing = references.find((item) => !item.src);
@@ -3867,8 +3910,12 @@ export default function App() {
   async function renderBookletSidePng(sideData, { checkResolution = true } = {}) {
     if (!sideData) throw new Error('Нет стороны брошюры для экспорта');
     setPrintBookletSideId(sideData.id);
+    const printTextReferences = textReferencesForBookletSide(sideData);
     await nextPaint();
+    await waitForPrintTexts(printBookletRef, printTextReferences, `листе ${sideData.title || sideData.id}`);
     await waitForPrintPhotos(printBookletRef, photoReferencesForBookletSide(sideData), `листе ${sideData.title || sideData.id}`);
+    await waitForPrintTexts(printBookletRef, printTextReferences, `листе ${sideData.title || sideData.id}`);
+    printBookletRef.current?.draw?.();
     if (checkResolution && !confirmPrintResolution(printBookletRef, bookletA4Geometry.renderPixelRatio)) return null;
     const raw = printBookletRef.current?.toDataURL({ pixelRatio: bookletA4Geometry.renderPixelRatio, mimeType: 'image/png' });
     if (!raw) throw new Error('Не получилось собрать сторону брошюры');

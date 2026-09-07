@@ -62,3 +62,7 @@ assert.match(appSource, /pageIndex=\{entry\.pageIndex\} pageId=\{entry\.page\?\.
 assert.match(appSource, /clipWidth=\{canvas\?\.width\}/, 'extra page layers must be clipped to their owning page width');
 assert.match(appSource, /clipHeight=\{canvas\?\.height\}/, 'extra page layers must be clipped to their owning page height');
 assert.match(appSource, /<ExtraPageLayers[^>]*extraLayers=\{extraLayers\} canvas=\{canvas\}/s, 'extra page layer renderers must receive the page canvas for clipping');
+
+assert.match(appSource, /name="extra-text-layer"[\s\S]*?textLayerId=\{String\(item\.id \?\? ''\)\}[\s\S]*?textLayerPageId=\{String\(pageId \?\? ''\)\}/, 'print text nodes must expose stable page/text identifiers');
+assert.match(appSource, /function waitForPrintTexts\([\s\S]*?stageRef\.current\?\.draw\?\.\(\)/, 'print export must wait for and force-draw text layers');
+assert.match(appSource, /setPrintBookletSideId\(sideData\.id\)[\s\S]*?await waitForPrintTexts\(printBookletRef,[\s\S]*?await waitForPrintPhotos\(printBookletRef,[\s\S]*?await waitForPrintTexts\(printBookletRef,[\s\S]*?printBookletRef\.current\?\.toDataURL/, 'booklet PDF must verify text before and after photo readiness before rasterizing');
