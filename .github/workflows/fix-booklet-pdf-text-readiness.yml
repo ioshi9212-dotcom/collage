@@ -1,0 +1,165 @@
+name: Fix booklet PDF text readiness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-booklet-pdf-text-readiness.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Patch booklet PDF text readiness
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('src/AppLive.jsx')
+          text = path.read_text()
+
+          # Mark every extra text Konva node with stable page/text identifiers so
+          # hidden print stages can verify that the requested side really rendered.
+          start = text.index('function ExtraPageLayers({')
+          end = text.index('function PageNumberLayer(', start)
+          block = text[start:end]
+          needle = """          <Text
+            key={item.id ?? `${pageIndex}-${item.x}-${item.y}`}
+            x={Number(item.x) || 0}"""
+          replacement = """          <Text
+            key={item.id ?? `${pageIndex}-${item.x}-${item.y}`}
+            name=\"extra-text-layer\"
+            textLayerId={String(item.id ?? '')}
+            textLayerPageId={String(pageId ?? '')}
+            x={Number(item.x) || 0}"""
+          if block.count(needle) != 1:
+              raise SystemExit(f'Extra text node marker match count: {block.count(needle)}')
+          block = block.replace(needle, replacement, 1)
+          text = text[:start] + block + text[end:]
+
+          # Insert robust text readiness helpers immediately after the existing
+          # photoReferencesForBookletSide helper.
+          marker = '  function photoReferencesForBookletSide(sideData) {'
+          helper_start = text.index(marker)
+          pos = helper_start
+          depth = 0
+          opened = False
+          while pos < len(text):
+              char = text[pos]
+              if char == '{':
+                  depth += 1
+                  opened = True
+              elif char == '}':
+                  depth -= 1
+                  if opened and depth == 0:
+                      helper_end = pos + 1
+                      break
+              pos += 1
+          else:
+              raise SystemExit('Could not find photoReferencesForBookletSide end')
+
+          helpers = r'''
+
+  function textReferencesForBookletSide(sideData) {
+    return (sideData?.slots ?? []).flatMap((slot) => {
+      const pageIndex = slot?.sourcePageIndex;
+      if (pageIndex == null || pageIndex < 0) return [];
+      const page = pages[pageIndex];
+      const pageId = String(page?.id ?? '');
+      return textLayersForPage(extraLayers, pageIndex, page?.id ?? null)
+        .map((item) => ({ pageId, textId: String(item?.id ?? '') }))
+        .filter((item) => item.textId);
+    });
+  }
+
+  function renderedPrintTextKeys(stageRef) {
+    const stage = stageRef?.current;
+    if (!stage?.find) return new Set();
+    return new Set(Array.from(stage.find('.extra-text-layer') ?? []).map((node) => (
+      `${String(node.getAttr('textLayerPageId') ?? '')}::${String(node.getAttr('textLayerId') ?? '')}`
+    )));
+  }
+
+  async function waitForPrintTexts(stageRef, references, context, timeoutMs = 5000) {
+    const expected = [...new Set((references ?? []).map((item) => `${item.pageId}::${item.textId}`))];
+    if (!expected.length) return;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const rendered = renderedPrintTextKeys(stageRef);
+      if (expected.every((key) => rendered.has(key))) {
+        await waitForFonts();
+        stageRef.current?.batchDraw?.();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        stageRef.current?.draw?.();
+        const finalRendered = renderedPrintTextKeys(stageRef);
+        if (expected.every((key) => finalRendered.has(key))) return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    throw new Error(`Не все надписи успели подготовиться для печати (${context}). Повтори экспорт.`);
+  }
+'''
+          if 'function waitForPrintTexts(' not in text:
+              text = text[:helper_end] + helpers + text[helper_end:]
+
+          old = """    setPrintBookletSideId(sideData.id);
+    await nextPaint();
+    await waitForPrintPhotos(printBookletRef, photoReferencesForBookletSide(sideData), `листе ${sideData.title || sideData.id}`);
+    if (checkResolution && !confirmPrintResolution(printBookletRef, bookletA4Geometry.renderPixelRatio)) return null;
+    const raw = printBookletRef.current?.toDataURL({ pixelRatio: bookletA4Geometry.renderPixelRatio, mimeType: 'image/png' });"""
+          new = """    setPrintBookletSideId(sideData.id);
+    const printTextReferences = textReferencesForBookletSide(sideData);
+    await nextPaint();
+    await waitForPrintTexts(printBookletRef, printTextReferences, `листе ${sideData.title || sideData.id}`);
+    await waitForPrintPhotos(printBookletRef, photoReferencesForBookletSide(sideData), `листе ${sideData.title || sideData.id}`);
+    await waitForPrintTexts(printBookletRef, printTextReferences, `листе ${sideData.title || sideData.id}`);
+    printBookletRef.current?.draw?.();
+    if (checkResolution && !confirmPrintResolution(printBookletRef, bookletA4Geometry.renderPixelRatio)) return null;
+    const raw = printBookletRef.current?.toDataURL({ pixelRatio: bookletA4Geometry.renderPixelRatio, mimeType: 'image/png' });"""
+          if text.count(old) != 1:
+              raise SystemExit(f'Booklet raster block match count: {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          test_path = Path('src/editor/appIntegration.test.mjs')
+          test = test_path.read_text()
+          contracts = r'''
+assert.match(appSource, /name=\"extra-text-layer\"[\s\S]*?textLayerId=\{String\(item\.id \?\? ''\)\}[\s\S]*?textLayerPageId=\{String\(pageId \?\? ''\)\}/, 'print text nodes must expose stable page/text identifiers');
+assert.match(appSource, /function waitForPrintTexts\([\s\S]*?stageRef\.current\?\.draw\?\.\(\)/, 'print export must wait for and force-draw text layers');
+assert.match(appSource, /setPrintBookletSideId\(sideData\.id\)[\s\S]*?await waitForPrintTexts\(printBookletRef,[\s\S]*?await waitForPrintPhotos\(printBookletRef,[\s\S]*?await waitForPrintTexts\(printBookletRef,[\s\S]*?printBookletRef\.current\?\.toDataURL/, 'booklet PDF must verify text before and after photo readiness before rasterizing');
+'''
+          if 'print text nodes must expose stable page/text identifiers' not in test:
+              test += contracts
+          test_path.write_text(test)
+          PY
+      - name: Lint
+        run: npm run lint
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Booklet export regression
+        run: npx playwright test e2e/booklet-print.spec.js
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          rm .github/workflows/fix-booklet-pdf-text-readiness.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/AppLive.jsx src/editor/appIntegration.test.mjs .github/workflows/fix-booklet-pdf-text-readiness.yml
+          git commit -m 'Wait for booklet text before PDF rasterization'
+          git push
